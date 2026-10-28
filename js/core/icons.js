@@ -1,0 +1,25 @@
+const P={
+pin:'<path d="M12 21s-6-5.5-6-10a6 6 0 1112 0c0 4.5-6 10-6 10z"/><circle cx="12" cy="11" r="2"/>',
+garage:'<path d="M3 10l9-6 9 6v10H3z"/><path d="M8 20v-6h8v6"/>',
+company:'<path d="M5 21V4h9v17M14 9h5v12M8 8h3M8 12h3M8 16h3"/>',
+online:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/>',
+store:'<path d="M3 4h3l2 12h11l2-8H7"/><circle cx="9" cy="20" r="1"/><circle cx="18" cy="20" r="1"/>',
+box:'<path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+truck:'<path d="M2 6h12v10H2zM14 10h4l4 3v3h-8"/><circle cx="7" cy="18" r="2"/><circle cx="17" cy="18" r="2"/>',
+clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+cash:'<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/>',
+coin:'<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 10h5"/>',
+chev:'<path d="M9 6l6 6-6 6"/>',
+back:'<path d="M15 6l-6 6 6 6"/>',
+bolt:'<path d="M13 3L5 14h6l-1 7 8-11h-6z"/>',
+user:'<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0116 0"/>',
+search:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-5-5"/>',
+send:'<path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/>',
+up:'<path d="M12 19V5M5 12l7-7 7 7"/>',
+route:'<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h8a3 3 0 000-6H8a3 3 0 010-6h8"/>',
+plus:'<path d="M12 5v14M5 12h14"/>',
+bell:'<path d="M6 16V11a6 6 0 1112 0v5l2 2H4z"/><path d="M10 21h4"/>',
+wrench:'<path d="M14.5 6.5a4 4 0 005 5L10 21l-3-3z"/>',
+fuel:'<path d="M5 21V5a1 1 0 011-1h7a1 1 0 011 1v16M4 21h11M14 10h3a2 2 0 012 2v5a1.5 1.5 0 003 0V9l-3-3"/>'};
+export const registerIcon=(n,p)=>{P[n]=p};
+export const ic=n=>`<svg class="i" viewBox="0 0 24 24">${P[n]||''}</svg>`;

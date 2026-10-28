@@ -1,0 +1,10 @@
+export const COMPANIES = [
+  'ROLLAND',
+  'KESTLE',
+  'TLRP',
+  'PSTL',
+  'DANGOTE FREIGHT',
+  'ABC LOGISTICS',
+  'TRANS-NIGERIA HAULAGE',
+  'SAHEL EXPRESS'
+];

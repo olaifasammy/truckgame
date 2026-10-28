@@ -1,0 +1,25 @@
+.job-list { padding: 8px 0; }
+.job-card { 
+  background: var(--s1); 
+  border: 1px solid var(--line); 
+  border-radius: 14px; 
+  margin: 8px 16px; 
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+}
+.job-card.vip { border-color: var(--gold); background: linear-gradient(145deg, var(--s1), #1d1e2b); }
+.job-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.job-co { font-size: 10px; color: var(--mu); text-transform: uppercase; letter-spacing: 1px; font-weight: 700; }
+.job-pay { font-size: 16px; font-weight: 800; color: var(--grn); }
+.job-cargo { font-size: 15px; font-weight: 700; margin-bottom: 4px; color: var(--tx); }
+.job-route { display: flex; align-items: center; gap: 8px; color: var(--mu); font-size: 12px; font-weight: 600; }
+.job-route .i { font-size: 14px; color: var(--gold); }
+.job-meta { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 12px; }
+.job-km { font-size: 11px; font-weight: 700; color: var(--mu); }
+.btn-take { padding: 8px 16px; font-size: 11px; }
+
+/* Active Jobs */
+.active-job { margin-bottom: 12px; }
+.progress-box { margin-top: 10px; }
+.eta { font-size: 10px; color: var(--mu); text-align: right; margin-top: 4px; font-weight: 600; }

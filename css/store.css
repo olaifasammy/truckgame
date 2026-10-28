@@ -1,0 +1,15 @@
+.store-grid { display: grid; grid-template-columns: 1fr; gap: 12px; padding: 16px; }
+.store-item { 
+  background: var(--s1); 
+  border: 1px solid var(--line); 
+  border-radius: 14px; 
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.store-icon { width: 48px; height: 48px; background: var(--s2); border-radius: 10px; display: grid; place-items: center; font-size: 24px; color: var(--gold); }
+.store-info { flex: 1; }
+.store-name { font-weight: 700; color: var(--tx); font-size: 14px; }
+.store-price { color: var(--grn); font-weight: 800; font-size: 13px; margin-top: 2px; }
+.btn-buy { padding: 8px 14px; font-size: 10px; }

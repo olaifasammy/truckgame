@@ -1,0 +1,11 @@
+import {set} from '../core/store.js';
+import {toast} from '../core/ui.js';
+import {OFFICES,BASE_SLOTS} from '../data/shop.js';
+import {pushNote} from './notify.js';
+export const slots=S=>BASE_SLOTS+S.offices.reduce((a,id)=>a+OFFICES[id].slots,0);
+export const buyOffice=id=>set(S=>{const o=OFFICES[id];
+ if(!o||S.offices.includes(id))return;
+ if(S.vip<o.vip)return toast('Requires VIP '+o.vip);
+ if(S.money<o.price)return toast('Not enough cash');
+ S.money-=o.price;S.offices.push(id);
+ pushNote(S,'Opened '+o.name+' · +'+o.slots+' truck slots');toast('Opened '+o.name)});

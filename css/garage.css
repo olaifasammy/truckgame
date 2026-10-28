@@ -1,0 +1,20 @@
+.fleet-list { padding: 8px 0; }
+.truck-card { 
+  background: var(--s1); 
+  border: 1px solid var(--line); 
+  border-radius: 14px; 
+  margin: 8px 16px; 
+  padding: 16px;
+}
+.truck-head { display: flex; gap: 16px; align-items: center; margin-bottom: 16px; }
+.truck-img { width: 80px; height: 50px; background: var(--s2); border-radius: 8px; flex-shrink: 0; display: grid; place-items: center; color: var(--mu); }
+.truck-info { flex: 1; min-width: 0; }
+.truck-name { font-weight: 700; font-size: 14px; color: var(--tx); margin-bottom: 2px; }
+.truck-loc { font-size: 11px; color: var(--gold); font-weight: 700; text-transform: uppercase; }
+
+.truck-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+.stat-box { font-size: 11px; font-weight: 600; }
+.stat-label { color: var(--mu); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+.truck-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.btn-action { padding: 10px; font-size: 10px; }

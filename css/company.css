@@ -1,0 +1,11 @@
+.company-profile { padding: 24px 16px; text-align: center; background: linear-gradient(var(--s1), var(--bg)); border-bottom: 1px solid var(--line); }
+.company-avatar { width: 80px; height: 80px; background: var(--gold); border-radius: 20px; margin: 0 auto 16px; display: grid; place-items: center; font-size: 40px; color: var(--bg); font-weight: 900; }
+.company-name { font-size: 20px; font-weight: 800; color: var(--tx); }
+.company-rank { font-size: 12px; color: var(--gold); font-weight: 700; text-transform: uppercase; margin-top: 4px; letter-spacing: 1px; }
+
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; }
+.comp-stat { background: var(--s1); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+.comp-stat-val { font-size: 18px; font-weight: 800; color: var(--tx); }
+.comp-stat-lab { font-size: 10px; color: var(--mu); text-transform: uppercase; margin-top: 4px; font-weight: 700; }
+
+.btn-logout { margin: 20px 16px; background: var(--red); }

@@ -1,0 +1,6 @@
+export default (id: string, icon: string, label: string) => ({
+  id,
+  icon,
+  label,
+  render: () => `<div class="stub">${label} — not built yet</div>`
+});
