@@ -17,23 +17,46 @@ export class FreightEngine {
     const prog = S ? getCompanyProgression(S) : { tier: 0 };
     const vipLevel = prog.tier >= 3 ? (prog.tier - 2) : 0;
 
+    // Collect all trailer types the player currently owns (hitched to fleet or stored in HQ yard)
+    const ownedTrailers = new Set<string>();
+    (S?.fleet || []).forEach((t: any) => {
+      if (t.trailer) ownedTrailers.add(t.trailer);
+    });
+    (S?.trailers || []).forEach((tr: string) => ownedTrailers.add(tr));
+    
+    // Consignor-supplied tankers are available if the carrier has ADR authority
+    if (S?.licenses?.includes('adr_hazmat')) {
+      ownedTrailers.add('hazmat');
+      ownedTrailers.add('tanker');
+    }
+
     let cargo;
     if (options.isAuction) {
       // Job bidding MUST generate higher paying jobs only
-      // The higher the VIP rank, the higher the chance of top-tier ultra lucrative freight
       const ultraTierChance = Math.min(0.92, 0.40 + (vipLevel * 0.015));
       const ultraCargos = CARGO_TYPES.filter(c => c.baseValue >= 35);
       const premiumCargos = CARGO_TYPES.filter(c => c.baseValue >= 11.0);
+      const pool = (Math.random() < ultraTierChance && ultraCargos.length > 0) ? ultraCargos : (premiumCargos.length ? premiumCargos : CARGO_TYPES);
 
-      if (Math.random() < ultraTierChance && ultraCargos.length > 0) {
-        cargo = rnd(ultraCargos);
+      // 70% probability to match player's owned trailers
+      const ownedMatches = pool.filter(c => ownedTrailers.has(c.trailer));
+      if (ownedTrailers.size > 0 && ownedMatches.length > 0 && Math.random() < 0.70) {
+        cargo = rnd(ownedMatches);
       } else {
-        cargo = rnd(premiumCargos.length ? premiumCargos : CARGO_TYPES);
+        cargo = rnd(pool);
       }
     } else {
       // Normal job generator: payouts shouldn't be too high, everyday freight
       const standardCargos = CARGO_TYPES.filter(c => c.baseValue < 30);
-      cargo = rnd(standardCargos.length ? standardCargos : CARGO_TYPES);
+      const pool = standardCargos.length ? standardCargos : CARGO_TYPES;
+
+      // 75% probability to prioritize player's owned trailers
+      const ownedMatches = pool.filter(c => ownedTrailers.has(c.trailer));
+      if (ownedTrailers.size > 0 && ownedMatches.length > 0 && Math.random() < 0.75) {
+        cargo = rnd(ownedMatches);
+      } else {
+        cargo = rnd(pool);
+      }
     }
 
     const company = rnd(COMPANIES);

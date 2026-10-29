@@ -1,6 +1,6 @@
 import { ic } from '../core/icons';
 import { action, fmt, toast } from '../core/ui';
-import { refresh } from '../core/store';
+import { set, refresh } from '../core/store';
 import { TRUCK_MODELS, TRAILERS, TRAILER_PRICES } from '../domain/trucks/trucks.data';
 import { TrailerType, TruckModel } from '../domain/trucks/trucks.types';
 import { buyTruckBatch, buyTrailerToYard } from '../systems/fleet';
@@ -142,6 +142,14 @@ export const MANUFACTURERS: Record<string, ManufacturerInfo> = {
 
 action('dealership-section', d => {
   dealershipSection = (d as any).section;
+  refresh();
+});
+
+action('open-trailer-depot', () => {
+  dealershipSection = 'trailers';
+  set(S => {
+    S.tab = 'dealership';
+  });
   refresh();
 });
 

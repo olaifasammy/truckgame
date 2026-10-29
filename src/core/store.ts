@@ -27,6 +27,20 @@ const DEF = () => ({
   repairTruckId: null as number | null,
   licenses: ['standard'] as string[],
   trailers: ['curtain', 'flatbed', 'reefer'] as string[],
+  partsInventory: {
+    tires: 4,
+    brakes: 2,
+    oilFilter: 6,
+    fuelFilter: 4,
+    airFilter: 4,
+    oil: 12,
+    coolant: 8,
+    adBlue: 10,
+    suspension: 1,
+    windshield: 1,
+    engine: 0,
+    transmission: 0
+  } as Record<string, number>,
   fleet: [createTruck(1, 'scania_s730', 'Flagship S730 #1', 'LAGOS')]
 });
 
@@ -37,6 +51,22 @@ function fix(state: any) {
   if (state.isAuthenticated === undefined) state.isAuthenticated = false;
   if (!state.licenses) state.licenses = ['standard'];
   if (!state.trailers) state.trailers = ['curtain', 'flatbed', 'reefer'];
+  if (!state.partsInventory) {
+    state.partsInventory = {
+      tires: 4,
+      brakes: 2,
+      oilFilter: 6,
+      fuelFilter: 4,
+      airFilter: 4,
+      oil: 12,
+      coolant: 8,
+      adBlue: 10,
+      suspension: 1,
+      windshield: 1,
+      engine: 0,
+      transmission: 0
+    };
+  }
   if (!state.drivers) state.drivers = [{ id: 1, name: 'Sam Okafor', region: 'Africa', skill: 3, salary: 250, morale: 95, fatigue: 5, trait: 'careful', certifications: ['Cold Chain'], stats: { tripsCompleted: 0, kmDriven: 0, earned: 0 } }];
   if (state.drivers) {
     state.drivers.forEach((d: any) => {

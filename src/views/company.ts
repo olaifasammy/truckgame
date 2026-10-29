@@ -3,21 +3,12 @@ import { action, fmt, toast } from '../core/ui';
 import { set, refresh } from '../core/store';
 import { fillPool } from '../systems/drivers';
 import { getCompanyProgression, renderProgressLogoRing } from '../domain/company/progression';
-import { FREIGHT_LICENSES, buyLicense, hasLicense } from '../domain/freight/licenses';
-import { TRAILERS, getTrailerIcon } from '../domain/trucks/trucks.data';
-import { getTrailerSilhouetteSvg } from '../domain/trucks/trucks.visuals';
-
 action('logout', () => {
   set(S => {
     S.isAuthenticated = false;
   });
   toast('Logged out successfully');
   setTimeout(() => location.reload(), 500);
-});
-
-action('buy-license', d => {
-  buyLicense((d as any).id);
-  refresh();
 });
 
 export default {
@@ -90,142 +81,97 @@ export default {
         </div>
       </div>
 
-      <!-- Dedicated Link Gateway to Full Driver Management & Recruitment View -->
+      <!-- Executive Operations & Logistics Gateway Hub -->
       <div style="padding:0 14px 14px;">
         <div class="sec" style="margin-bottom:8px;">
-          <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">HUMAN RESOURCES & CREW OPERATIONS</span>
-          <span class="mu-tx" style="font-size:9px; font-family:monospace;">CDL PORTAL</span>
+          <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">OPERATIONS & LOGISTICS DEPARTMENTS</span>
+          <span class="mu-tx" style="font-size:9px; font-family:monospace;">CARRIER INFRASTRUCTURE</span>
         </div>
 
-        <div class="card" style="padding:16px; background:linear-gradient(135deg, #111827 0%, #1e293b 100%); border:1px solid var(--gold); border-radius:10px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; box-shadow:0 6px 18px rgba(0,0,0,0.4); transition:all 0.2s;" data-act="tab" data-id="drivers">
-          <div style="display:flex; align-items:center; gap:14px;">
-            <div style="width:46px; height:46px; background:rgba(193,154,91,0.15); border:1px solid var(--gold); border-radius:8px; display:grid; place-items:center; color:var(--gold); font-size:22px; flex-shrink:0;">
-              ${ic('user')}
-            </div>
-            <div>
-              <div style="font-size:14px; font-weight:900; color:var(--tx); letter-spacing:0.3px;">
-                Drivers Management & Recruitment
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          <!-- 1. Dedicated Link: Drivers Management & Recruitment View -->
+          <div class="card" style="padding:14px 16px; background:linear-gradient(135deg, #111827 0%, #1e293b 100%); border:1px solid #1f293d; border-radius:10px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:all 0.2s;" data-act="tab" data-id="drivers">
+            <div style="display:flex; align-items:center; gap:14px;">
+              <div style="width:44px; height:44px; background:rgba(193,154,91,0.12); border:1px solid var(--gold); border-radius:8px; display:grid; place-items:center; color:var(--gold); font-size:20px; flex-shrink:0;">
+                ${ic('user')}
               </div>
-              <div style="font-size:11px; color:var(--mu); margin-top:3px; font-family:monospace;">
-                <b style="color:var(--tx);">${S.drivers.length}</b> Employed · Avg Skill <b style="color:var(--gold);">${avgSkill}★</b> · <b style="color:var(--grn);">${S.pool.length}</b> in Recruitment Pool
-              </div>
-            </div>
-          </div>
-          <div style="display:flex; align-items:center; gap:6px; color:var(--gold); font-size:11px; font-weight:900; flex-shrink:0;">
-            <span>MANAGE CREW</span>
-            ${ic('chev')}
-          </div>
-        </div>
-      </div>
-
-      <!-- Central Trailer Storage Facility & Yard -->
-      <div style="padding:0 14px 14px;">
-        <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">CENTRAL TRAILER STORAGE FACILITY & YARD</span>
-          <span class="mu-tx" style="font-size:9px; font-family:monospace;">${totalYardTrailers} UNHITCHED UNITS</span>
-        </div>
-
-        <div class="card" style="padding:14px; background:#111827; border:1px solid #1f293d; border-radius:10px;">
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
-            <div>
-              <div style="font-size:12px; font-weight:800; color:var(--tx);">HQ Trailer Marshalling Yard</div>
-              <div style="font-size:10px; color:var(--mu); margin-top:2px;">Unhitched fleet trailers staged here can be freely coupled to compatible tractors in the Garage.</div>
-            </div>
-            <button class="btn gold" style="padding:5px 10px; font-size:9px; font-weight:800; white-space:nowrap;" data-act="store-open" data-id="dealership">
-              + BUY TRAILERS
-            </button>
-          </div>
-
-          <!-- Shipper-Supplied Tankers Notice -->
-          <div style="background:#0a0f1d; border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:8px 10px; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
-            <span style="font-size:16px;">☣️</span>
-            <div style="font-size:9px; color:var(--tx); line-height:1.3;">
-              <b style="color:var(--gold);">CONSIGNOR TANKER GUARANTEE:</b> ADR Hazmat & chemical tanker trailers are provided directly by shipping terminals upon dispatch at zero cost to the carrier.
-            </div>
-          </div>
-
-          ${totalYardTrailers === 0 ? `
-            <div style="padding:16px; text-align:center; background:#080c16; border:1px dashed #1e293b; border-radius:8px;">
-              <div style="font-size:24px; margin-bottom:4px;">🚛</div>
-              <div style="font-size:11px; font-weight:700; color:var(--tx);">Yard is Currently Empty</div>
-              <div style="font-size:9px; color:var(--mu); margin-top:2px;">Unhitch trailers from your fleet tractors in the Garage or purchase new equipment in the Dealership.</div>
-            </div>
-          ` : `
-            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px;">
-              ${Object.entries(yardTrailers).map(([type, count]) => `
-                <div style="background:#0a0f1d; border:1px solid #1e293b; border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px;">
-                  <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div style="display:flex; align-items:center; gap:6px; min-width:0;">
-                      <span style="font-size:16px;">${getTrailerIcon(type as any)}</span>
-                      <div style="font-size:11px; font-weight:800; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                        ${TRAILERS[type as keyof typeof TRAILERS] || type}
-                      </div>
-                    </div>
-                    <div style="font-size:9px; color:var(--gold); font-family:monospace; font-weight:800; flex-shrink:0;">
-                      ${count}x IN YARD
-                    </div>
-                  </div>
-                  <!-- Blueprint SVG Illustration -->
-                  <div style="background:#060a14; border:1px solid #141d2c; border-radius:6px; padding:4px 8px; display:flex; justify-content:center; align-items:center; min-height:48px;">
-                    ${getTrailerSilhouetteSvg(type, 'var(--gold)')}
-                  </div>
+              <div>
+                <div style="font-size:13px; font-weight:900; color:var(--tx); letter-spacing:0.3px;">
+                  Commercial Drivers & CDL Academy
                 </div>
-              `).join('')}
-            </div>
-          `}
-        </div>
-      </div>
-
-      <!-- Commercial Haulage Licenses & Authorities -->
-      <div style="padding:0 14px 14px;">
-        <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">COMMERCIAL FREIGHT LICENSES & AUTHORITIES</span>
-          <span class="mu-tx" style="font-size:9px; font-family:monospace;">REGULATORY COMPLIANCE</span>
-        </div>
-
-        <div style="font-size:10px; color:var(--mu); margin-bottom:10px; padding:0 2px;">
-          Interstate and cross-border transport of specialized freight requires certified carrier operating authorities. Acquire licenses below to unlock high-paying corporate loads.
-        </div>
-
-        <div style="display:flex; flex-direction:column; gap:8px;">
-          ${Object.values(FREIGHT_LICENSES).map((lic: any) => {
-            const owned = hasLicense(S, lic.id);
-            const canAfford = S.money >= lic.price;
-            return `
-              <div class="card" style="padding:12px; background:#111827; border:1px solid ${owned ? 'rgba(34,197,94,0.3)' : '#1f293d'}; border-radius:8px;">
-                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
-                  <div style="display:flex; align-items:center; gap:10px;">
-                    <span style="font-size:22px;">${lic.icon}</span>
-                    <div>
-                      <div style="font-size:12px; font-weight:900; color:var(--tx);">
-                        ${lic.name} <span style="font-size:9px; color:var(--gold); font-family:monospace;">[${lic.code}]</span>
-                      </div>
-                      <div style="font-size:9px; color:var(--mu); margin-top:1px;">
-                        ${lic.description}
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    ${owned ? `
-                      <span style="display:inline-flex; align-items:center; gap:4px; background:rgba(34,197,94,0.15); border:1px solid var(--grn); color:var(--grn); padding:3px 8px; border-radius:4px; font-size:9px; font-weight:900; font-family:monospace;">
-                        ✓ ACTIVE AUTHORITY
-                      </span>
-                    ` : `
-                      <button class="btn gold" style="padding:5px 12px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="buy-license" data-id="${lic.id}" ${canAfford ? '' : 'disabled'}>
-                        ACQUIRE $${lic.price.toLocaleString()}
-                      </button>
-                    `}
-                  </div>
-                </div>
-
-                <div style="margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.05); font-size:8px; font-family:monospace; color:var(--mu);">
-                  <span style="color:var(--gold); font-weight:700;">REQUIRED FOR:</span>
-                  <span style="color:var(--tx); margin-left:4px;">${lic.requiredFor}</span>
-                  <span style="margin-left:8px; color:var(--mu);">· REGULATED BY: ${lic.regulatoryBody}</span>
+                <div style="font-size:10px; color:var(--mu); margin-top:2px; font-family:monospace;">
+                  <b style="color:var(--tx);">${S.drivers.length}</b> Employed · Avg Skill <b style="color:var(--gold);">${avgSkill}★</b> · <b style="color:var(--grn);">${S.pool.length}</b> Recruits
                 </div>
               </div>
-            `;
-          }).join('')}
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; color:var(--gold); font-size:10px; font-weight:900; flex-shrink:0;">
+              <span>MANAGE CREW</span>
+              ${ic('chev')}
+            </div>
+          </div>
+
+          <!-- 2. Dedicated Link: Central Storage & Logistics Depot -->
+          <div class="card" style="padding:14px 16px; background:linear-gradient(135deg, #111827 0%, #1e293b 100%); border:1px solid #1f293d; border-radius:10px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:all 0.2s;" data-act="tab" data-id="storage">
+            <div style="display:flex; align-items:center; gap:14px;">
+              <div style="width:44px; height:44px; background:rgba(56,189,248,0.12); border:1px solid #38bdf8; border-radius:8px; display:grid; place-items:center; color:#38bdf8; font-size:20px; flex-shrink:0;">
+                📦
+              </div>
+              <div>
+                <div style="font-size:13px; font-weight:900; color:var(--tx); letter-spacing:0.3px;">
+                  Central Storage & Logistics Depot
+                </div>
+                <div style="font-size:10px; color:var(--mu); margin-top:2px; font-family:monospace;">
+                  <b style="color:var(--gold);">${totalYardTrailers}</b> Unhitched Trailers · <b style="color:var(--tx);">${Object.values(S.partsInventory || {}).reduce((a: number, b: any) => a + Number(b), 0)}</b> Spares in Stock
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; color:var(--gold); font-size:10px; font-weight:900; flex-shrink:0;">
+              <span>OPEN STORAGE</span>
+              ${ic('chev')}
+            </div>
+          </div>
+
+          <!-- 3. Dedicated Link: OEM Commercial Trailer Equipment Depot -->
+          <div class="card" style="padding:14px 16px; background:linear-gradient(135deg, #111827 0%, #1e293b 100%); border:1px solid var(--gold); border-radius:10px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:all 0.2s;" data-act="open-trailer-depot">
+            <div style="display:flex; align-items:center; gap:14px;">
+              <div style="width:44px; height:44px; background:rgba(193,154,91,0.15); border:1px solid var(--gold); border-radius:8px; display:grid; place-items:center; color:var(--gold); font-size:20px; flex-shrink:0;">
+                🏗️
+              </div>
+              <div>
+                <div style="font-size:13px; font-weight:900; color:var(--gold); letter-spacing:0.3px;">
+                  Commercial Trailer Equipment Depot
+                </div>
+                <div style="font-size:10px; color:var(--mu); margin-top:2px; font-family:monospace;">
+                  Order Lowboys, Reefers, Tippers, LCV Doubles & Tankers
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; color:var(--gold); font-size:10px; font-weight:900; flex-shrink:0;">
+              <span>TRAILER DEPOT</span>
+              ${ic('chev')}
+            </div>
+          </div>
+
+          <!-- 4. Dedicated Link: Commercial Freight Licenses & Operating Authorities -->
+          <div class="card" style="padding:14px 16px; background:linear-gradient(135deg, #111827 0%, #1e293b 100%); border:1px solid #1f293d; border-radius:10px; cursor:pointer; display:flex; justify-content:space-between; align-items:center; transition:all 0.2s;" data-act="open-storage-subtab" data-subtab="licenses">
+            <div style="display:flex; align-items:center; gap:14px;">
+              <div style="width:44px; height:44px; background:rgba(34,197,94,0.12); border:1px solid var(--grn); border-radius:8px; display:grid; place-items:center; color:var(--grn); font-size:20px; flex-shrink:0;">
+                📜
+              </div>
+              <div>
+                <div style="font-size:13px; font-weight:900; color:var(--tx); letter-spacing:0.3px;">
+                  Freight Licenses & Regulatory Compliance
+                </div>
+                <div style="font-size:10px; color:var(--mu); margin-top:2px; font-family:monospace;">
+                  <b style="color:var(--grn);">${(S.licenses || ['standard']).length}</b> Active Permits · ADR Hazmat, Cold Chain & Heavy Haul
+                </div>
+              </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px; color:var(--gold); font-size:10px; font-weight:900; flex-shrink:0;">
+              <span>VIEW PERMITS</span>
+              ${ic('chev')}
+            </div>
+          </div>
         </div>
       </div>
 
