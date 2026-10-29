@@ -55,7 +55,8 @@ export const authService = {
       username,
       passwordHash: pass,
       companyName: company,
-      email: `${username}@nexhaul.com`
+      email: `${username}@nexhaul.com`,
+      createdAt: Date.now()
     };
 
     saveAccount(newAccount);

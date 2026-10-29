@@ -7,6 +7,7 @@ const DEF = () => ({
   isAuthenticated: false,
   money: 165000, 
   coins: 10,
+  companyTier: 0, // 0 = Newbie, 1 = Professional, 2 = Expert, 3..132 = VIP 1..130
   vip: 1,
   xp: 0,
   reputation: 100,
@@ -56,6 +57,13 @@ function fix(state: any) {
   if (state.garageLevel === undefined) state.garageLevel = 0;
   if (!state.stats) state.stats = { earned: 0, km: 0 };
   if (!state.reputation) state.reputation = 100;
+  if (state.companyTier === undefined) {
+    if (!state.loads || state.loads === 0) {
+      state.companyTier = 0;
+    } else {
+      state.companyTier = Math.min(132, state.loads < 2 ? 0 : state.loads < 5 ? 1 : state.loads < 10 ? 2 : 2 + Math.floor((state.loads - 10) / 3) + 1);
+    }
+  }
   
   if (!state.repairs) state.repairs = [];
   if (state.repairTruckId === undefined) state.repairTruckId = null;

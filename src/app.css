@@ -30,7 +30,7 @@ body {
 
 /* Header (FMS Telematics Command Console) */
 .top { 
-  display: flex; padding: 10px 14px; 
+  display: flex; padding: 6px 12px; min-height: 48px;
   background: #0d1424; 
   border-bottom: 1px solid rgba(193,154,91,0.35); 
   box-shadow: 0 4px 20px rgba(0,0,0,0.6);

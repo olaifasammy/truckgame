@@ -63,15 +63,15 @@ export function calculateRepairDurationMs(truck: any, selectedParts: string[]): 
 export function startRepair(S: any, truckId: number, selectedParts: string[]): boolean {
   const truck = S.fleet.find((t: any) => t.id === truckId);
   if (!truck) {
-    toast('Truck not found', 'error');
+    toast('Truck not found', 'err');
     return false;
   }
   if (truck.status === 'repair' || truck.status === 'busy') {
-    toast('Truck is currently busy or already in repair bay', 'error');
+    toast('Truck is currently busy or already in repair bay', 'err');
     return false;
   }
   if (!selectedParts || selectedParts.length === 0) {
-    toast('Select at least one part to repair or service', 'error');
+    toast('Select at least one part to repair or service', 'err');
     return false;
   }
 
@@ -87,7 +87,7 @@ export function startRepair(S: any, truckId: number, selectedParts: string[]): b
   });
 
   if (S.money < totalCost) {
-    toast(`Insufficient funds. Need $${totalCost.toLocaleString()}`, 'error');
+    toast(`Insufficient funds. Need $${totalCost.toLocaleString()}`, 'err');
     return false;
   }
 
@@ -120,12 +120,14 @@ export function startRepair(S: any, truckId: number, selectedParts: string[]): b
 /**
  * Checks and completes finished repairs during game tick.
  */
-export function completeRepairs(S: any, now: number) {
-  if (!S.repairs || S.repairs.length === 0) return;
+export function completeRepairs(S: any, now: number): number {
+  if (!S.repairs || S.repairs.length === 0) return 0;
   
   const remaining: any[] = [];
+  let completedCount = 0;
   S.repairs.forEach((rep: any) => {
     if (now >= rep.end) {
+      completedCount++;
       // Complete repair
       const truck = S.fleet.find((t: any) => t.id === rep.truckId);
       if (truck) {
@@ -149,4 +151,5 @@ export function completeRepairs(S: any, now: number) {
     }
   });
   S.repairs = remaining;
+  return completedCount;
 }

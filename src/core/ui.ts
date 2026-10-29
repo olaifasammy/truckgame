@@ -3,10 +3,15 @@ export const $ = (id: string): HTMLElement | null => document.getElementById(id)
 export const fmt = (n: number): string => '$' + n.toLocaleString();
 
 export const dur = (ms: number): string => {
-  const s = Math.max(0, Math.floor(ms / 1000));
-  const m = Math.floor(s / 60);
-  const rs = s % 60;
-  return `${m}:${rs.toString().padStart(2, '0')}`;
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes.toString().padStart(2, '0')}m`;
+  }
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
 const actions = new Map<string, (dataset: DOMStringMap) => void>();

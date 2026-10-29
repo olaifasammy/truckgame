@@ -5,6 +5,7 @@ import { why, takeJob } from '../../systems/jobs';
 import { ic } from '../../core/icons';
 import { LOCATIONS } from '../../data/world';
 import { distKm, getRouteEnv, tripMs } from '../../systems/calc';
+import { getDailyBidDispatchQuota } from '../../domain/freight/bids/quota';
 
 export let activeJobSelectorTruckId: number | null = null;
 
@@ -107,7 +108,20 @@ export function renderJobSelectorOverlay(S: any) {
                 <div style="text-align:right; flex-shrink:0; margin-left:8px;">
                   <div style="font-size:13px; font-weight:900; color:var(--grn); font-family:monospace;">${fmt(j.pay)}</div>
                   <div style="font-size:8px; color:var(--mu); font-family:monospace; margin-bottom:4px;">$${(j.pay / Math.max(1, j.km)).toFixed(2)}/km</div>
-                  <button class="btn gold" data-act="select-job-dispatch" data-job-id="${j.id}" data-truck-id="${truck.id}" style="padding:5px 12px; font-size:9px; font-weight:900; letter-spacing:0.5px; text-transform:uppercase;">DISPATCH</button>
+                  ${(() => {
+                    if (isSpecial) {
+                      const quota = getDailyBidDispatchQuota(S);
+                      const btnLabel = quota.isFree ? 'DISPATCH (FREE)' : quota.canAfford ? 'DISPATCH (🪙 4)' : 'NEEDS 4 COINS';
+                      return `
+                        <button class="btn gold" data-act="select-job-dispatch" data-job-id="${j.id}" data-truck-id="${truck.id}" style="padding:5px 12px; font-size:9px; font-weight:900; letter-spacing:0.5px; text-transform:uppercase; ${!quota.canAfford ? 'opacity:0.6;' : ''}">
+                          ${btnLabel}
+                        </button>
+                      `;
+                    }
+                    return `
+                      <button class="btn gold" data-act="select-job-dispatch" data-job-id="${j.id}" data-truck-id="${truck.id}" style="padding:5px 12px; font-size:9px; font-weight:900; letter-spacing:0.5px; text-transform:uppercase;">DISPATCH</button>
+                    `;
+                  })()}
                 </div>
               </div>
             `;

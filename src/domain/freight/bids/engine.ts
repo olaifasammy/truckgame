@@ -3,6 +3,7 @@ import { COMPETITORS, getRandomCompetitor } from './competitors';
 import { CARGO_TYPES } from '../cargo/registry';
 import { COMPANIES } from '../companies/registry';
 import { pushNote } from '../../../systems/notify';
+import { getCompanyProgression } from '../../company/progression';
 
 export class BiddingEngine {
   /**
@@ -138,6 +139,9 @@ export class BiddingEngine {
    */
   static placePlayerBid(S: any, auctionId: number, bidAmount: number): boolean {
     if (!S.auctions) return false;
+    const prog = getCompanyProgression(S);
+    if (prog.tier < 3) return false; // VIP Rank required to participate in bidding
+
     const auc = S.auctions.find((a: any) => a.id === auctionId);
     if (!auc || Date.now() >= auc.expiresAt) return false;
 

@@ -160,7 +160,7 @@ action('filter-chassis', d => {
 action('inspect-truck', d => {
   selectedModelKey = (d as any).model;
   configQuantity = 1;
-  const m = TRUCK_MODELS[selectedModelKey];
+  const m = selectedModelKey ? TRUCK_MODELS[selectedModelKey] : null;
   configTrailer = m && m.haul.length > 0 ? m.haul[0] : 'none';
   configDestination = 'LAGOS';
   refresh();

@@ -2,16 +2,25 @@ import { placeBid } from '../../systems/jobs';
 import { CARGO_TYPES } from '../../domain/freight/cargo/registry';
 import { COMPANIES } from '../../domain/freight/companies/registry';
 import { TRAILERS } from '../../domain/trucks/trucks.data';
-import { dur, fmt } from '../../core/ui';
+import { dur, fmt, toast } from '../../core/ui';
 import { ic } from '../../core/icons';
 import { LOCATIONS } from '../../data/world';
 import { getRouteEnv } from '../../systems/calc';
+import { getCompanyProgression } from '../../domain/company/progression';
+import { getDailyBidDispatchQuota } from '../../domain/freight/bids/quota';
 
 export let activeAuctionModalId: number | null = null;
 
 export function openAuctionModal(auctionId: number) {
-  activeAuctionModalId = auctionId;
   const S = (window as any).__getStore?.();
+  if (S) {
+    const prog = getCompanyProgression(S);
+    if (prog.tier < 3) {
+      toast(`Job Bidding unlocks at VIP Rank (Tier 3+). Current rank: ${prog.title}`, 'err');
+      return;
+    }
+  }
+  activeAuctionModalId = auctionId;
   if (S) renderModalOverlay(S);
 }
 
@@ -36,6 +45,9 @@ export function renderModalOverlay(S: any) {
   const locFrom = LOCATIONS[auc.from];
   const locTo = LOCATIONS[auc.to];
   const routeEnv = getRouteEnv(auc.from, auc.to);
+
+  const prog = getCompanyProgression(S);
+  const quota = getDailyBidDispatchQuota(S);
 
   // Financial Telematics: Operating Cost Estimate
   const estFuelLiters = (auc.km / 100) * (32 + (auc.weight * 0.4));
@@ -73,12 +85,20 @@ export function renderModalOverlay(S: any) {
       <!-- Close Button -->
       <button id="close-auc-modal" style="position:absolute; top:12px; right:14px; background:rgba(255,255,255,0.06); border:none; color:var(--mu); font-size:14px; cursor:pointer; width:28px; height:28px; border-radius:6px; display:grid; place-items:center; z-index:10;">✕</button>
       
+      <!-- VIP & Daily Dispatch Telematics Pill -->
+      <div style="display:flex; justify-content:space-between; align-items:center; background:#070b14; border:1px solid rgba(193,154,91,0.25); border-radius:6px; padding:6px 10px; margin-bottom:10px; font-size:9px; font-family:monospace;">
+        <span style="color:var(--gold); font-weight:800;">★ VIP ${prog.tier - 2} SPOT CLEARANCE</span>
+        <span style="color:${quota.isFree ? 'var(--grn)' : 'var(--gold)'};">
+          Daily Dispatches: <b>${quota.freeRemaining}/5 Free</b> ${!quota.isFree ? '(Extra: 4 Coins)' : ''}
+        </span>
+      </div>
+
       <!-- Auction Header -->
       <div style="border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:10px; margin-bottom:12px;">
         <div style="display:flex; align-items:center; gap:6px; font-size:10px; color:var(--gold); font-family:monospace; text-transform:uppercase; font-weight:800;">
           <span>REVERSE FREIGHT BIDDING ROOM</span>
           <span>·</span>
-          <span>SEALED TENDER</span>
+          <span>HIGH-VALUE CONTRACT</span>
         </div>
         <h3 style="margin:2px 0 1px; font-size:17px; font-weight:900; color:var(--tx);">
           ${cargo?.name || 'Commercial Freight Contract'}

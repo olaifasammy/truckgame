@@ -2,6 +2,7 @@ import { ic } from '../core/icons';
 import { action, fmt, toast } from '../core/ui';
 import { set } from '../core/store';
 import { fillPool } from '../systems/drivers';
+import { getCompanyProgression, renderProgressLogoRing } from '../domain/company/progression';
 
 action('logout', () => {
   set(S => {
@@ -17,20 +18,40 @@ export default {
   label: 'HQ Depot',
   render: (S: any) => {
     fillPool(S);
+    const prog = getCompanyProgression(S);
     const avgSkill = S.drivers.length > 0
       ? (S.drivers.reduce((acc: number, d: any) => acc + (d.skill || 1), 0) / S.drivers.length).toFixed(1)
       : '1.0';
 
     return `
-      <div class="profile-wrap" style="background:linear-gradient(180deg, #111827 0%, #0a0f1d 100%); border-bottom:1px solid #1f293d; padding:24px 16px; text-align:center;">
-        <div class="avatar" style="width:68px; height:68px; background:var(--gold); border-radius:16px; margin:0 auto 12px; display:grid; place-items:center; font-size:32px; color:#0a0f1d; font-weight:900; font-family:monospace;">
-          ${S.company.charAt(0).toUpperCase()}
+      <div class="profile-wrap" style="background:linear-gradient(180deg, #111827 0%, #0a0f1d 100%); border-bottom:1px solid #1f293d; padding:28px 16px 20px; text-align:center;">
+        <!-- Circular Progress Ring Encircled Logo -->
+        <div style="margin:0 auto 14px; display:inline-block;">
+          ${renderProgressLogoRing(S, 84, 5)}
         </div>
+
         <div class="avatar-tx" style="font-size:18px; font-weight:900; color:var(--tx); letter-spacing:0.3px; text-transform:uppercase;">
           ${S.company}
         </div>
-        <div style="font-size:10px; font-weight:800; color:var(--gold); letter-spacing:1px; margin-top:4px; font-family:monospace;">
-          CORPORATE LOGISTICS HEADQUARTERS · TIER ${S.level || 1}
+        <div style="display:inline-flex; align-items:center; gap:6px; background:${prog.color}18; border:1px solid ${prog.color}50; border-radius:4px; padding:3px 10px; margin-top:8px;">
+          <span style="font-size:11px; font-weight:900; color:${prog.color}; font-family:monospace; letter-spacing:0.5px;">
+            CARRIER RANK: ${prog.title.toUpperCase()} (TIER ${prog.tier})
+          </span>
+        </div>
+
+        <!-- Progress Bar Line Towards Next Rank -->
+        <div style="max-width:320px; margin:16px auto 0; background:#0b1120; border:1px solid #1e293b; border-radius:8px; padding:10px 14px; text-align:left;">
+          <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; font-family:monospace; margin-bottom:6px;">
+            <span style="color:var(--mu);">PROGRESSION TO <b style="color:var(--tx);">${prog.nextTitle.toUpperCase()}</b></span>
+            <span style="color:${prog.color}; font-weight:800;">${prog.percent}%</span>
+          </div>
+          <div style="width:100%; height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
+            <div style="width:${prog.percent}%; height:100%; background:linear-gradient(90deg, ${prog.strokeGrad[0]}, ${prog.strokeGrad[1]}); transition:width 0.5s ease; border-radius:3px;"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; font-size:9px; color:var(--mu); font-family:monospace; margin-top:5px;">
+            <span>${prog.xpInTier} XP</span>
+            <span>Target: ${prog.targetXp} XP</span>
+          </div>
         </div>
       </div>
 

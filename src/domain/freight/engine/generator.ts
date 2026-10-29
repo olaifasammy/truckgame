@@ -5,13 +5,37 @@ import { CITIES, LOCATIONS, RegionName } from '../../../data/world';
 import { rnd } from '../../../core/ui';
 import { BiddingEngine } from '../bids/engine';
 import { distKm, getRouteEnv } from '../../../systems/calc';
+import { getCompanyProgression } from '../../company/progression';
 
 export class FreightEngine {
   /**
-   * Generates a realistic freight job or auction with authentic route physics
+   * Generates a realistic freight job or auction with authentic route physics.
+   * - Bidding jobs: Exclusively high-paying contracts, scaling higher with VIP rank.
+   * - Normal jobs: Modest, balanced payouts.
    */
   static generate(S: any, options: { forceRegion?: RegionName, vip?: boolean, isAuction?: boolean, auctionDuration?: number } = {}): FreightJob | any {
-    const cargo = rnd(CARGO_TYPES);
+    const prog = S ? getCompanyProgression(S) : { tier: 0 };
+    const vipLevel = prog.tier >= 3 ? (prog.tier - 2) : 0;
+
+    let cargo;
+    if (options.isAuction) {
+      // Job bidding MUST generate higher paying jobs only
+      // The higher the VIP rank, the higher the chance of top-tier ultra lucrative freight
+      const ultraTierChance = Math.min(0.92, 0.40 + (vipLevel * 0.015));
+      const ultraCargos = CARGO_TYPES.filter(c => c.baseValue >= 35);
+      const premiumCargos = CARGO_TYPES.filter(c => c.baseValue >= 11.0);
+
+      if (Math.random() < ultraTierChance && ultraCargos.length > 0) {
+        cargo = rnd(ultraCargos);
+      } else {
+        cargo = rnd(premiumCargos.length ? premiumCargos : CARGO_TYPES);
+      }
+    } else {
+      // Normal job generator: payouts shouldn't be too high, everyday freight
+      const standardCargos = CARGO_TYPES.filter(c => c.baseValue < 30);
+      cargo = rnd(standardCargos.length ? standardCargos : CARGO_TYPES);
+    }
+
     const company = rnd(COMPANIES);
 
     // Pick a region: either forced or chosen from the 4 global regions
@@ -48,19 +72,33 @@ export class FreightEngine {
     else if (cargo.trailer === 'tipper') weight = 18 + Math.random() * 24;
     else if (cargo.trailer === 'tanker' || cargo.trailer === 'hazmat') weight = 20 + Math.random() * 26;
 
-    // Realistic Base Freight Rate per kilometer ($3.50 – $9.50/km)
-    let rate = 3.6 + (cargo.baseValue * 0.12);
-    if (options.vip) rate *= 1.45;
-    if (cargo.isHazmat) rate *= 1.35;
-    if (cargo.tempControlled) rate *= 1.25;
-    if (weight > 15) rate *= (1 + (weight - 15) * 0.02);
+    let rate: number;
 
-    // Hazardous weather and steep road grade hazard bonus
-    if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') rate *= 1.25;
-    if (routeEnv.roadGrade > 5.0) rate *= 1.15; // Mountain pass surcharge
+    if (options.isAuction) {
+      // PREMIUM SPOT AUCTION RATES: High-paying contracts only
+      // Base rate: $7.50 – $22.00+/km
+      rate = 7.50 + (cargo.baseValue * 0.22);
 
-    // Auctions have premium value
-    if (options.isAuction) rate *= 1.30;
+      // Higher VIP rank = higher chances of massive bidding payouts
+      const vipMultiplier = 1.05 + Math.min(2.8, (vipLevel * 0.022));
+      rate *= vipMultiplier;
+
+      if (cargo.isHazmat) rate *= 1.35;
+      if (cargo.isFragile) rate *= 1.30;
+      if (cargo.tempControlled) rate *= 1.25;
+      if (weight > 18) rate *= (1 + (weight - 18) * 0.02);
+      if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') rate *= 1.25;
+      if ((routeEnv.roadGrade || 0) > 5.0) rate *= 1.20;
+    } else {
+      // NORMAL JOB GENERATOR: Balanced, modest payouts ($1.90 – $3.20/km)
+      rate = 1.90 + (cargo.baseValue * 0.04);
+      if (options.vip) rate *= 1.20;
+      if (cargo.isHazmat) rate *= 1.20;
+      if (cargo.tempControlled) rate *= 1.15;
+      if (weight > 18) rate *= 1.10;
+      if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') rate *= 1.15;
+      if ((routeEnv.roadGrade || 0) > 5.0) rate *= 1.10;
+    }
 
     const pay = Math.round(baseKm * rate);
 
@@ -75,7 +113,7 @@ export class FreightEngine {
     if (cargo.tempControlled) requiredSkills.push('Cold Chain');
     if (cargo.isHazmat) requiredSkills.push('Hazardous ADR');
     if (baseKm > 800) requiredSkills.push('Long Distance');
-    if (routeEnv.weather === 'snow' || routeEnv.roadGrade > 5.0) requiredSkills.push('Mountain & Alpine');
+    if (routeEnv.weather === 'snow' || (routeEnv.roadGrade || 0) > 5.0) requiredSkills.push('Mountain & Alpine');
 
     const job = {
       id: S.nextId++,

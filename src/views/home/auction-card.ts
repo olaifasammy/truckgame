@@ -4,10 +4,14 @@ import { COMPANIES } from '../../domain/freight/companies/registry';
 import { TRAILERS } from '../../domain/trucks/trucks.data';
 import { dur, fmt } from '../../core/ui';
 import { LOCATIONS } from '../../data/world';
+import { getCompanyProgression } from '../../domain/company/progression';
 
 export function renderAuctionCard(S: any, j: any) {
   const auc = (S.auctions || []).find((a: any) => a.id === j.id);
   if (!auc || !auc.expiresAt) return '';
+
+  const prog = getCompanyProgression(S);
+  const isVip = prog.tier >= 3;
 
   const cargo = CARGO_TYPES.find(c => c.id === auc.cargoId);
   const company = COMPANIES.find(c => c.id === auc.companyId);
@@ -59,9 +63,15 @@ export function renderAuctionCard(S: any, j: any) {
           <div style="font-size:10px; color:${timeLeft < 20000 ? '#ef4444' : 'var(--mu)'}; font-weight:800; font-family:monospace; margin:2px 0 4px;">
             ⏱️ <span data-eta="${auc.expiresAt}">${dur(timeLeft)}</span>
           </div>
-          <button class="btn gold" style="padding:4px 12px; font-size:9px; font-weight:900; letter-spacing:0.5px; border-radius:4px; text-transform:uppercase;" data-act="open-auction" data-id="${auc.id}">
-            ENTER BID ROOM →
-          </button>
+          ${isVip ? `
+            <button class="btn gold" style="padding:4px 12px; font-size:9px; font-weight:900; letter-spacing:0.5px; border-radius:4px; text-transform:uppercase;" data-act="open-auction" data-id="${auc.id}">
+              ENTER BID ROOM →
+            </button>
+          ` : `
+            <button class="btn alt" style="padding:4px 10px; font-size:9px; font-weight:800; border-radius:4px; text-transform:uppercase; color:#ef4444; border-color:rgba(239,68,68,0.4);" data-act="locked-vip-bid" data-id="${auc.id}">
+              🔒 VIP ONLY
+            </button>
+          `}
         </div>
       </div>
     </div>

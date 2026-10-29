@@ -1,4 +1,5 @@
 import { Region } from '../types';
+export type { Region };
 
 export interface CompetitorBidder {
   id: string;

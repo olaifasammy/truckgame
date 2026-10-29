@@ -6,6 +6,8 @@ import { pushNote } from './notify';
 import { FreightEngine } from '../domain/freight/engine/generator';
 import { CARGO_TYPES } from '../domain/freight/cargo/registry';
 import { BiddingEngine } from '../domain/freight/bids/engine';
+import { addCompanyXp, getCompanyProgression } from '../domain/company/progression';
+import { consumeBidDispatchQuota } from '../domain/freight/bids/quota';
 
 export const fuelCost = (j: any, t?: any) => {
   if (t) return Math.round(fuelCostForTrip(j.km, t, j.weight));
@@ -18,11 +20,15 @@ export const replenish = (S: any) => FreightEngine.replenish(S);
 export const makeJob = (S: any, vip = false) => FreightEngine.generate(S, { vip });
 export const placeBid = (auctionId: number, amount: number) => {
   set(S => {
+    const prog = getCompanyProgression(S);
+    if (prog.tier < 3) {
+      return toast(`Job Bidding unlocks at VIP Rank (Tier 3+). Your rank: ${prog.title}`, 'err');
+    }
     const success = BiddingEngine.placePlayerBid(S, auctionId, amount);
     if (success) {
-      toast(`Bid placed: $${amount.toLocaleString()}`, 'success');
+      toast(`Tender Submitted: $${amount.toLocaleString()}`, 'success');
     } else {
-      toast('Invalid bid (must be lower than current bid or auction ended)', 'error');
+      toast('Invalid bid (must undercut current lowest tender or auction closed)', 'err');
     }
   });
 };
@@ -84,6 +90,22 @@ export function takeJob(id: number, truckId?: number) {
     }
     
     const cargo = CARGO_TYPES.find(c => c.id === j.cargoId);
+
+    // Enforce 5 free daily bidded dispatches, 4 Gold Coins thereafter
+    let quotaNote = '';
+    if (j.isAuctionWon) {
+      const quotaRes = consumeBidDispatchQuota(S);
+      if (!quotaRes.success) {
+        return toast(quotaRes.message, 'err');
+      }
+      if (quotaRes.costPaid > 0) {
+        quotaNote = ' (Paid 4 Gold Coins)';
+        pushNote(S, `EXPEDITED DISPATCH: 4 Gold Coins paid for bidded consignment #${j.id} (daily limit exceeded).`);
+      } else {
+        quotaNote = ` (${quotaRes.message})`;
+      }
+    }
+
     const now = Date.now(), dh = distKm(t.loc, j.from);
     const routeEnv = getRouteEnv(j.from, j.to);
     const st = stats(S, t, j.weight, routeEnv);
@@ -94,8 +116,8 @@ export function takeJob(id: number, truckId?: number) {
     S.active.push({ ...j, truck: t.id, dh, start: now, end: now + duration, env: routeEnv });
     t.status = 'busy';
     replenish(S);
-    pushNote(S, `Consignment Dispatched: ${cargo?.name || 'Cargo'} · ${j.from} → ${j.to}`);
-    toast('Dispatched: ' + (cargo?.name || 'Load'), 'success');
+    pushNote(S, `Consignment Dispatched: ${cargo?.name || 'Cargo'} · ${j.from} → ${j.to}${quotaNote}`);
+    toast('Dispatched: ' + (cargo?.name || 'Load') + (quotaNote ? ` · ${quotaNote}` : ''), 'success');
   });
 }
 
@@ -120,18 +142,20 @@ export function completeJobs(S: any, now: number) {
     S.money += a.pay;
     S.loads++;
     const repGain = a.isAuctionWon ? 45 : 15;
-    S.xp += 120;
     S.stats.earned += a.pay;
     S.stats.km += a.km;
     
     if (!S.reputation) S.reputation = 0;
     S.reputation += repGain;
 
-    if (S.xp >= 1000) {
-      S.xp -= 1000;
-      S.vip++;
-      pushNote(S, `Level Up! You are now VIP ${S.vip}`);
-    }
+    const cargo = CARGO_TYPES.find(c => c.id === a.cargoId);
+    const baseXp = 140;
+    const kmXp = Math.round((a.km || 0) * 0.12);
+    const auctionBonus = a.isAuctionWon ? 90 : 0;
+    const hazmatBonus = cargo?.isHazmat ? 75 : 0;
+    const totalXp = baseXp + kmXp + auctionBonus + hazmatBonus;
+
+    addCompanyXp(S, totalXp, `Delivery: ${cargo?.name || 'Freight'}`);
   }
   return done;
 }

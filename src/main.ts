@@ -3,7 +3,7 @@ console.log('Main: Script execution started');
 import './app.css'; // Consolidated Navy/Camel/Green theme
 
 import { load, get, set, subscribe, reset } from './core/store';
-import { $, toast, dur } from './core/ui';
+import { $, toast, dur, fmt } from './core/ui';
 import { find } from './core/router';
 import authView from './views/auth';
 import './views/index';
@@ -91,35 +91,75 @@ try {
     completeRepairs(st, Date.now());
   });
 
+  let lastReplenish = Date.now();
+
   setInterval(() => {
     const st = get();
-    if (!st.isAuthenticated) return;
+    if (!st || !st.isAuthenticated) return;
     const now = Date.now();
     
     localStorage.setItem('last_active', now.toString());
     
-    // 1. Process System Ticks (Auctions, Deliveries, Replenishment)
-    let done: any[] = [];
-    set(s => {
-      done = completeJobs(s, now);
-      completeRepairs(s, now);
-      replenish(s); // Ensure board stays full
-    });
-    
-    if (done.length) toast(`Delivered ${done.length} load${done.length > 1 ? 's' : ''}`, 'success');
-    
-    // 2. Update UI Countdown Timers
+    // 1. Silent Simulation Processing (No intrusive view teardown or reload)
+    const done = completeJobs(st, now) || [];
+    const repCount = completeRepairs(st, now) || 0;
+
+    // Periodic freight replenishment (every 45s) or if contracts dry up
+    if (now - lastReplenish > 45000 || (st.jobs && st.jobs.length < 3)) {
+      replenish(st);
+      lastReplenish = now;
+    }
+
+    // Refresh UI only if a delivery or repair actually finished
+    if (done.length > 0 || repCount > 0) {
+      if (done.length > 0) {
+        toast(`Delivered ${done.length} consignment${done.length > 1 ? 's' : ''}`, 'success');
+      }
+      set(() => {}); // Saves and cleanly updates UI for real events
+      return;
+    }
+
+    // Save state snapshot to localStorage periodically (every 10s) without triggering full render
+    if (Math.floor(now / 1000) % 10 === 0) {
+      try {
+        localStorage.setItem('sam.v3', JSON.stringify(st));
+      } catch (e) {}
+    }
+
+    // 2. Surgical Live UI Updates in-place (Completely silent to the user)
+    // Update live delivery and trip countdowns
     document.querySelectorAll('[data-eta]').forEach(el => {
       const targetTime = +(el as HTMLElement).dataset.eta!;
       (el as HTMLElement).textContent = dur(Math.max(0, targetTime - now));
     });
     
-    // 3. Update Delivery Progress Bars
+    // Update live delivery progress bars
     document.querySelectorAll('[data-end]').forEach(el => {
       const s = +((el as HTMLElement).dataset.start!), e = +((el as HTMLElement).dataset.end!);
       const fill = el.firstElementChild as HTMLElement;
-      if (fill) fill.style.width = Math.min(100, (now - s) / (e - s) * 100) + '%';
+      if (fill) fill.style.width = Math.min(100, Math.max(0, (now - s) / (e - s) * 100)) + '%';
     });
+
+    // Update auction countdown timers surgically if active on screen
+    document.querySelectorAll('[data-auction-eta]').forEach(el => {
+      const targetTime = +(el as HTMLElement).dataset.auctionEta!;
+      const diff = Math.max(0, targetTime - now);
+      (el as HTMLElement).textContent = dur(diff);
+      if (diff <= 0) {
+        set(() => {}); // Auction finalized
+      }
+    });
+
+    // Update live header cash & bonds surgically if changed without re-rendering header
+    const cashEl = document.getElementById('hdr-cash-val');
+    if (cashEl) {
+      const formatted = fmt(st.money);
+      if (cashEl.textContent !== formatted) cashEl.textContent = formatted;
+    }
+    const coinEl = document.getElementById('hdr-coin-val');
+    if (coinEl && coinEl.textContent !== String(st.coins)) {
+      coinEl.textContent = String(st.coins);
+    }
   }, 1000);
 } catch (e: any) {
   console.error('Main: Initialization error', e);

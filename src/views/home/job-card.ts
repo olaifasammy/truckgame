@@ -7,6 +7,7 @@ import { COMPANIES } from '../../domain/freight/companies/registry';
 import { dur, fmt } from '../../core/ui';
 import { LOCATIONS } from '../../data/world';
 import { getRouteEnv, tripMs } from '../../systems/calc';
+import { getDailyBidDispatchQuota } from '../../domain/freight/bids/quota';
 
 export function renderJobDetails(j: any, why: string | null) {
   const cargo = CARGO_TYPES.find(c => c.id === j.cargoId);
@@ -117,10 +118,13 @@ export function renderJobCard(S: any, j: any) {
               <span style="font-weight:900; font-size:13px; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                 ${cargoName}
               </span>
-              <span style="font-size:8px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); padding:1px 4px; border-radius:3px; color:var(--mu); font-family:monospace;">
-                ${weatherBadge}
-              </span>
-              ${cargo?.isHazmat ? '<span style="color:#ef4444; font-size:9px; font-weight:800;">[ADR HAZMAT]</span>' : ''}
+              ${cargo?.isHazmat ? `
+                <span title="ADR Hazardous Cargo Placard" style="display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; background:linear-gradient(135deg, #ef4444, #b91c1c); border:1px solid #fca5a5; border-radius:3px; box-shadow:0 1px 4px rgba(239,68,68,0.4); vertical-align:middle; flex-shrink:0;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/>
+                  </svg>
+                </span>
+              ` : ''}
             </div>
 
             <div style="font-size:10px; color:var(--mu); font-family:monospace; margin-top:2px; display:flex; align-items:center; gap:6px;">
@@ -149,11 +153,34 @@ export function renderJobCard(S: any, j: any) {
           <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-bottom:4px;">
             $${(j.pay / Math.max(1, j.km)).toFixed(2)}/km
           </div>
-          <button class="btn ${isAuctionWon ? 'gold' : why ? 'alt' : 'gold'}" 
-                  style="padding:5px 12px; font-size:9px; font-weight:900; letter-spacing:0.5px; border-radius:4px; text-transform:uppercase;" 
-                  data-act="home-take" data-id="${j.id}">
-            ${isAuctionWon ? 'DISPATCH TRUCK' : why ? 'UNAVAILABLE' : 'ACCEPT LOAD'}
-          </button>
+          ${(() => {
+            if (isAuctionWon) {
+              const quota = getDailyBidDispatchQuota(S);
+              const label = quota.isFree
+                ? `DISPATCH (${quota.freeRemaining}/5 FREE)`
+                : `DISPATCH (🪙 4 COINS)`;
+              const canAfford = quota.canAfford;
+
+              return `
+                <button class="btn gold" 
+                        style="padding:5px 12px; font-size:9px; font-weight:900; letter-spacing:0.5px; border-radius:4px; text-transform:uppercase; ${!canAfford ? 'opacity:0.6;' : ''}" 
+                        data-act="home-take" data-id="${j.id}">
+                  ${label}
+                </button>
+                <div style="font-size:8px; font-family:monospace; margin-top:2px; color:${quota.isFree ? 'var(--grn)' : canAfford ? 'var(--gold)' : 'var(--red)'};">
+                  ${quota.isFree ? `${quota.freeRemaining} free daily dispatches left` : canAfford ? `4 Coins · Balance: ${quota.coinsBalance}` : `Needs 4 Coins (Have: ${quota.coinsBalance})`}
+                </div>
+              `;
+            }
+
+            return `
+              <button class="btn ${why ? 'alt' : 'gold'}" 
+                      style="padding:5px 12px; font-size:9px; font-weight:900; letter-spacing:0.5px; border-radius:4px; text-transform:uppercase;" 
+                      data-act="home-take" data-id="${j.id}">
+                ${why ? 'UNAVAILABLE' : 'ACCEPT LOAD'}
+              </button>
+            `;
+          })()}
         </div>
       </div>
 

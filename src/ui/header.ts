@@ -1,6 +1,7 @@
 import { $, fmt, action } from '../core/ui';
 import { ic } from '../core/icons';
 import { set, refresh } from '../core/store';
+import { getCompanyProgression, renderProgressLogoRing } from '../domain/company/progression';
 
 let open = false;
 
@@ -25,79 +26,63 @@ export function render(S: any) {
   const h = $('header');
   if (!h) return;
 
+  const prog = getCompanyProgression(S);
+
   // Commercial DOT registration number derived deterministically from company name
   const dotNumber = 3800000 + (Math.abs(S.company.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0) * 123) % 99999);
   const activeLoads = (S.active || []).filter((a: any) => a.kind !== 'move').length;
-  const safetyRating = Math.min(99.8, Math.max(94.2, 98.4 + (S.level || 1) * 0.2)).toFixed(1);
+  const safetyRating = Math.min(99.8, Math.max(94.2, 98.4 + (prog.tier || 0) * 0.1)).toFixed(1);
 
   h.innerHTML = `
-    <div style="width:100%; display:flex; flex-direction:column; gap:8px;">
-      <!-- Top Authority & Compliance Bar -->
-      <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--mu); letter-spacing:0.5px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:6px;">
-        <div style="display:flex; align-items:center; gap:6px;">
-          <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:var(--grn); box-shadow:0 0 6px var(--grn);"></span>
-          <span style="font-weight:700; color:var(--tx); text-transform:uppercase;">FMS TELEMATICS</span>
-          <span style="color:rgba(255,255,255,0.2);">|</span>
-          <span style="font-family:monospace; color:var(--gold);">USDOT #${dotNumber}</span>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px; font-family:monospace; font-size:10px;">
-          <span>SAFETY: <b style="color:var(--grn);">${safetyRating}%</b></span>
-          <span style="color:rgba(255,255,255,0.2);">|</span>
-          <span>TRANSIT: <b style="color:var(--tx);">${activeLoads}</b></span>
+    <div style="width:100%; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+      <!-- Left: Logo Ring & Carrier Identity with Rank -->
+      <div style="display:flex; align-items:center; gap:8px; min-width:0; cursor:pointer;" data-act="tab" data-id="company" title="Logistics HQ · Current Rank: ${prog.title}">
+        ${renderProgressLogoRing(S, 34, 2.5)}
+        <div style="min-width:0;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:12px; font-weight:900; color:var(--tx); letter-spacing:0.2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-transform:uppercase;">
+              ${S.company}
+            </span>
+            <span style="font-size:8px; font-family:monospace; color:var(--mu); opacity:0.75;">DOT#${dotNumber}</span>
+          </div>
+          <div style="display:flex; align-items:center; gap:5px; margin-top:1px;">
+            <span style="display:inline-flex; align-items:center; background:${prog.color}15; color:${prog.color}; border:1px solid ${prog.color}45; padding:0 4px; border-radius:3px; font-weight:800; font-family:monospace; font-size:9px; letter-spacing:0.3px;">
+              RANK: ${prog.title.toUpperCase()}
+            </span>
+            <span style="font-size:8px; color:var(--mu); font-family:monospace;">
+              ${prog.percent}% XP
+            </span>
+          </div>
         </div>
       </div>
 
-      <!-- Main Command Console Row -->
-      <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-        <!-- Company Identity -->
-        <div style="display:flex; align-items:center; gap:10px; min-width:0;">
-          <div style="width:36px; height:36px; background:#0f172a; border:1px solid rgba(193,154,91,0.4); border-radius:6px; display:grid; place-items:center; flex-shrink:0;">
-            <span style="font-weight:900; font-size:13px; color:var(--gold); font-family:monospace; letter-spacing:0.5px;">
-              ${S.company.slice(0, 2).toUpperCase()}
-            </span>
+      <!-- Right: Operating Capital, Bonds & Tactical Controls -->
+      <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
+        <div style="text-align:right; font-family:monospace; line-height:1.2;">
+          <div style="font-size:12px; font-weight:900; color:var(--grn);" id="hdr-cash-val" title="Operating Cash">
+            ${fmt(S.money)}
           </div>
-          <div style="min-width:0;">
-            <div style="font-size:14px; font-weight:800; color:var(--tx); letter-spacing:0.2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-transform:uppercase;">
-              ${S.company}
-            </div>
-            <div style="font-size:10px; color:var(--mu); display:flex; align-items:center; gap:4px; margin-top:1px;">
-              <span>Class 8 Motor Carrier</span>
-              <span>·</span>
-              <span style="color:var(--gold); font-weight:700;">TIER ${S.level || 1}</span>
-            </div>
+          <div style="font-size:9px; font-weight:800; color:var(--gold); display:flex; align-items:center; justify-content:flex-end; gap:2px;" title="Fleet Bonds">
+            <span style="color:var(--mu); font-size:8px;">BONDS:</span>
+            <span id="hdr-coin-val">${S.coins}</span>
           </div>
         </div>
 
-        <!-- Corporate Ledger & Telematics Actions -->
-        <div style="display:flex; align-items:center; gap:8px; flex-shrink:0;">
-          <!-- Financial Balances -->
-          <div style="display:flex; flex-direction:column; align-items:flex-end; gap:2px;">
-            <div style="display:flex; align-items:center; gap:4px; font-family:monospace; font-size:13px; font-weight:800; color:var(--grn);" title="Operating Capital">
-              <span style="font-size:10px; color:var(--mu); font-family:sans-serif; font-weight:600;">CASH</span>
-              <span>${fmt(S.money)}</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:4px; font-family:monospace; font-size:11px; font-weight:700; color:var(--gold);" title="Fleet Reserve Credits">
-              <span style="font-size:9px; color:var(--mu); font-family:sans-serif; font-weight:600;">BONDS</span>
-              <span>${S.coins}</span>
-            </div>
-          </div>
-
+        <div style="display:flex; align-items:center; gap:4px;">
           <!-- Dispatch Telex Alert Trigger -->
-          <div style="display:flex; align-items:center; gap:4px; margin-left:4px;">
-            <button class="bell" data-act="bell" style="background:var(--s2); border:1px solid rgba(255,255,255,0.1); border-radius:6px; width:34px; height:34px; display:grid; place-items:center; cursor:pointer; position:relative;" title="Dispatch Telex / Alerts">
-              ${ic('radio')}
-              ${unreadCount > 0 ? `
-                <span style="position:absolute; top:-4px; right:-4px; background:var(--red); color:#fff; font-size:8px; font-weight:900; min-width:14px; height:14px; border-radius:7px; display:grid; place-items:center; padding:0 3px; font-family:monospace;">
-                  ${unreadCount}
-                </span>
-              ` : ''}
-            </button>
+          <button class="bell" data-act="bell" style="background:var(--s2); border:1px solid rgba(255,255,255,0.1); border-radius:6px; width:28px; height:28px; display:grid; place-items:center; cursor:pointer; position:relative; padding:0;" title="Dispatch Telex / Alerts">
+            ${ic('radio')}
+            ${unreadCount > 0 ? `
+              <span style="position:absolute; top:-3px; right:-3px; background:var(--red); color:#fff; font-size:7px; font-weight:900; min-width:12px; height:12px; border-radius:6px; display:grid; place-items:center; padding:0 2px; font-family:monospace;">
+                ${unreadCount}
+              </span>
+            ` : ''}
+          </button>
 
-            <!-- Carrier Rankings -->
-            <button class="rank-btn" data-act="tab" data-id="rankings" style="background:var(--s2); border:1px solid rgba(255,255,255,0.1); border-radius:6px; width:34px; height:34px; display:grid; place-items:center; cursor:pointer; color:var(--gold);" title="Carrier Safety & Tonnage Rankings">
-              ${ic('up')}
-            </button>
-          </div>
+          <!-- Carrier Rankings -->
+          <button class="rank-btn" data-act="tab" data-id="rankings" style="background:var(--s2); border:1px solid rgba(255,255,255,0.1); border-radius:6px; width:28px; height:28px; display:grid; place-items:center; cursor:pointer; color:var(--gold); padding:0;" title="Global Leaderboard Rankings">
+            ${ic('up')}
+          </button>
         </div>
       </div>
     </div>

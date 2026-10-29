@@ -53,8 +53,8 @@ export const TRAIT_REGISTRY: Record<DriverTraitId, DriverTrait> = {
   night_owl: {
     id: 'night_owl',
     name: 'Night Owl',
-    desc: 'Thrives in night operations. Maintains peak focus and morale during long hauls.',
-    effect: { morale: 1.05 }
+    desc: 'Thrives in night operations. Maintains peak focus and reduces fatigue accumulation.',
+    effect: { fatigueMod: -0.20 }
   }
 };
 

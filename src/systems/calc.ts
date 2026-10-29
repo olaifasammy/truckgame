@@ -117,18 +117,32 @@ export const fuelCostForTrip = (km: number, t: any, payload = 0, env?: Environme
 };
 
 /**
- * Calculates realistic simulation duration in milliseconds.
- * Pacing: A 400 km trip takes ~45 seconds of real time.
- * Long haul 1,200 km takes ~90-120 seconds.
- * Short haul 150 km takes ~25 seconds.
- * Fixes the "instant finish" bug where trip was calculated in raw milliseconds.
+ * Calculates authentic logistics transit duration at 2.5x real-world speed.
+ * 
+ * Physics formulation:
+ * - Real-world duration: T_real = (km / effectiveSpeed) hours = (km / effectiveSpeed) * 3600 seconds.
+ * - At 2.5x real-world speed: T_game = T_real / 2.5 = (km / effectiveSpeed) * 1440 seconds.
  */
-export const tripMs = (km: number, speed: number, env?: EnvironmentalConditions): number => {
-  const effectiveSpeed = Math.max(40, Math.min(125, speed || 80));
-  // 1 real second represents approx 10-12 km of highway travel
-  // Min duration: 25 seconds (25,000 ms) so player sees live countdown and progress
-  const durationSeconds = Math.max(25, Math.round((km / effectiveSpeed) * 10));
-  return durationSeconds * 1000;
+export const tripMs = (km: number, speed: number = 80, env?: EnvironmentalConditions): number => {
+  let effectiveSpeed = Math.max(40, Math.min(125, speed || 80));
+
+  if (env) {
+    if (env.weather === 'snow') {
+      effectiveSpeed *= 0.75; // Snow chains / low traction
+    } else if (env.weather === 'rain') {
+      effectiveSpeed *= 0.90; // Wet pavement braking buffer
+    }
+
+    if ((env.roadGrade || 0) > 4) {
+      effectiveSpeed *= 0.85; // Steep mountain crawl
+    } else if ((env.roadGrade || 0) > 2) {
+      effectiveSpeed *= 0.93;
+    }
+  }
+
+  // Exact 2.5x real-world simulation speed
+  const seconds = Math.max(15, Math.round((km / effectiveSpeed) * 1440));
+  return seconds * 1000;
 };
 
 export function applyWear(t: any, km: number, payload = 0, env?: EnvironmentalConditions) {

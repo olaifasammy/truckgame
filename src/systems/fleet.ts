@@ -110,7 +110,7 @@ export function buyTruckBatch(modelId: string, trailerType: TrailerType | null, 
     const totalPrice = unitPrice * quantity;
 
     if (S.fleet.length + quantity > slots(S)) {
-      toast(`Garage slots full! Need ${S.fleet.length + quantity} slots (Capacity: ${slots(S)})`, 'error');
+      toast(`Garage slots full! Need ${S.fleet.length + quantity} slots (Capacity: ${slots(S)})`, 'err');
       return;
     }
     if (!pay(S, totalPrice)) return;
