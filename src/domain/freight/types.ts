@@ -12,7 +12,7 @@ export interface CargoType {
   id: string;
   name: string;
   icon?: string;
-  trailer: 'curtain' | 'reefer' | 'flatbed' | 'tanker' | 'hazmat' | 'lowboy';
+  trailer: 'curtain' | 'reefer' | 'flatbed' | 'tanker' | 'hazmat' | 'lowboy' | 'tipper' | 'double_trailer' | 'container' | 'carrier' | 'box';
   baseValue: number; // per km
   density: number; // kg per m3
   isHazmat?: boolean;

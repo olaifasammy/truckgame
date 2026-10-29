@@ -33,27 +33,83 @@ export const placeBid = (auctionId: number, amount: number) => {
   });
 };
 
+import { hasLicense } from '../domain/freight/licenses';
+
 export function why(S: any, t: any, j: any) {
   if (t.status !== 'idle') return 'Truck is busy';
-  if (!t.driverId) return 'Assign a driver first';
-  
+  if (!t.driverId) return 'Assign a CDL driver';
+
+  const d = (S.drivers || []).find((x: any) => x.id === t.driverId);
+  if (!d) return 'Driver not found';
+
   const cargo = CARGO_TYPES.find(c => c.id === j.cargoId);
   const trailerType = cargo?.trailer || j.trailer || 'curtain';
-  
-  const truckModel = TRUCK_MODELS[t.modelId];
-  if (!truckModel.haul.includes(trailerType as any)) {
-    return 'Incompatible trailer: ' + TRAILERS[trailerType as keyof typeof TRAILERS];
+  const truckModel = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
+
+  // 1. Company Corporate License Verification
+  if (cargo?.isHazmat && !hasLicense(S, 'adr_hazmat')) {
+    return 'Missing Company License: ADR Hazmat Authority (Buy in HQ)';
   }
-  
+  if (cargo?.tempControlled && !hasLicense(S, 'cold_chain')) {
+    return 'Missing Company License: Cold Chain Sanitary Authority (Buy in HQ)';
+  }
+  if (trailerType === 'lowboy' && !hasLicense(S, 'heavy_haul')) {
+    return 'Missing Company Permit: Heavy Abnormal Permit (Buy in HQ)';
+  }
+  if (trailerType === 'double_trailer' && !hasLicense(S, 'lcv_double')) {
+    return 'Missing Company Authority: LCV Double Permit (Buy in HQ)';
+  }
+  if (trailerType === 'tipper' && !hasLicense(S, 'bulk_tipper')) {
+    return 'Missing Company License: Bulk Aggregate Tipper License (Buy in HQ)';
+  }
+  if (cargo?.isFragile && (cargo.baseValue || 0) > 30 && !hasLicense(S, 'high_value')) {
+    return 'Missing Company Bond: High-Value Transit Bond (Buy in HQ)';
+  }
+
+  // 2. Driver Certification & Endorsement Verification
+  const certs = d.certifications || [];
+  if (cargo?.isHazmat && !certs.includes('ADR Hazmat') && d.skill < 4) {
+    return 'Driver lacks ADR Hazmat Certification (Train in Drivers)';
+  }
+  if (cargo?.tempControlled && !certs.includes('Cold Chain') && d.skill < 3) {
+    return 'Driver lacks Cold Chain Certification (Train in Drivers)';
+  }
+  if (trailerType === 'lowboy' && !certs.includes('Heavy Haul') && d.skill < 4) {
+    return 'Driver lacks Heavy Haul Lowboy Endorsement';
+  }
+  if (trailerType === 'double_trailer' && !certs.includes('Double Trailer LCV') && d.skill < 4) {
+    return 'Driver lacks Double Trailer LCV Endorsement';
+  }
+
+  // 3. Chassis & Trailer Coupling Verification
+  const isHazmatJob = cargo?.isHazmat || trailerType === 'tanker' || trailerType === 'hazmat';
+  if (isHazmatJob) {
+    // Shipper Terminal Supplies Hazmat/Chemical Tanker directly
+    if (!truckModel.haul.includes('tanker') && !truckModel.haul.includes('hazmat')) {
+      return 'Tractor chassis incompatible with liquid tanker fifth-wheel coupling';
+    }
+  } else {
+    // Commercial freight trailers: must have exact trailer coupled to tractor
+    if (!truckModel.haul.includes(trailerType as any)) {
+      return 'Tractor chassis cannot haul ' + (TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType);
+    }
+    if (t.trailer !== trailerType) {
+      const currentDesc = t.trailer ? (TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer) : 'Bobtail (No Trailer)';
+      return `Requires ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType} (Current: ${currentDesc})`;
+    }
+  }
+
+  // 4. Mechanical Condition Verification
   const healthValues = Object.values(t.components).map((c: any) => c.health);
   const avgHealth = healthValues.reduce((a, b) => a + b, 0) / healthValues.length;
   if (avgHealth < 20) return 'Major repair needed';
-  
+
+  // 5. Fuel Range Verification
   const deadheadDist = distKm(t.loc, j.from);
   const initialStintKm = deadheadDist + Math.min(j.km || 0, 450);
   const departureFuelNeeded = Math.round(fuelCostForTrip(initialStintKm, t, j.weight));
   if (t.fluids.fuel < departureFuelNeeded || t.fluids.fuel < 60) return 'Refuel needed';
-  
+
   return null;
 }
 
@@ -64,11 +120,41 @@ export function blocker(S: any, j: any) {
   const cargo = CARGO_TYPES.find(c => c.id === j.cargoId);
   const trailerType = cargo?.trailer || j.trailer || 'curtain';
 
-  const able = S.fleet.filter((t: any) => TRUCK_MODELS[t.modelId].haul.includes(trailerType as any));
-  if (!able.length) return 'Needs a truck that hauls ' + TRAILERS[trailerType as keyof typeof TRAILERS];
-  if (!able.some((t: any) => t.status === 'idle')) return 'All suitable trucks are busy';
-  if (!able.some((t: any) => t.status === 'idle' && t.driverId)) return 'Assign a driver in HQ Depot';
-  if (!findTruck(S, j)) return 'Check Fuel/Maintenance in HQ Depot';
+  // Check corporate license
+  if (cargo?.isHazmat && !hasLicense(S, 'adr_hazmat')) {
+    return 'Acquire ADR Hazmat Authority in HQ Depot first';
+  }
+  if (cargo?.tempControlled && !hasLicense(S, 'cold_chain')) {
+    return 'Acquire Cold Chain Authority in HQ Depot first';
+  }
+  if (trailerType === 'lowboy' && !hasLicense(S, 'heavy_haul')) {
+    return 'Acquire Heavy Abnormal Permit in HQ Depot first';
+  }
+  if (trailerType === 'double_trailer' && !hasLicense(S, 'lcv_double')) {
+    return 'Acquire LCV Double Permit in HQ Depot first';
+  }
+  if (trailerType === 'tipper' && !hasLicense(S, 'bulk_tipper')) {
+    return 'Acquire Bulk Aggregate Tipper License in HQ Depot first';
+  }
+
+  const ableTractors = S.fleet.filter((t: any) => {
+    const truckModel = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
+    if (cargo?.isHazmat || trailerType === 'tanker' || trailerType === 'hazmat') {
+      return truckModel.haul.includes('tanker') || truckModel.haul.includes('hazmat');
+    }
+    return t.trailer === trailerType;
+  });
+
+  if (!ableTractors.length) {
+    if (cargo?.isHazmat) {
+      return 'Needs a tractor chassis that supports tanker fifth-wheel coupling';
+    }
+    return `Needs a tractor hitched with ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType} (Hitch in Garage/HQ)`;
+  }
+
+  if (!ableTractors.some((t: any) => t.status === 'idle')) return 'All coupled tractors are currently busy';
+  if (!ableTractors.some((t: any) => t.status === 'idle' && t.driverId)) return 'Assign a qualified CDL driver';
+  if (!findTruck(S, j)) return 'Check Driver Certifications, Fuel, or Repair in Garage';
   return null;
 }
 
@@ -112,8 +198,20 @@ export function takeJob(id: number, truckId?: number) {
     const totalKm = j.km + dh;
     const duration = tripMs(totalKm, st.topSpeed, routeEnv);
 
+    const isHazmatJob = cargo?.isHazmat || (cargo?.trailer === 'tanker') || (cargo?.trailer === 'hazmat');
+    let previousTrailer = null;
+    if (isHazmatJob) {
+      if (t.trailer && t.trailer !== cargo?.trailer) {
+        if (!S.trailers) S.trailers = [];
+        S.trailers.push(t.trailer);
+        previousTrailer = t.trailer;
+        pushNote(S, `DEPOT STORAGE: Coupled ${TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer} unhitched to HQ Storage Yard for Shipper Tanker manifest.`);
+      }
+      t.trailer = (cargo?.trailer as any) || 'hazmat';
+    }
+
     S.jobs = S.jobs.filter((x: any) => x.id !== id);
-    S.active.push({ ...j, truck: t.id, dh, start: now, end: now + duration, env: routeEnv });
+    S.active.push({ ...j, truck: t.id, dh, start: now, end: now + duration, env: routeEnv, isShipperTanker: isHazmatJob, unhitchedTrailer: previousTrailer });
     t.status = 'busy';
     replenish(S);
     pushNote(S, `Consignment Dispatched: ${cargo?.name || 'Cargo'} · ${j.from} → ${j.to}${quotaNote}`);
@@ -134,6 +232,12 @@ export function completeJobs(S: any, now: number) {
       t.loc = a.to;
       syncUsage(t, km, st);
       applyWear(t, km, a.weight || 0, a.env);
+
+      // If this was a shipper-supplied tanker, return it to consignor terminal
+      if (a.isShipperTanker) {
+        t.trailer = null; // Returned to consignor terminal, tractor returns bobtail
+        pushNote(S, `CONSIGNOR RETURN: Shipper's hazardous tanker returned to terminal in ${a.to}. Tractor ready for new trailer.`);
+      }
     }
     if (a.kind === 'move') {
       pushNote(S, `${t ? t.name : 'Truck'} arrived in ${a.to}`);

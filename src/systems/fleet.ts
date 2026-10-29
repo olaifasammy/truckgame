@@ -124,3 +124,71 @@ export function buyTruckBatch(modelId: string, trailerType: TrailerType | null, 
     toast(`Successfully acquired ${quantity} vehicle(s)!`, 'success');
   });
 }
+
+export function unhitchTrailer(truckId: number) {
+  set(S => {
+    const t = S.fleet.find((x: any) => x.id === truckId);
+    if (!t) return;
+    if (t.status === 'busy') return toast('Cannot unhitch while in transit', 'err');
+    if (!t.trailer) return toast('No trailer attached to this tractor', 'info');
+
+    if (!S.trailers) S.trailers = [];
+    const detached = t.trailer;
+    S.trailers.push(detached);
+    t.trailer = null;
+
+    pushNote(S, `TRAILER DECOUPLED: Unit #${t.id} unhitched ${TRAILERS[detached as keyof typeof TRAILERS] || detached}. Staged at HQ Storage Yard.`);
+    toast(`Unhitched ${TRAILERS[detached as keyof typeof TRAILERS] || detached} to HQ Yard`, 'success');
+  });
+}
+
+export function hitchTrailer(truckId: number, trailerType: TrailerType) {
+  set(S => {
+    const t = S.fleet.find((x: any) => x.id === truckId);
+    if (!t) return;
+    if (t.status === 'busy') return toast('Cannot hitch trailer while in transit', 'err');
+
+    const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
+    if (!m.haul.includes(trailerType)) {
+      return toast(`Tractor chassis cannot haul ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}`, 'err');
+    }
+
+    if (!S.trailers || !S.trailers.includes(trailerType)) {
+      return toast(`No ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType} in HQ Storage Yard`, 'err');
+    }
+
+    // If currently has a trailer, unhitch it to storage
+    if (t.trailer) {
+      S.trailers.push(t.trailer);
+    }
+
+    const idx = S.trailers.indexOf(trailerType);
+    if (idx >= 0) S.trailers.splice(idx, 1);
+
+    t.trailer = trailerType;
+    pushNote(S, `TRAILER COUPLED: Unit #${t.id} successfully coupled with ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}.`);
+    toast(`Coupled ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}!`, 'success');
+  });
+}
+
+export function buyTrailerToYard(trailerType: TrailerType) {
+  set(S => {
+    const price = TRAILER_PRICES[trailerType] || 15000;
+    if (S.money < price) {
+      toast(`Insufficient funds. Need $${price.toLocaleString()}`, 'err');
+      return;
+    }
+    if (trailerType === 'hazmat') {
+      toast('ADR Hazmat tankers are provided by consignor terminals on dispatch (no purchase necessary)', 'info');
+      return;
+    }
+
+    S.money -= price;
+    if (!S.trailers) S.trailers = [];
+    S.trailers.push(trailerType);
+
+    pushNote(S, `COMMERCIAL TRAILER ACQUIRED: Added 1x ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType} to Central Trailer Storage Facility.`);
+    toast(`Purchased ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}!`, 'success');
+  });
+}
+

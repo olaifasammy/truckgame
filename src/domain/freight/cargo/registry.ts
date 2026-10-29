@@ -21,6 +21,15 @@ export const CARGO_TYPES: CargoType[] = [
   { id: 'liquid_oxy', name: 'Liquid Oxygen', icon: 'droplet', trailer: 'tanker', baseValue: 18.0, density: 1140, isHazmat: true, adrClass: 2 },
   { id: 'toxic_waste', name: 'Chemical Waste', icon: 'shield', trailer: 'hazmat', baseValue: 22.0, density: 1200, isHazmat: true, adrClass: 6 },
 
+  // Bulk Aggregates / Tipper
+  { id: 'aggregate_gravel', name: 'Quarry Granite & Crushed Gravel', icon: 'layers', trailer: 'tipper', baseValue: 5.2, density: 1600 },
+  { id: 'mined_bauxite', name: 'Raw Bauxite & Mineral Ore', icon: 'anchor', trailer: 'tipper', baseValue: 6.8, density: 1800 },
+
+  // Long Combination Vehicle (Double Trailer LCV) & Container
+  { id: 'consumer_lcv', name: 'Double-Trailer FMCG Retail Freight', icon: 'box', trailer: 'double_trailer', baseValue: 8.8, density: 220 },
+  { id: 'intermodal_box', name: 'Intermodal 40ft Maritime Container', icon: 'box', trailer: 'container', baseValue: 7.4, density: 600 },
+  { id: 'heavy_transformer', name: '45-Tonne Electrical Substation Transformer', icon: 'zap', trailer: 'lowboy', baseValue: 34.0, density: 2800, isFragile: true },
+
   // Specialized Ultra-High-Value Contracts (For High VIP Bidding)
   { id: 'aerospace_turbine', name: 'Aerospace Turbofan Engines', icon: 'wind', trailer: 'lowboy', baseValue: 38.0, density: 400, isFragile: true },
   { id: 'lithium_packs', name: 'Solid-State Battery Modules', icon: 'fuel', trailer: 'hazmat', baseValue: 42.0, density: 850, isHazmat: true, adrClass: 9 },

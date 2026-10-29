@@ -25,6 +25,8 @@ const DEF = () => ({
   stats: { earned: 0, km: 0 },
   repairs: [] as any[],
   repairTruckId: null as number | null,
+  licenses: ['standard'] as string[],
+  trailers: ['curtain', 'flatbed', 'reefer'] as string[],
   fleet: [createTruck(1, 'scania_s730', 'Flagship S730 #1', 'LAGOS')]
 });
 
@@ -33,13 +35,16 @@ const subs = new Set<(state: any) => void>();
 
 function fix(state: any) {
   if (state.isAuthenticated === undefined) state.isAuthenticated = false;
-  if (!state.drivers) state.drivers = [{ id: 1, name: 'Sam Okafor', region: 'Africa', skill: 3, salary: 250, morale: 95, fatigue: 5, trait: 'careful', stats: { tripsCompleted: 0, kmDriven: 0, earned: 0 } }];
+  if (!state.licenses) state.licenses = ['standard'];
+  if (!state.trailers) state.trailers = ['curtain', 'flatbed', 'reefer'];
+  if (!state.drivers) state.drivers = [{ id: 1, name: 'Sam Okafor', region: 'Africa', skill: 3, salary: 250, morale: 95, fatigue: 5, trait: 'careful', certifications: ['Cold Chain'], stats: { tripsCompleted: 0, kmDriven: 0, earned: 0 } }];
   if (state.drivers) {
     state.drivers.forEach((d: any) => {
       if (!d.region) d.region = 'Africa';
       if (d.morale === undefined) d.morale = 90;
       if (d.fatigue === undefined) d.fatigue = 10;
       if (!d.trait) d.trait = 'careful';
+      if (!d.certifications) d.certifications = d.id === 1 ? ['Cold Chain'] : [];
       if (!d.salary) d.salary = d.skill * 150 + 100;
       if (!d.stats) d.stats = { tripsCompleted: 0, kmDriven: 0, earned: 0 };
     });
@@ -49,9 +54,14 @@ function fix(state: any) {
     state.pool.forEach((d: any) => {
       if (!d.region) d.region = 'Africa';
       if (!d.trait) d.trait = 'careful';
+      if (!d.certifications) d.certifications = d.skill >= 3 ? ['Cold Chain'] : [];
       if (!d.salary) d.salary = d.skill * 150 + 100;
     });
   }
+  if (!state.fleet) state.fleet = [];
+  state.fleet.forEach((t: any) => {
+    if (t.trailer === undefined) t.trailer = 'curtain';
+  });
   if (!state.perks) state.perks = {};
   if (!state.offices) state.offices = [];
   if (state.garageLevel === undefined) state.garageLevel = 0;

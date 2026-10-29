@@ -60,3 +60,62 @@ export const transferDriver = (driverId: number, newRegion: Region) => set(S => 
   d.region = newRegion;
   toast(`Successfully transferred ${d.name} to ${newRegion} operations`, 'success');
 });
+
+export const DRIVER_CERTIFICATIONS = [
+  { id: 'ADR Hazmat', name: 'ADR Hazmat & Chemical Endorsement', icon: '☣️', cost: 6500, desc: 'Authorizes transport of flammable, chemical, and hazardous industrial cargo.' },
+  { id: 'Cold Chain', name: 'Cold Chain & Perishables Certification', icon: '❄️', cost: 3500, desc: 'Certified in reefer temperature maintenance, pharmaceuticals, and fresh produce.' },
+  { id: 'Heavy Haul', name: 'Heavy Machinery & Lowboy Endorsement', icon: '🏗️', cost: 5000, desc: 'Specialized in multi-axle oversized machinery, ballast, and indvisibles > 25t.' },
+  { id: 'Double Trailer LCV', name: 'Long Combination Vehicle (LCV) Double Endorsement', icon: '🚛', cost: 4500, desc: 'Mastery in multi-articulated B-train and A-double combination highway tractors.' },
+  { id: 'High-Value Fragile', name: 'Secured High-Value & Fragile Handling', icon: '💎', cost: 3000, desc: 'Trained in delicate air-ride freight, high-precision electronics, and luxury goods.' }
+];
+
+export const skillUpgradeCost = (currentSkill: number) => Math.min(15000, currentSkill * 3000);
+
+export function trainDriverSkill(driverId: number) {
+  set(S => {
+    const d = S.drivers.find((x: any) => x.id === driverId);
+    if (!d) return;
+    if (d.skill >= 5) {
+      toast('Driver is already at maximum Master CDL skill (5 Stars)', 'info');
+      return;
+    }
+    const cost = skillUpgradeCost(d.skill);
+    if (S.money < cost) {
+      toast(`Insufficient funds for Driver Academy. Need $${cost.toLocaleString()}`, 'err');
+      return;
+    }
+
+    S.money -= cost;
+    d.skill++;
+    d.salary = Math.round(d.salary * 1.15); // Promotion wage raise
+    d.morale = 100; // Boosted morale
+    pushNote(S, `DRIVER ACADEMY: ${d.name} graduated and reached Skill Level ${d.skill}★!`);
+    toast(`Promoted ${d.name} to Skill Level ${d.skill}★!`, 'success');
+  });
+}
+
+export function certifyDriver(driverId: number, certId: string) {
+  set(S => {
+    const d = S.drivers.find((x: any) => x.id === driverId);
+    if (!d) return;
+    if (!d.certifications) d.certifications = [];
+    if (d.certifications.includes(certId)) {
+      toast(`${d.name} already holds ${certId} Certification`, 'info');
+      return;
+    }
+
+    const cert = DRIVER_CERTIFICATIONS.find(c => c.id === certId);
+    if (!cert) return;
+
+    if (S.money < cert.cost) {
+      toast(`Insufficient funds for certification course. Need $${cert.cost.toLocaleString()}`, 'err');
+      return;
+    }
+
+    S.money -= cert.cost;
+    d.certifications.push(certId);
+    d.morale = 100;
+    pushNote(S, `CERTIFICATION AWARDED: ${d.name} achieved official ${cert.name} certification!`);
+    toast(`${d.name} certified: ${cert.id}!`, 'success');
+  });
+}

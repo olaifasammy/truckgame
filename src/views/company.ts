@@ -1,8 +1,11 @@
 import { ic } from '../core/icons';
 import { action, fmt, toast } from '../core/ui';
-import { set } from '../core/store';
+import { set, refresh } from '../core/store';
 import { fillPool } from '../systems/drivers';
 import { getCompanyProgression, renderProgressLogoRing } from '../domain/company/progression';
+import { FREIGHT_LICENSES, buyLicense, hasLicense } from '../domain/freight/licenses';
+import { TRAILERS, getTrailerIcon } from '../domain/trucks/trucks.data';
+import { getTrailerSilhouetteSvg } from '../domain/trucks/trucks.visuals';
 
 action('logout', () => {
   set(S => {
@@ -10,6 +13,11 @@ action('logout', () => {
   });
   toast('Logged out successfully');
   setTimeout(() => location.reload(), 500);
+});
+
+action('buy-license', d => {
+  buyLicense((d as any).id);
+  refresh();
 });
 
 export default {
@@ -22,6 +30,13 @@ export default {
     const avgSkill = S.drivers.length > 0
       ? (S.drivers.reduce((acc: number, d: any) => acc + (d.skill || 1), 0) / S.drivers.length).toFixed(1)
       : '1.0';
+
+    // Aggregate storage yard trailers
+    const yardTrailers: Record<string, number> = {};
+    (S.trailers || []).forEach((t: string) => {
+      yardTrailers[t] = (yardTrailers[t] || 0) + 1;
+    });
+    const totalYardTrailers = (S.trailers || []).length;
 
     return `
       <div class="profile-wrap" style="background:linear-gradient(180deg, #111827 0%, #0a0f1d 100%); border-bottom:1px solid #1f293d; padding:28px 16px 20px; text-align:center;">
@@ -103,6 +118,117 @@ export default {
         </div>
       </div>
 
+      <!-- Central Trailer Storage Facility & Yard -->
+      <div style="padding:0 14px 14px;">
+        <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">CENTRAL TRAILER STORAGE FACILITY & YARD</span>
+          <span class="mu-tx" style="font-size:9px; font-family:monospace;">${totalYardTrailers} UNHITCHED UNITS</span>
+        </div>
+
+        <div class="card" style="padding:14px; background:#111827; border:1px solid #1f293d; border-radius:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+            <div>
+              <div style="font-size:12px; font-weight:800; color:var(--tx);">HQ Trailer Marshalling Yard</div>
+              <div style="font-size:10px; color:var(--mu); margin-top:2px;">Unhitched fleet trailers staged here can be freely coupled to compatible tractors in the Garage.</div>
+            </div>
+            <button class="btn gold" style="padding:5px 10px; font-size:9px; font-weight:800; white-space:nowrap;" data-act="store-open" data-id="dealership">
+              + BUY TRAILERS
+            </button>
+          </div>
+
+          <!-- Shipper-Supplied Tankers Notice -->
+          <div style="background:#0a0f1d; border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:8px 10px; margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+            <span style="font-size:16px;">☣️</span>
+            <div style="font-size:9px; color:var(--tx); line-height:1.3;">
+              <b style="color:var(--gold);">CONSIGNOR TANKER GUARANTEE:</b> ADR Hazmat & chemical tanker trailers are provided directly by shipping terminals upon dispatch at zero cost to the carrier.
+            </div>
+          </div>
+
+          ${totalYardTrailers === 0 ? `
+            <div style="padding:16px; text-align:center; background:#080c16; border:1px dashed #1e293b; border-radius:8px;">
+              <div style="font-size:24px; margin-bottom:4px;">🚛</div>
+              <div style="font-size:11px; font-weight:700; color:var(--tx);">Yard is Currently Empty</div>
+              <div style="font-size:9px; color:var(--mu); margin-top:2px;">Unhitch trailers from your fleet tractors in the Garage or purchase new equipment in the Dealership.</div>
+            </div>
+          ` : `
+            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(180px, 1fr)); gap:10px;">
+              ${Object.entries(yardTrailers).map(([type, count]) => `
+                <div style="background:#0a0f1d; border:1px solid #1e293b; border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+                      <span style="font-size:16px;">${getTrailerIcon(type as any)}</span>
+                      <div style="font-size:11px; font-weight:800; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        ${TRAILERS[type as keyof typeof TRAILERS] || type}
+                      </div>
+                    </div>
+                    <div style="font-size:9px; color:var(--gold); font-family:monospace; font-weight:800; flex-shrink:0;">
+                      ${count}x IN YARD
+                    </div>
+                  </div>
+                  <!-- Blueprint SVG Illustration -->
+                  <div style="background:#060a14; border:1px solid #141d2c; border-radius:6px; padding:4px 8px; display:flex; justify-content:center; align-items:center; min-height:48px;">
+                    ${getTrailerSilhouetteSvg(type, 'var(--gold)')}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          `}
+        </div>
+      </div>
+
+      <!-- Commercial Haulage Licenses & Authorities -->
+      <div style="padding:0 14px 14px;">
+        <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">COMMERCIAL FREIGHT LICENSES & AUTHORITIES</span>
+          <span class="mu-tx" style="font-size:9px; font-family:monospace;">REGULATORY COMPLIANCE</span>
+        </div>
+
+        <div style="font-size:10px; color:var(--mu); margin-bottom:10px; padding:0 2px;">
+          Interstate and cross-border transport of specialized freight requires certified carrier operating authorities. Acquire licenses below to unlock high-paying corporate loads.
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px;">
+          ${Object.values(FREIGHT_LICENSES).map((lic: any) => {
+            const owned = hasLicense(S, lic.id);
+            const canAfford = S.money >= lic.price;
+            return `
+              <div class="card" style="padding:12px; background:#111827; border:1px solid ${owned ? 'rgba(34,197,94,0.3)' : '#1f293d'}; border-radius:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <span style="font-size:22px;">${lic.icon}</span>
+                    <div>
+                      <div style="font-size:12px; font-weight:900; color:var(--tx);">
+                        ${lic.name} <span style="font-size:9px; color:var(--gold); font-family:monospace;">[${lic.code}]</span>
+                      </div>
+                      <div style="font-size:9px; color:var(--mu); margin-top:1px;">
+                        ${lic.description}
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    ${owned ? `
+                      <span style="display:inline-flex; align-items:center; gap:4px; background:rgba(34,197,94,0.15); border:1px solid var(--grn); color:var(--grn); padding:3px 8px; border-radius:4px; font-size:9px; font-weight:900; font-family:monospace;">
+                        ✓ ACTIVE AUTHORITY
+                      </span>
+                    ` : `
+                      <button class="btn gold" style="padding:5px 12px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="buy-license" data-id="${lic.id}" ${canAfford ? '' : 'disabled'}>
+                        ACQUIRE $${lic.price.toLocaleString()}
+                      </button>
+                    `}
+                  </div>
+                </div>
+
+                <div style="margin-top:6px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.05); font-size:8px; font-family:monospace; color:var(--mu);">
+                  <span style="color:var(--gold); font-weight:700;">REQUIRED FOR:</span>
+                  <span style="color:var(--tx); margin-left:4px;">${lic.requiredFor}</span>
+                  <span style="margin-left:8px; color:var(--mu);">· REGULATED BY: ${lic.regulatoryBody}</span>
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
       <!-- Priority Operations Log -->
       <div style="padding:0 14px 14px;">
         <div class="sec" style="margin-bottom:8px;">
@@ -129,3 +255,4 @@ export default {
     `;
   }
 };
+

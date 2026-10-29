@@ -25,6 +25,7 @@ export interface Driver {
   fatigue: number; // 0 to 100
   trait: DriverTraitId;
   assignedTruckId: number | null;
+  certifications?: string[];
   stats: {
     tripsCompleted: number;
     kmDriven: number;

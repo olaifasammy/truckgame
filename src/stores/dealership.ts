@@ -3,13 +3,14 @@ import { action, fmt, toast } from '../core/ui';
 import { refresh } from '../core/store';
 import { TRUCK_MODELS, TRAILERS, TRAILER_PRICES } from '../domain/trucks/trucks.data';
 import { TrailerType, TruckModel } from '../domain/trucks/trucks.types';
-import { buyTruckBatch } from '../systems/fleet';
+import { buyTruckBatch, buyTrailerToYard } from '../systems/fleet';
 import { slots } from '../systems/offices';
 import { CITIES } from '../data/world';
-import { getTruckSilhouetteSvg } from '../domain/trucks/trucks.visuals';
+import { getTruckSilhouetteSvg, getTrailerSilhouetteSvg } from '../domain/trucks/trucks.visuals';
 import { getManufacturerLogoSvg } from '../domain/trucks/trucks.logos';
 
-// State for manufacturer showroom and truck configurator
+// State for manufacturer showroom, trailer depot and truck configurator
+let dealershipSection: 'tractors' | 'trailers' = 'tractors';
 let activeShowroomBrand: string | null = null;
 let activeChassisFilter: string = 'all';
 let selectedModelKey: string | null = null;
@@ -139,7 +140,16 @@ export const MANUFACTURERS: Record<string, ManufacturerInfo> = {
   }
 };
 
-// Route & UI actions
+action('dealership-section', d => {
+  dealershipSection = (d as any).section;
+  refresh();
+});
+
+action('buy-depot-trailer', d => {
+  buyTrailerToYard((d as any).trailer as TrailerType);
+  refresh();
+});
+
 action('open-showroom', d => {
   activeShowroomBrand = (d as any).brand;
   activeChassisFilter = 'all';
@@ -483,42 +493,153 @@ export default {
     ];
 
     return `
-      <!-- Dealership Top Banner -->
-      <div style="background:#0e1320; border:1px solid #1e2638; border-radius:10px; padding:14px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center;">
+      <!-- Dealership Top Banner & Section Navigation -->
+      <div style="background:#0e1320; border:1px solid #1e2638; border-radius:10px; padding:12px 16px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
         <div>
-          <div style="font-size:10px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">
-            COMMERCIAL OEM DEALERSHIP NETWORK
+          <div style="font-size:9px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">
+            COMMERCIAL OEM VEHICLE & TRAILER DEALERSHIP
           </div>
-          <div style="font-size:14px; font-weight:900; color:var(--tx); margin-top:2px;">
-            Select Manufacturer Showroom
+          <div style="font-size:14px; font-weight:900; color:var(--tx); margin-top:1px;">
+            ${dealershipSection === 'tractors' ? 'Heavy Commercial Tractor Showrooms' : 'Commercial Trailer Equipment Depot'}
           </div>
         </div>
         <div style="text-align:right;">
-          <div style="font-size:9px; color:var(--mu); text-transform:uppercase; font-family:monospace;">DEPOT CAPACITY</div>
-          <div style="font-size:14px; font-weight:900; color:var(--tx); font-family:monospace;">
-            ${S.fleet.length} <span style="font-size:10px; color:var(--mu);">/ ${slots(S)} SLOTS</span>
+          <div style="font-size:8px; color:var(--mu); text-transform:uppercase; font-family:monospace;">FLEET / TRAILERS</div>
+          <div style="font-size:12px; font-weight:900; color:var(--tx); font-family:monospace;">
+            ${S.fleet.length}/${slots(S)} Tractors · <span style="color:var(--gold);">${(S.trailers || []).length} Trailers in Yard</span>
           </div>
         </div>
       </div>
 
-      <!-- Manufacturers categorized by Region -->
-      ${regions.map(r => `
-        <div style="margin:18px 0 10px; font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase; display:flex; align-items:center; gap:8px;">
-          <span>${r.label}</span>
-          <span style="flex:1; height:1px; background:rgba(255,255,255,0.08);"></span>
-        </div>
-        ${r.brands.map(brandKey => {
-          const info = MANUFACTURERS[brandKey];
-          if (!info) return '';
-          return renderManufacturerCard(brandKey, info, models);
-        }).join('')}
-      `).join('')}
+      <!-- Department Toggle Bar -->
+      <div style="display:flex; gap:8px; margin-bottom:14px;">
+        <button class="btn ${dealershipSection === 'tractors' ? 'gold' : 'alt'}" style="flex:1; padding:8px 12px; font-size:11px; font-weight:900; letter-spacing:0.5px; text-transform:uppercase; display:flex; align-items:center; justify-content:center; gap:6px;" data-act="dealership-section" data-section="tractors">
+          ${ic('truck')} OEM TRACTOR SHOWROOMS
+        </button>
+        <button class="btn ${dealershipSection === 'trailers' ? 'gold' : 'alt'}" style="flex:1; padding:8px 12px; font-size:11px; font-weight:900; letter-spacing:0.5px; text-transform:uppercase; display:flex; align-items:center; justify-content:center; gap:6px;" data-act="dealership-section" data-section="trailers">
+          🏗️ TRAILER EQUIPMENT DEPOT
+        </button>
+      </div>
+
+      ${dealershipSection === 'trailers' ? renderTrailerDepot(S) : `
+        <!-- Manufacturers categorized by Region -->
+        ${regions.map(r => `
+          <div style="margin:16px 0 8px; font-size:10px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase; display:flex; align-items:center; gap:8px;">
+            <span>${r.label}</span>
+            <span style="flex:1; height:1px; background:rgba(255,255,255,0.08);"></span>
+          </div>
+          ${r.brands.map(brandKey => {
+            const info = MANUFACTURERS[brandKey];
+            if (!info) return '';
+            return renderManufacturerCard(brandKey, info, models);
+          }).join('')}
+        `).join('')}
+      `}
 
       ${renderConfiguratorModal(S, inspectedModel, totalPrice, canAfford, hasSpace)}
       <div style="height:20px;"></div>
     `;
   }
 };
+
+// Render the Commercial Trailer Depot
+function renderTrailerDepot(S: any) {
+  const trailerCatalog: { type: TrailerType; name: string; icon: string; price: number; category: string; tare: string; payload: string; suitable: string }[] = [
+    { type: 'lowboy', name: 'Multi-Axle Heavy Lowboy', icon: '🏗️', price: 30000, category: 'HEAVY HAUL & INDIVISIBLES', tare: '11.2t', payload: 'Up to 55t', suitable: 'Excavators, Wind Turbine Blades, 45t Transformers, Aerospace Turbofans' },
+    { type: 'flatbed', name: 'Heavy Industrial Steel Flatbed', icon: '📦', price: 12000, category: 'STRUCTURAL CARGO', tare: '6.4t', payload: 'Up to 36t', suitable: 'Structural Steel, Heavy Pipes, Machinery, Construction' },
+    { type: 'reefer', name: 'Refrigerated Cold-Chain Reefer', icon: '❄️', price: 24000, category: 'TEMPERATURE CONTROLLED (-30°C to +25°C)', tare: '8.5t', payload: 'Up to 32t', suitable: 'Frozen Seafood, Clinical Vaccines, Perishable Produce, Pharma' },
+    { type: 'double_trailer', name: 'Double Trailer B-Train LCV', icon: '🚛', price: 36000, category: 'LONG COMBINATION VEHICLE (120 m³)', tare: '14.0t', payload: 'Up to 48t', suitable: 'High-Cube Consumer Goods, FMCG Retail Turnpikes' },
+    { type: 'tipper', name: 'Aggregate & Mineral Heavy Tipper', icon: '⛰️', price: 18000, category: 'BULK EARTHWORKS & MINING', tare: '7.8t', payload: 'Up to 40t', suitable: 'Granite Gravel, Bauxite, Raw Mineral Ores, Demolition' },
+    { type: 'tanker', name: 'Insulated Foodgrade Liquid Tanker', icon: '💧', price: 20000, category: 'SANITARY LIQUID BULK (34,000L)', tare: '6.8t', payload: 'Up to 34t', suitable: 'Liquid Oxygen, Foodgrade Oils, Milk, Industrial Syrups' },
+    { type: 'curtain', name: 'Curtainside Aerodynamic Trailer', icon: '🚚', price: 15000, category: 'GENERAL MERCHANDISE (34 Pallets)', tare: '6.5t', payload: 'Up to 28t', suitable: 'Electronics, Office Furniture, Textiles, Central Bank Bullion' },
+    { type: 'container', name: 'Intermodal 40ft Skeletal Chassis', icon: '🚢', price: 16000, category: 'PORT & RAIL INTERMODAL', tare: '4.8t', payload: 'Up to 35t', suitable: 'Standard ISO 40ft Marine Shipping Containers' },
+    { type: 'box', name: 'Standard Dry Freight Box Van', icon: '📦', price: 14000, category: 'DRY VAN SECURE CARGO', tare: '7.2t', payload: 'Up to 26t', suitable: 'Packaged Merchandise, Automotive Parts, Dry Goods' },
+    { type: 'carrier', name: 'Multi-Deck Auto Car Transporter', icon: '🚗', price: 22000, category: 'AUTOMOTIVE LOGISTICS (8 Vehicles)', tare: '9.8t', payload: 'Up to 22t', suitable: 'Dealership Vehicle Transfers & New European SUVs' }
+  ];
+
+  return `
+    <!-- Hazmat Consignor Supplied Information Notice -->
+    <div style="background:linear-gradient(135deg, #111827 0%, #0c1220 100%); border:1px solid rgba(239,68,68,0.35); border-radius:10px; padding:12px 16px; margin-bottom:14px;">
+      <div style="display:flex; align-items:flex-start; gap:12px;">
+        <span style="font-size:22px; flex-shrink:0;">☣️</span>
+        <div>
+          <div style="font-size:11px; font-weight:900; color:#ef4444; text-transform:uppercase; letter-spacing:0.5px;">
+            ADR HAZMAT & CHEMICAL TANKER LOGISTICS POLICY
+          </div>
+          <div style="font-size:10px; color:var(--mu); font-family:monospace; line-height:1.4; margin-top:2px;">
+            As mandated by international dangerous goods transport protocols, certified <b>Chemical & Petrochemical Tankers</b> are supplied directly by consignor loading terminals at zero capital cost. Carriers only require corporate <b>ADR License Authority</b> and an <b>ADR Certified Driver</b>.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Storage Facility Status Bar -->
+    <div style="background:#070a12; border:1px solid #161e2e; border-radius:8px; padding:10px 14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; font-size:10px; font-family:monospace;">
+      <div>
+        <span style="color:var(--mu);">CENTRAL STORAGE YARD:</span>
+        <b style="color:var(--gold); margin-left:4px;">${(S.trailers || []).length} TRAILERS STAGED AT HQ</b>
+      </div>
+      <div>
+        <span style="color:var(--mu);">OPERATING CAPITAL:</span>
+        <b style="color:var(--grn); margin-left:4px;">${fmt(S.money)}</b>
+      </div>
+    </div>
+
+    <!-- Trailer Cards List -->
+    <div style="display:flex; flex-direction:column; gap:10px;">
+      ${trailerCatalog.map(t => {
+        const ownedCount = (S.trailers || []).filter((x: string) => x === t.type).length;
+        const canAfford = S.money >= t.price;
+
+        return `
+          <div class="card" style="padding:14px; background:#0e1320; border:1px solid #1e2638; border-radius:10px;">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px;">
+              <div style="display:flex; align-items:center; gap:12px; min-width:0;">
+                <div style="width:40px; height:40px; background:#080c16; border:1px solid #1a2336; border-radius:8px; display:grid; place-items:center; font-size:20px; flex-shrink:0;">
+                  ${t.icon}
+                </div>
+                <div style="min-width:0;">
+                  <div style="font-size:9px; color:var(--gold); font-weight:800; font-family:monospace;">
+                    ${t.category}
+                  </div>
+                  <div style="font-size:14px; font-weight:900; color:var(--tx); margin-top:1px;">
+                    ${t.name}
+                  </div>
+                  <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:2px;">
+                    Tare: <b>${t.tare}</b> · Capacity: <b>${t.payload}</b>
+                  </div>
+                </div>
+              </div>
+
+              <div style="text-align:right; flex-shrink:0;">
+                <div style="font-size:8px; color:var(--mu); font-family:monospace; text-transform:uppercase;">UNIT PRICE</div>
+                <div style="font-size:15px; font-weight:900; color:var(--grn); font-family:monospace;">
+                  ${fmt(t.price)}
+                </div>
+                <div style="font-size:9px; color:${ownedCount > 0 ? 'var(--gold)' : 'var(--mu)'}; font-family:monospace; margin-top:2px;">
+                  HQ Yard: <b>${ownedCount} owned</b>
+                </div>
+              </div>
+            </div>
+
+            <!-- Technical Commercial Trailer Blueprint Illustration -->
+            <div style="background:#070a12; border:1px solid #161e2e; border-radius:6px; padding:6px 12px; margin-bottom:10px; display:flex; justify-content:center; align-items:center; min-height:60px;">
+              ${getTrailerSilhouetteSvg(t.type, 'var(--gold)')}
+            </div>
+
+            <div style="font-size:10px; color:var(--mu); background:#070a12; border:1px solid #161e2e; border-radius:6px; padding:6px 10px; margin-bottom:10px; font-family:monospace;">
+              <span style="color:var(--tx); font-weight:700;">SUITABLE FOR:</span> ${t.suitable}
+            </div>
+
+            <button class="btn gold" style="width:100%; padding:8px; font-size:10px; font-weight:900; letter-spacing:0.5px; text-transform:uppercase;" data-act="buy-depot-trailer" data-trailer="${t.type}" ${!canAfford ? 'disabled' : ''}>
+              ${canAfford ? `PURCHASE FOR HQ STORAGE YARD (${fmt(t.price)})` : 'INSUFFICIENT FUNDS'}
+            </button>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
 
 // Render the Factory Purchase Order & Configurator Modal
 function renderConfiguratorModal(S: any, inspectedModel: TruckModel | null, totalPrice: number, canAfford: boolean, hasSpace: boolean) {
@@ -544,9 +665,9 @@ function renderConfiguratorModal(S: any, inspectedModel: TruckModel | null, tota
           </div>
         </div>
 
-        <!-- Vehicle Blueprint Graphic -->
-        <div style="background:#060a14; border:1px solid #1e293b; border-radius:8px; padding:8px 14px; margin-bottom:14px;">
-          ${getTruckSilhouetteSvg(inspectedModel, 'var(--gold)', inspectedModel.axle)}
+        <!-- Vehicle Blueprint Graphic (Connected Rig or Bobtail) -->
+        <div style="background:#060a14; border:1px solid #1e293b; border-radius:8px; padding:8px 14px; margin-bottom:14px; min-height:68px; display:flex; align-items:center; justify-content:center;">
+          ${getTruckSilhouetteSvg(inspectedModel, 'var(--gold)', inspectedModel.axle, configTrailer)}
         </div>
 
         <!-- 1. Trailer Attachment Specification -->

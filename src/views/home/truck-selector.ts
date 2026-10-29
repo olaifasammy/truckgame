@@ -41,8 +41,9 @@ export function renderSelectorOverlay(S: any) {
   const isAuctionWon = (job as any).isAuctionWon;
   const quota = isAuctionWon ? getDailyBidDispatchQuota(S) : null;
 
-  // Filter trucks: Show all, but mark compatibility
+  // ONLY list vehicles that are 100% compatible with this manifest
   const fleet = S.fleet || [];
+  const compatibleFleet = fleet.filter((t: any) => !why(S, t, job));
   
   let existing = document.getElementById('truck-selector-overlay');
   if (!existing) {
@@ -52,28 +53,40 @@ export function renderSelectorOverlay(S: any) {
   }
 
   existing.style.cssText = `
-    position: fixed; inset: 0; background: rgba(5,8,18,0.95);
+    position: fixed; inset: 0; background: rgba(5,8,18,0.95); backdrop-filter: blur(4px);
     z-index: 1100; display: flex; align-items: center; justify-content: center; padding: 16px;
   `;
 
   existing.innerHTML = `
-    <div style="background:var(--s1); border:1px solid var(--line); border-radius:16px; width:100%; max-width:480px; max-height:80vh; display:flex; flex-direction:column; box-shadow:0 25px 50px rgba(0,0,0,0.5); overflow:hidden; position:relative;">
+    <div style="background:var(--s1); border:1px solid var(--line); border-radius:14px; width:100%; max-width:480px; max-height:85vh; display:flex; flex-direction:column; box-shadow:0 25px 60px rgba(0,0,0,0.8); overflow:hidden; position:relative;">
       
       <!-- Header -->
-      <div style="padding:20px; border-bottom:1px solid var(--line); background:var(--bg);">
-        <button id="close-selector" style="position:absolute; top:16px; right:16px; background:none; border:none; color:var(--mu); font-size:20px; cursor:pointer; padding:4px 8px; z-index:10;">✕</button>
-        <h3 style="margin:0; font-size:18px; color:var(--tx);">Dispatch Haul</h3>
-        <div style="font-size:12px; color:var(--accent); font-weight:700; margin-top:4px;">
-          ${cargo?.name || 'Cargo'} · ${job.from} → ${job.to}
+      <div style="padding:16px 20px; border-bottom:1px solid var(--line); background:#070a12; position:relative;">
+        <button id="close-selector" style="position:absolute; top:14px; right:14px; background:rgba(255,255,255,0.06); border:none; color:var(--mu); font-size:16px; cursor:pointer; width:28px; height:28px; border-radius:6px; display:grid; place-items:center;">✕</button>
+        <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase; font-family:monospace; letter-spacing:0.5px;">
+          DISPATCH TRACTOR SELECTION
         </div>
-        <div style="font-size:10px; color:var(--mu); margin-top:2px;">REQUIRED: ${TRAILERS[trailerType as keyof typeof TRAILERS]?.toUpperCase() || 'STANDARD'}</div>
+        <h3 style="margin:2px 0 0; font-size:16px; color:var(--tx); font-weight:900;">
+          Assign Compatible Transport
+        </h3>
+        <div style="font-size:11px; color:var(--mu); font-family:monospace; margin-top:3px; display:flex; align-items:center; gap:6px;">
+          <span style="color:var(--gold); font-weight:700;">${cargo?.name || 'Cargo'}</span>
+          <span>·</span>
+          <span>${job.from} → ${job.to}</span>
+          <span>·</span>
+          <span>${job.km} km (${job.weight}t)</span>
+        </div>
+        <div style="font-size:10px; color:var(--mu); margin-top:3px; font-family:monospace;">
+          REQUIRED COUPLING: <b style="color:var(--tx);">${TRAILERS[trailerType as keyof typeof TRAILERS]?.toUpperCase() || 'STANDARD'}</b>
+          ${cargo?.isHazmat ? ' · <span style="color:#ef4444; font-weight:800;">SHIPPER TANKER SUPPLIED</span>' : ''}
+        </div>
       </div>
 
       ${quota ? `
         <!-- Daily Bid Dispatch Quota Banner -->
-        <div style="padding:10px 16px; background:${quota.isFree ? 'rgba(16,185,129,0.1)' : 'rgba(193,154,91,0.15)'}; border-bottom:1px solid ${quota.isFree ? 'rgba(16,185,129,0.3)' : 'var(--gold)'}; display:flex; justify-content:space-between; align-items:center; font-size:10px; font-family:monospace;">
+        <div style="padding:8px 16px; background:${quota.isFree ? 'rgba(16,185,129,0.1)' : 'rgba(193,154,91,0.15)'}; border-bottom:1px solid ${quota.isFree ? 'rgba(16,185,129,0.3)' : 'var(--gold)'}; display:flex; justify-content:space-between; align-items:center; font-size:10px; font-family:monospace;">
           <span style="color:${quota.isFree ? 'var(--grn)' : 'var(--gold)'}; font-weight:800;">
-            ${quota.isFree ? `✓ Daily Free Dispatches: ${quota.freeRemaining} of 5 remaining` : `🪙 Daily Free Limit Reached: Costs 4 Gold Coins`}
+            ${quota.isFree ? `✓ Daily Free Dispatches: ${quota.freeRemaining} of 5 remaining` : `🪙 Daily Limit Exceeded: Costs 4 Gold Coins`}
           </span>
           <span style="color:var(--mu);">
             Balance: <b style="color:var(--gold);">${quota.coinsBalance} Coins</b>
@@ -81,45 +94,72 @@ export function renderSelectorOverlay(S: any) {
         </div>
       ` : ''}
 
-      <!-- List -->
-      <div style="flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px;">
-        ${fleet.length === 0 ? '<div style="padding:40px; text-align:center; color:var(--mu);">No trucks in fleet</div>' : 
-          fleet.map((t: any) => {
-            const reason = why(S, t, job);
-            const isAble = !reason;
-            const model = TRUCK_MODELS[t.modelId] || { name: 'Truck', brand: '' };
+      <!-- Compatible Trucks List -->
+      <div style="flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px;">
+        ${compatibleFleet.length === 0 ? `
+          <div style="padding:32px 16px; text-align:center; background:#070a12; border:1px solid #1e2638; border-radius:10px; margin:4px 0;">
+            <div style="font-size:28px; margin-bottom:8px;">🚫</div>
+            <div style="font-size:13px; font-weight:900; color:var(--tx); margin-bottom:4px;">NO COMPATIBLE VEHICLES AVAILABLE</div>
+            <div style="font-size:10px; color:var(--mu); line-height:1.5; font-family:monospace; max-width:360px; margin:0 auto 16px;">
+              To dispatch this cargo, you need an idle tractor equipped with <b>${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}</b>, sufficient fuel, an assigned driver with required certification, and corporate license authority.
+            </div>
+            <div style="display:flex; justify-content:center; gap:8px;">
+              <button class="btn gold" style="padding:6px 14px; font-size:10px; font-weight:800;" onclick="document.getElementById('truck-selector-overlay')?.remove(); window.dispatchEvent(new CustomEvent('nav-tab', {detail:{tab:'garage'}}));">
+                MANAGE GARAGE
+              </button>
+              <button class="btn alt" style="padding:6px 14px; font-size:10px; font-weight:800;" onclick="document.getElementById('truck-selector-overlay')?.remove(); window.dispatchEvent(new CustomEvent('nav-tab', {detail:{tab:'company'}}));">
+                HQ Depot & Trailers
+              </button>
+            </div>
+          </div>
+        ` : compatibleFleet.map((t: any) => {
+            const model = TRUCK_MODELS[t.modelId] || { name: 'Truck', brand: 'Heavy' };
+            const drv = (S.drivers || []).find((x: any) => x.id === t.driverId);
             const canAffordDispatch = !quota || quota.canAfford;
             const dispatchBtnLabel = quota 
               ? quota.isFree ? 'DISPATCH (FREE)' : quota.canAfford ? 'DISPATCH (🪙 4)' : 'NEEDS 4 COINS'
               : 'DISPATCH';
+            const trailerDesc = t.trailer ? (TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer) : 'Bobtail (Tractor Only)';
+            const trailerEmoji = t.trailer === 'reefer' ? '❄️' : t.trailer === 'lowboy' ? '🏗️' : t.trailer === 'flatbed' ? '📦' : t.trailer === 'tipper' ? '⛰️' : t.trailer === 'double_trailer' ? '🚛' : '🚚';
             
             return `
-              <div class="card" style="padding:12px; border-radius:10px; border:1px solid ${isAble ? 'var(--line)' : 'rgba(255,255,255,0.05)'}; background:${isAble ? 'var(--bg)' : 'rgba(0,0,0,0.2)'}; opacity:${isAble ? '1' : '0.6'}; display:flex; justify-content:space-between; align-items:center;">
-                <div style="display:flex; align-items:center; gap:12px;">
-                  <div style="font-size:24px; color:${isAble ? 'var(--gold)' : 'var(--mu)'};">${ic('truck')}</div>
-                  <div>
-                    <div style="font-weight:700; color:var(--tx); font-size:13px;">${t.name}</div>
-                    <div style="font-size:10px; color:var(--mu);">${model.brand} ${model.name} · ${t.loc}</div>
-                    ${!isAble ? `<div style="font-size:10px; color:#ef4444; font-weight:700; margin-top:2px;">${reason}</div>` : ''}
+              <div class="card" style="padding:10px 12px; border-radius:8px; border:1px solid #1e2638; background:#070a12; display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; align-items:center; gap:10px; min-width:0;">
+                  <div style="font-size:20px; color:var(--gold); width:34px; height:34px; background:#0e1320; border:1px solid #1a2336; border-radius:6px; display:grid; place-items:center; flex-shrink:0;">
+                    ${ic('truck')}
+                  </div>
+                  <div style="min-width:0;">
+                    <div style="font-weight:900; color:var(--tx); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                      ${t.name} · <span style="font-size:10px; color:var(--mu); font-weight:600;">${model.brand} ${model.name}</span>
+                    </div>
+                    <div style="font-size:9px; color:var(--gold); font-family:monospace; margin-top:2px; display:flex; align-items:center; gap:4px;">
+                      <span>${trailerEmoji}</span>
+                      <span>HITCHED: <b>${trailerDesc.toUpperCase()}</b></span>
+                    </div>
+                    <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
+                      Driver: <b style="color:var(--tx);">${drv ? drv.name : 'Assigned'}</b> · Stationed at <b>${t.loc}</b>
+                    </div>
                   </div>
                 </div>
-                ${isAble ? `
-                  <button class="btn gold" data-act="select-dispatch" data-job-id="${job.id}" data-truck-id="${t.id}" style="padding:6px 12px; font-size:10px; font-weight:800; ${!canAffordDispatch ? 'opacity:0.6;' : ''}">
+
+                <div style="flex-shrink:0; margin-left:8px;">
+                  <button class="btn gold" data-act="select-dispatch" data-job-id="${job.id}" data-truck-id="${t.id}" style="padding:6px 12px; font-size:9px; font-weight:900; letter-spacing:0.5px; text-transform:uppercase; ${!canAffordDispatch ? 'opacity:0.6;' : ''}">
                     ${dispatchBtnLabel}
                   </button>
-                ` : `
-                  <div style="font-size:18px; color:var(--mu); padding-right:10px;">${ic('lock')}</div>
-                `}
+                </div>
               </div>
             `;
           }).join('')}
       </div>
 
-      <div style="padding:12px; border-top:1px solid var(--line); text-align:center; font-size:10px; color:var(--mu); background:var(--bg);">
-        Compatible trucks must be idle, fueled, and have an assigned driver.
+      <div style="padding:10px 16px; border-top:1px solid var(--line); text-align:center; font-size:9px; color:var(--mu); background:#070a12; font-family:monospace;">
+        Displaying verified compatible tractors only (${compatibleFleet.length} matched).
       </div>
     </div>
   `;
 
   document.getElementById('close-selector')?.addEventListener('click', closeTruckSelector);
+  existing.onclick = (e) => {
+    if (e.target === existing) closeTruckSelector();
+  };
 }

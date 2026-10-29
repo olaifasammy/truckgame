@@ -95,32 +95,23 @@ export default {
 
       <!-- Live Bidding & Reverse Freight Auctions Section -->
       ${!isVip ? `
-        <!-- VIP Gated Notice for Non-VIP Carriers -->
-        <div style="background:linear-gradient(135deg, #111827 0%, #0c1220 100%); border:1px solid rgba(193,154,91,0.3); border-radius:10px; padding:14px 16px; margin-bottom:14px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; gap:12px;">
-            <div style="display:flex; align-items:center; gap:12px; min-width:0;">
-              <div style="width:38px; height:38px; background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.4); border-radius:8px; display:grid; place-items:center; color:#ef4444; font-size:18px; flex-shrink:0;">
-                🔒
-              </div>
-              <div style="min-width:0;">
-                <div style="font-size:12px; font-weight:900; color:var(--tx); letter-spacing:0.3px; text-transform:uppercase;">
-                  REVERSE FREIGHT BIDDING ROOMS · <span style="color:#ef4444;">VIP EXCLUSIVE</span>
-                </div>
-                <div style="font-size:10px; color:var(--mu); font-family:monospace; margin-top:2px;">
-                  Access unlocks at <b style="color:var(--gold);">VIP Rank (VIP 1)</b>. Current Rank: <b style="color:${prog.color};">${prog.title.toUpperCase()} (Tier ${prog.tier}/3)</b>
-                </div>
-              </div>
-            </div>
-            <div style="flex-shrink:0; text-align:right;">
-              <span style="font-size:9px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); padding:4px 8px; border-radius:4px; color:var(--gold); font-family:monospace; font-weight:700;">
-                Deliver standard loads to reach VIP
-              </span>
+        <!-- Compact VIP Gated Notice for Non-VIP Carriers -->
+        <div style="background:linear-gradient(90deg, #101626 0%, #0d121f 100%); border:1px solid rgba(239,68,68,0.3); border-radius:6px; padding:6px 10px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px; min-width:0;">
+            <span style="font-size:12px; color:#ef4444; flex-shrink:0;">🔒</span>
+            <div style="min-width:0; font-size:10px; font-family:monospace; line-height:1.2;">
+              <span style="font-weight:900; color:var(--tx); text-transform:uppercase;">REVERSE FREIGHT BIDDING</span>
+              <span style="color:#ef4444; font-weight:800; font-size:9px; margin-left:3px;">· VIP 1 EXCLUSIVE</span>
+              <span style="color:var(--mu); margin-left:5px;">Rank: <b style="color:${prog.color};">${prog.title.toUpperCase()} (${prog.tier}/3)</b></span>
             </div>
           </div>
+          <span style="font-size:8px; color:var(--gold); font-family:monospace; font-weight:700; white-space:nowrap; background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); padding:2px 6px; border-radius:3px;">
+            Deliver loads to reach VIP
+          </span>
         </div>
         ${filteredAuctions.length > 0 ? `
-          <div style="opacity:0.65; pointer-events:none;">
-            ${filteredAuctions.map((j: any) => renderAuctionCard(S, j)).join('')}
+          <div style="opacity:0.6; pointer-events:none;">
+            ${filteredAuctions.slice(0, 2).map((j: any) => renderAuctionCard(S, j)).join('')}
           </div>
         ` : ''}
       ` : filteredAuctions.length > 0 ? `

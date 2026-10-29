@@ -1,7 +1,7 @@
 import { ic } from '../core/icons';
 import { action, fmt, dur, toast } from '../core/ui';
 import { refresh } from '../core/store';
-import { hire, fire, transferDriver, hireFee, transferFee } from '../systems/drivers';
+import { hire, fire, transferDriver, hireFee, transferFee, trainDriverSkill, certifyDriver, DRIVER_CERTIFICATIONS, skillUpgradeCost } from '../systems/drivers';
 import { TRAIT_REGISTRY } from '../domain/drivers/drivers.names';
 import { Region } from '../domain/drivers/drivers.types';
 
@@ -20,6 +20,16 @@ action('toggle-driver-expand', d => {
 
 action('hire-driver', d => hire(+(d as any).id));
 action('fire-driver', d => fire(+(d as any).id));
+
+action('train-driver-skill', d => {
+  trainDriverSkill(+(d as any).id);
+  refresh();
+});
+
+action('certify-driver', d => {
+  certifyDriver(+(d as any).id, (d as any).cert);
+  refresh();
+});
 
 action('open-transfer-modal', d => {
   transferModalDriverId = +(d as any).id;
@@ -99,6 +109,8 @@ export default {
                 const morale = d.morale !== undefined ? d.morale : 90;
                 const fatigue = d.fatigue !== undefined ? d.fatigue : 10;
                 const salary = d.salary || 200;
+                const certs: string[] = d.certifications || [];
+                const upgradeFee = skillUpgradeCost(d.skill);
 
                 return `
                   <div class="card ${isExpanded ? 'open' : ''}" style="background:var(--s1); border:1px solid var(--line);">
@@ -107,7 +119,20 @@ export default {
                         <div style="width:36px; height:36px; background:var(--bg); border:1px solid var(--gold); border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--gold); font-size:16px;">${ic('user')}</div>
                         <div>
                           <div style="font-weight:800; font-size:13px; color:var(--tx);">${d.name}</div>
-                          <div style="font-size:10px; color:var(--gold); font-weight:700; margin-top:2px;">${regionStr} · Skill ${d.skill}/5 · Daily Wage: $${salary}</div>
+                          <div style="font-size:10px; color:var(--gold); font-weight:700; margin-top:2px;">${regionStr} · Daily Wage: $${salary}</div>
+                          <!-- Skill & Certifications Badges -->
+                          <div style="display:flex; align-items:center; gap:4px; margin-top:4px; flex-wrap:wrap;">
+                            <span style="font-size:9px; background:rgba(193,154,91,0.15); border:1px solid var(--gold); border-radius:3px; padding:1px 5px; color:var(--gold); font-weight:800; font-family:monospace;">
+                              SKILL ${'★'.repeat(d.skill)}${'☆'.repeat(5 - d.skill)}
+                            </span>
+                            ${certs.length > 0 ? certs.map(c => `
+                              <span style="font-size:8px; background:rgba(34,197,94,0.15); border:1px solid var(--grn); border-radius:3px; padding:1px 5px; color:var(--grn); font-weight:700;">
+                                ${c}
+                              </span>
+                            `).join('') : `
+                              <span style="font-size:8px; color:var(--mu); font-family:monospace;">Standard CDL Only</span>
+                            `}
+                          </div>
                         </div>
                       </div>
                       <div style="text-align:right; display:flex; align-items:center; gap:10px;">
@@ -121,6 +146,64 @@ export default {
 
                     ${isExpanded ? `
                       <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--line);">
+                        <!-- Driver Skill Academy Promotion -->
+                        <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+                          <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div>
+                              <div style="font-size:11px; font-weight:800; color:var(--tx);">Commercial Skill Advancement</div>
+                              <div style="font-size:9px; color:var(--mu); margin-top:1px;">Higher skill reduces transit time, fuel consumption, and vehicle stress.</div>
+                            </div>
+                            <div>
+                              ${d.skill >= 5 ? `
+                                <span style="font-size:9px; font-weight:900; color:var(--gold); font-family:monospace; background:rgba(193,154,91,0.15); border:1px solid var(--gold); padding:4px 8px; border-radius:4px;">
+                                  ★ MASTER CDL (5/5)
+                                </span>
+                              ` : `
+                                <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="train-driver-skill" data-id="${d.id}" ${S.money >= upgradeFee ? '' : 'disabled'}>
+                                  TRAIN TO LVL ${d.skill + 1}★ ($${upgradeFee.toLocaleString()})
+                                </button>
+                              `}
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- Specialized Freight Endorsements & Certifications -->
+                        <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+                          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <span style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">COMMERCIAL ENDORSEMENTS & CERTIFICATIONS</span>
+                            <span style="font-size:9px; font-family:monospace; color:var(--mu);">${certs.length} / ${DRIVER_CERTIFICATIONS.length} ENDORSED</span>
+                          </div>
+                          <div style="display:flex; flex-direction:column; gap:6px;">
+                            ${DRIVER_CERTIFICATIONS.map(cert => {
+                              const hasCert = certs.includes(cert.id);
+                              const canAfford = S.money >= cert.cost;
+                              return `
+                                <div style="display:flex; justify-content:space-between; align-items:center; background:#111827; border:1px solid ${hasCert ? 'rgba(34,197,94,0.3)' : '#1e293b'}; border-radius:6px; padding:8px 10px;">
+                                  <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-size:16px;">${cert.icon}</span>
+                                    <div>
+                                      <div style="font-size:11px; font-weight:800; color:var(--tx);">${cert.name}</div>
+                                      <div style="font-size:9px; color:var(--mu);">${cert.desc}</div>
+                                    </div>
+                                  </div>
+                                  <div>
+                                    ${hasCert ? `
+                                      <span style="font-size:9px; font-weight:900; color:var(--grn); font-family:monospace; background:rgba(34,197,94,0.12); border:1px solid var(--grn); padding:3px 8px; border-radius:4px;">
+                                        ✓ ENDORSED
+                                      </span>
+                                    ` : `
+                                      <button class="btn gold" style="padding:4px 10px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="certify-driver" data-id="${d.id}" data-cert="${cert.id}" ${canAfford ? '' : 'disabled'}>
+                                        ENROLL $${cert.cost.toLocaleString()}
+                                      </button>
+                                    `}
+                                  </div>
+                                </div>
+                              `;
+                            }).join('')}
+                          </div>
+                        </div>
+
+                        <!-- Special Trait -->
                         <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:12px;">
                           <div style="font-size:10px; font-weight:800; color:var(--gold); margin-bottom:4px;">SPECIAL TRAIT: ${trait?.name || 'Standard'}</div>
                           <div style="font-size:11px; color:var(--tx);">${trait?.desc || 'Reliable operational characteristics.'}</div>

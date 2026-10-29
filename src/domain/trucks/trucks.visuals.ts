@@ -1,142 +1,561 @@
 /**
- * Authentic commercial heavy vehicle SVG silhouettes and telematics schematics.
+ * Authentic commercial heavy vehicle SVG silhouettes, combination rigs, and trailer schematics.
  */
-export function getTruckSilhouetteSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4'): string {
+
+// Helper to render high-definition dual/steer wheels
+const wheelSvg = (cx: number, cy: number = 54, r: number = 8) => `
+  <circle cx="${cx}" cy="${cy}" r="${r}" fill="#0f172a" stroke="#cbd5e1" stroke-width="1.5"/>
+  <circle cx="${cx}" cy="${cy}" r="${r * 0.55}" fill="#334155" stroke="#94a3b8" stroke-width="0.8"/>
+  <circle cx="${cx}" cy="${cy}" r="${r * 0.2}" fill="#cbd5e1"/>
+`;
+
+/**
+ * Render individual trailer components when coupled behind a tractor.
+ * @param type Trailer type identifier
+ * @param startX Starting X position on fifth-wheel pin (connects around x=112-120)
+ * @param accentColor Theme accent color
+ */
+function renderCoupledTrailerSvg(type: string, startX: number, accentColor: string): string {
+  const trailerLen = 185;
+  const endX = startX + trailerLen;
+  const bogieAxle1 = endX - 44;
+  const bogieAxle2 = endX - 25;
+  const bogieAxle3 = endX - 6;
+
+  // Common trailer undercarriage (Landing gear retracted, kingpin pin, rear bogie wheels, crash bumper)
+  const undercarriage = `
+    <!-- Trailer Kingpin Gooseneck Connection -->
+    <path d="M${startX - 8} 48 L${startX + 20} 48 L${startX + 20} 52 L${startX - 8} 52 Z" fill="#475569" stroke="#64748b" stroke-width="0.8"/>
+    <rect x="${startX + 3}" y="47" width="5" height="3" fill="#cbd5e1"/>
+    
+    <!-- Retracted Transit Landing Legs -->
+    <rect x="${startX + 40}" y="50" width="3" height="8" rx="0.5" fill="#64748b" stroke="#94a3b8" stroke-width="0.5"/>
+    <circle cx="${startX + 41.5}" cy="53" r="1.5" fill="#94a3b8"/>
+    
+    <!-- Side Cyclist Underrun Protection Guard Rail -->
+    <line x1="${startX + 52}" y1="55" x2="${bogieAxle1 - 10}" y2="55" stroke="#64748b" stroke-width="1.2"/>
+    <line x1="${startX + 52}" y1="58" x2="${bogieAxle1 - 10}" y2="58" stroke="#475569" stroke-width="0.8"/>
+
+    <!-- Rear Bogie Tri-Axle Wheels -->
+    ${wheelSvg(bogieAxle1, 54, 8)}
+    ${wheelSvg(bogieAxle2, 54, 8)}
+    ${wheelSvg(bogieAxle3, 54, 8)}
+
+    <!-- Rear Fenders / Wheel Arches -->
+    <path d="M${bogieAxle1 - 10} 52 Q${bogieAxle1} 43 ${bogieAxle1 + 10} 52" stroke="#475569" stroke-width="1.2" fill="none"/>
+    <path d="M${bogieAxle2 - 10} 52 Q${bogieAxle2} 43 ${bogieAxle2 + 10} 52" stroke="#475569" stroke-width="1.2" fill="none"/>
+    <path d="M${bogieAxle3 - 10} 52 Q${bogieAxle3} 43 ${bogieAxle3 + 10} 52" stroke="#475569" stroke-width="1.2" fill="none"/>
+
+    <!-- Rear Underrun Crash Bumper & Reflectors -->
+    <rect x="${endX + 2}" y="52" width="2" height="7" fill="#dc2626"/>
+    <path d="M${endX + 1} 50 L${endX + 3} 59 L${endX} 59" stroke="#94a3b8" stroke-width="1"/>
+  `;
+
+  switch (type) {
+    case 'curtain':
+      return `
+        <!-- Curtainside Semi-Trailer Body -->
+        <rect x="${startX - 10}" y="14" width="${trailerLen + 10}" height="37" rx="2" fill="rgba(193,154,91,0.14)" stroke="${accentColor}" stroke-width="1.5"/>
+        <path d="M${startX - 10} 14 L${startX + 6} 11 L${endX} 13" stroke="${accentColor}" stroke-width="1" fill="none"/>
+        <!-- Tension Curtain Buckle Lines -->
+        ${[0.18, 0.32, 0.46, 0.60, 0.74, 0.88].map(pct => {
+          const x = Math.round(startX - 10 + (trailerLen + 10) * pct);
+          return `<line x1="${x}" y1="16" x2="${x}" y2="50" stroke="${accentColor}" stroke-width="0.8" stroke-dasharray="3 2" opacity="0.6"/>`;
+        }).join('')}
+        <!-- Rear Aluminum Door Frame -->
+        <line x1="${endX - 3}" y1="15" x2="${endX - 3}" y2="50" stroke="#cbd5e1" stroke-width="1.2"/>
+        <circle cx="${endX - 3}" cy="32" r="1" fill="#f59e0b"/>
+        ${undercarriage}
+      `;
+
+    case 'reefer':
+      return `
+        <!-- Refrigerated Reefer Cooling Compressor Unit -->
+        <rect x="${startX - 16}" y="15" width="13" height="24" rx="2" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
+        <circle cx="${startX - 9.5}" cy="23" r="3.5" fill="#1e293b" stroke="#38bdf8" stroke-width="0.8"/>
+        <line x1="${startX - 13}" y1="23" x2="${startX - 6}" y2="23" stroke="#38bdf8" stroke-width="0.8"/>
+        <rect x="${startX - 14}" y="32" width="9" height="3" rx="0.5" fill="#38bdf8" fill-opacity="0.8"/>
+        <!-- Insulated Composite Box Body -->
+        <rect x="${startX - 4}" y="12" width="${trailerLen + 4}" height="39" rx="1.5" fill="rgba(56,189,248,0.12)" stroke="#38bdf8" stroke-width="1.5"/>
+        <!-- Horizontal Insulated Panels -->
+        <line x1="${startX}" y1="24" x2="${endX - 2}" y2="24" stroke="#38bdf8" stroke-width="0.5" opacity="0.5"/>
+        <line x1="${startX}" y1="36" x2="${endX - 2}" y2="36" stroke="#38bdf8" stroke-width="0.5" opacity="0.5"/>
+        <!-- Cold Chain Snowflake Icon -->
+        <text x="${startX + 25}" y="20" font-size="7" fill="#38bdf8">❄</text>
+        <text x="${startX + 36}" y="20" font-size="5" font-weight="900" fill="#38bdf8" font-family="monospace">COLD-CHAIN GDP</text>
+        <!-- Heavy Cam Locks -->
+        <line x1="${endX - 2}" y1="14" x2="${endX - 2}" y2="50" stroke="#cbd5e1" stroke-width="1.5"/>
+        ${undercarriage}
+      `;
+
+    case 'tanker':
+      return `
+        <!-- Stainless Steel Cylindrical Foodgrade Tanker -->
+        <path d="M${startX - 2} 22 L${endX - 8} 22 Q${endX + 2} 36 ${endX - 8} 49 L${startX - 2} 49 Q${startX - 12} 36 ${startX - 2} 22 Z" fill="rgba(203,213,225,0.14)" stroke="#cbd5e1" stroke-width="1.5"/>
+        <!-- Stainless Tank Reinforcement Rings -->
+        ${[0.2, 0.4, 0.6, 0.8].map(pct => {
+          const x = Math.round(startX + trailerLen * pct);
+          return `<path d="M${x} 22 Q${x + 3} 36 ${x} 49" stroke="#94a3b8" stroke-width="1" fill="none"/>`;
+        }).join('')}
+        <!-- Top Catwalk & Safety Rails -->
+        <line x1="${startX + 15}" y1="19" x2="${endX - 25}" y2="19" stroke="#94a3b8" stroke-width="1"/>
+        <!-- Top Manhole Covers -->
+        <ellipse cx="${startX + 40}" cy="20" rx="3.5" ry="1.5" fill="#64748b" stroke="#cbd5e1" stroke-width="0.8"/>
+        <ellipse cx="${startX + 95}" cy="20" rx="3.5" ry="1.5" fill="#64748b" stroke="#cbd5e1" stroke-width="0.8"/>
+        <ellipse cx="${startX + 145}" cy="20" rx="3.5" ry="1.5" fill="#64748b" stroke="#cbd5e1" stroke-width="0.8"/>
+        <!-- Bottom Discharge Cabinet -->
+        <rect x="${startX + 65}" y="49" width="18" height="6" fill="#334155" stroke="#64748b" stroke-width="0.8"/>
+        ${undercarriage}
+      `;
+
+    case 'hazmat':
+      return `
+        <!-- ADR Hazardous Materials / Chemical Tanker -->
+        <path d="M${startX - 2} 22 L${endX - 8} 22 Q${endX + 2} 36 ${endX - 8} 49 L${startX - 2} 49 Q${startX - 12} 36 ${startX - 2} 22 Z" fill="rgba(234,88,12,0.15)" stroke="#ea580c" stroke-width="1.5"/>
+        <!-- Tank Rings -->
+        ${[0.25, 0.5, 0.75].map(pct => {
+          const x = Math.round(startX + trailerLen * pct);
+          return `<path d="M${x} 22 Q${x + 3} 36 ${x} 49" stroke="#f97316" stroke-width="1" fill="none"/>`;
+        }).join('')}
+        <!-- Top Pressure Relief Manholes -->
+        <ellipse cx="${startX + 50}" cy="20" rx="4" ry="1.8" fill="#c2410c" stroke="#fed7aa" stroke-width="0.8"/>
+        <ellipse cx="${startX + 120}" cy="20" rx="4" ry="1.8" fill="#c2410c" stroke="#fed7aa" stroke-width="0.8"/>
+        <!-- ADR Hazard Placard Diamonds -->
+        <rect x="${startX + 35}" y="31" width="9" height="9" rx="1" transform="rotate(45 ${startX + 39.5} 35.5)" fill="#ea580c" stroke="#ffedd5" stroke-width="0.8"/>
+        <text x="${startX + 39.5}" y="37" font-size="4" font-weight="900" text-anchor="middle" fill="#fff" font-family="monospace">ADR</text>
+        <rect x="${startX + 85}" y="31" width="9" height="9" rx="1" transform="rotate(45 ${startX + 89.5} 35.5)" fill="#dc2626" stroke="#ffedd5" stroke-width="0.8"/>
+        <text x="${startX + 89.5}" y="37" font-size="5" font-weight="900" text-anchor="middle" fill="#fff" font-family="monospace">☣</text>
+        <!-- Yellow / Black Hazard Chevron Rear Bumper -->
+        <rect x="${endX - 1}" y="49" width="4" height="6" fill="#f59e0b" stroke="#000" stroke-width="0.5"/>
+        ${undercarriage}
+      `;
+
+    case 'flatbed':
+      return `
+        <!-- Heavy Industrial Steel Flatbed Deck -->
+        <!-- Front Steel Headboard Bulkhead -->
+        <path d="M${startX - 8} 52 L${startX - 8} 30 L${startX - 4} 30 L${startX - 4} 52 Z" fill="#475569" stroke="#94a3b8" stroke-width="1"/>
+        <!-- Main Platform Beam -->
+        <rect x="${startX - 8}" y="48" width="${trailerLen + 8}" height="4" fill="#334155" stroke="#cbd5e1" stroke-width="1"/>
+        <!-- Structural Cargo: Bundled Industrial Heavy Pipes -->
+        <rect x="${startX + 10}" y="35" width="${trailerLen - 40}" height="13" rx="1" fill="#1e293b" stroke="#94a3b8" stroke-width="1"/>
+        <line x1="${startX + 10}" y1="41" x2="${startX + trailerLen - 30}" y2="41" stroke="#475569" stroke-width="0.8"/>
+        <!-- High-Visibility Yellow Ratchet Tie-Down Straps -->
+        ${[0.18, 0.35, 0.52, 0.68].map(pct => {
+          const x = Math.round(startX + 10 + (trailerLen - 40) * pct);
+          return `<line x1="${x}" y1="35" x2="${x}" y2="49" stroke="#eab308" stroke-width="1.5"/>`;
+        }).join('')}
+        ${undercarriage}
+      `;
+
+    case 'lowboy': {
+      // Specialized Gooseneck Drop-Deck Machinery Trailer
+      const deckStart = startX + 26;
+      const deckEnd = endX - 60;
+      return `
+        <!-- Gooseneck Drop to Low Bed Well -->
+        <path d="M${startX - 8} 48 L${startX + 18} 48 L${deckStart} 57 L${deckEnd} 57 L${deckEnd + 10} 48 L${endX} 48 L${endX} 52 L${deckEnd + 8} 52 L${deckEnd} 60 L${deckStart} 60 L${startX + 16} 52 L${startX - 8} 52 Z" fill="#1e293b" stroke="#eab308" stroke-width="1.2"/>
+        
+        <!-- Heavy Excavator / Industrial Plant Loaded in Well Deck -->
+        <!-- Track Base -->
+        <rect x="${deckStart + 16}" y="53" width="70" height="4.5" rx="1.5" fill="#0f172a" stroke="#64748b" stroke-width="0.8"/>
+        <circle cx="${deckStart + 22}" cy="55" r="1.5" fill="#94a3b8"/>
+        <circle cx="${deckStart + 51}" cy="55" r="1.5" fill="#94a3b8"/>
+        <circle cx="${deckStart + 80}" cy="55" r="1.5" fill="#94a3b8"/>
+        <!-- Yellow Excavator Body & Operator Cab -->
+        <path d="M${deckStart + 22} 53 L${deckStart + 60} 53 L${deckStart + 60} 38 L${deckStart + 40} 38 L${deckStart + 35} 44 L${deckStart + 22} 44 Z" fill="#eab308" stroke="#ca8a04" stroke-width="1"/>
+        <rect x="${deckStart + 44}" y="40" width="12" height="8" rx="1" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="0.6"/>
+        <!-- Heavy Boom Arm -->
+        <path d="M${deckStart + 32} 44 L${deckStart + 10} 24 L${deckStart - 6} 36" stroke="#ca8a04" stroke-width="2.5" stroke-linecap="round" fill="none"/>
+        
+        <!-- Rear Ramps & Heavy Quad Bogie -->
+        ${wheelSvg(bogieAxle1 - 10, 54, 7.5)}
+        ${wheelSvg(bogieAxle2 - 5, 54, 7.5)}
+        ${wheelSvg(bogieAxle3, 54, 7.5)}
+        <!-- Heavy Fold-Down Loading Ramps -->
+        <path d="M${endX} 48 L${endX + 6} 34 L${endX + 8} 35 L${endX + 2} 50" fill="#475569" stroke="#94a3b8" stroke-width="1"/>
+      `;
+    }
+
+    case 'tipper':
+      return `
+        <!-- Heavy Aggregate Tipper Dump Tub -->
+        <path d="M${startX + 6} 22 L${endX - 4} 22 L${endX - 12} 50 L${startX - 4} 50 Z" fill="rgba(193,154,91,0.18)" stroke="${accentColor}" stroke-width="1.5"/>
+        <!-- Front Chrome Telescopic Hoist Ram -->
+        <line x1="${startX - 6}" y1="24" x2="${startX + 2}" y2="48" stroke="#cbd5e1" stroke-width="3"/>
+        <line x1="${startX - 6}" y1="24" x2="${startX - 2}" y2="36" stroke="#38bdf8" stroke-width="1.5"/>
+        <!-- Tipper Side Reinforcement Ribs -->
+        ${[0.25, 0.5, 0.75].map(pct => {
+          const x = Math.round(startX + (trailerLen - 20) * pct);
+          return `<line x1="${x + 6}" y1="24" x2="${x}" y2="49" stroke="${accentColor}" stroke-width="1"/>`;
+        }).join('')}
+        <!-- Sloped Rear Tailgate with Heavy Pivot -->
+        <circle cx="${endX - 4}" cy="24" r="2" fill="#eab308"/>
+        ${undercarriage}
+      `;
+
+    case 'container':
+      return `
+        <!-- Skeletal Intermodal Container Chassis -->
+        <rect x="${startX - 8}" y="49" width="${trailerLen + 8}" height="3" fill="#334155" stroke="#64748b" stroke-width="1"/>
+        
+        <!-- ISO 40ft Maritime Corrugated Shipping Container -->
+        <rect x="${startX - 6}" y="15" width="${trailerLen + 4}" height="34" rx="1" fill="#1e293b" stroke="#38bdf8" stroke-width="1.2"/>
+        <!-- Vertical Corrugation Flutes -->
+        ${Array.from({ length: 18 }).map((_, idx) => {
+          const x = Math.round(startX + (idx * 9.5));
+          return `<line x1="${x}" y1="17" x2="${x}" y2="47" stroke="#38bdf8" stroke-width="0.6" opacity="0.4"/>`;
+        }).join('')}
+        <!-- Maritime Shipping Line Branding & ISO Corner Castings -->
+        <text x="${startX + 14}" y="24" font-size="5" font-weight="900" fill="#38bdf8" font-family="monospace">NEX-HAUL 40' HC</text>
+        <rect x="${startX - 6}" y="15" width="4" height="4" fill="#64748b" stroke="#cbd5e1" stroke-width="0.5"/>
+        <rect x="${endX - 4}" y="15" width="4" height="4" fill="#64748b" stroke="#cbd5e1" stroke-width="0.5"/>
+        <rect x="${startX - 6}" y="45" width="4" height="4" fill="#64748b" stroke="#cbd5e1" stroke-width="0.5"/>
+        <rect x="${endX - 4}" y="45" width="4" height="4" fill="#64748b" stroke="#cbd5e1" stroke-width="0.5"/>
+        ${undercarriage}
+      `;
+
+    case 'double_trailer': {
+      // Long Combination Vehicle (LCV) - Two 28ft pup trailers connected via converter dolly
+      const pup1End = startX + 105;
+      const dollyAxle = pup1End + 15;
+      const pup2Start = pup1End + 28;
+      const pup2End = pup2Start + 110;
+      return `
+        <!-- Lead Pup Semi-Trailer (28ft) -->
+        <rect x="${startX - 6}" y="15" width="108" height="36" rx="2" fill="rgba(193,154,91,0.14)" stroke="${accentColor}" stroke-width="1.2"/>
+        ${wheelSvg(pup1End - 16, 54, 7.5)}
+        ${wheelSvg(pup1End - 2, 54, 7.5)}
+
+        <!-- Converter Dolly with Drawbar & Fifth-Wheel Turntable -->
+        <line x1="${pup1End + 2}" y1="52" x2="${dollyAxle}" y2="52" stroke="#64748b" stroke-width="1.5"/>
+        <path d="${dollyAxle - 4} 49 L${dollyAxle + 6} 49 L${dollyAxle + 4} 47 L${dollyAxle - 2} 47 Z" fill="#94a3b8"/>
+        ${wheelSvg(dollyAxle, 54, 7.5)}
+
+        <!-- Trailing Pup Semi-Trailer (28ft) -->
+        <rect x="${pup2Start}" y="15" width="108" height="36" rx="2" fill="rgba(193,154,91,0.14)" stroke="${accentColor}" stroke-width="1.2"/>
+        <text x="${pup2Start + 20}" y="24" font-size="5" font-weight="900" fill="${accentColor}" font-family="monospace">B-TRAIN LCV</text>
+        ${wheelSvg(pup2End - 16, 54, 7.5)}
+        ${wheelSvg(pup2End - 2, 54, 7.5)}
+        <rect x="${pup2End + 1}" y="52" width="2" height="7" fill="#dc2626"/>
+      `;
+    }
+
+    case 'carrier':
+      return `
+        <!-- Multi-Deck Auto Car Transporter Framework -->
+        <line x1="${startX - 6}" y1="50" x2="${endX}" y2="50" stroke="#64748b" stroke-width="1.5"/>
+        <!-- Angled Top Vehicle Deck -->
+        <line x1="${startX - 6}" y1="20" x2="${endX}" y2="24" stroke="#64748b" stroke-width="1.5"/>
+        <!-- Supporting Trusses -->
+        ${[0.2, 0.4, 0.6, 0.8].map(pct => {
+          const x = Math.round(startX + trailerLen * pct);
+          return `<line x1="${x}" y1="22" x2="${x}" y2="50" stroke="#475569" stroke-width="1"/>`;
+        }).join('')}
+        <!-- Loaded Cars Silhouettes (Top & Bottom Decks) -->
+        <!-- Car 1 Top Deck -->
+        <path d="M${startX + 15} 20 L${startX + 22} 15 L${startX + 42} 15 L${startX + 50} 20 Z" fill="#38bdf8" fill-opacity="0.4" stroke="#38bdf8" stroke-width="0.8"/>
+        <!-- Car 2 Top Deck -->
+        <path d="M${startX + 80} 21 L${startX + 87} 16 L${startX + 107} 16 L${startX + 115} 21 Z" fill="#eab308" fill-opacity="0.4" stroke="#eab308" stroke-width="0.8"/>
+        <!-- Car 3 Bottom Deck -->
+        <path d="M${startX + 40} 50 L${startX + 47} 45 L${startX + 67} 45 L${startX + 75} 50 Z" fill="#ef4444" fill-opacity="0.4" stroke="#ef4444" stroke-width="0.8"/>
+        ${undercarriage}
+      `;
+
+    case 'box':
+    default:
+      return `
+        <!-- Dry Freight Box Van Trailer Body -->
+        <rect x="${startX - 10}" y="14" width="${trailerLen + 10}" height="37" rx="2" fill="rgba(255,255,255,0.06)" stroke="${accentColor}" stroke-width="1.5"/>
+        <line x1="${startX - 10}" y1="46" x2="${endX}" y2="46" stroke="#475569" stroke-width="0.8"/>
+        <!-- Rear Barn Doors -->
+        <line x1="${endX - 3}" y1="16" x2="${endX - 3}" y2="50" stroke="#cbd5e1" stroke-width="1.2"/>
+        ${undercarriage}
+      `;
+  }
+}
+
+/**
+ * Main Truck Silhouette Renderer.
+ * - If trailerType is empty/none: renders standard bobtail tractor (viewBox="0 0 160 70").
+ * - If trailerType is provided: renders complete connected tractor + trailer rig (viewBox="0 0 340 70" or 440 for LCV).
+ */
+export function getTruckSilhouetteSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4', trailerType?: string | null): string {
   const isAmerican = model.region === 'America';
   const is6x4 = axle === '6x4' || axle === '6x2' || axle === '8x4';
+  const hasTrailer = !!trailerType && trailerType !== 'none';
+  const isDouble = trailerType === 'double_trailer';
+  
+  const viewBoxWidth = hasTrailer ? (isDouble ? 460 : 340) : 160;
+  const fifthWheelX = isAmerican ? 128 : 116;
+
+  // Render tractor front (Cabover or Conventional)
+  let tractorSvg = '';
 
   if (isAmerican) {
-    // American Conventional (Long hood, vertical chrome exhaust stacks, sleeper compartment)
-    return `
-      <svg viewBox="0 0 160 70" class="truck-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- Ground line -->
-        <line x1="2" y1="62" x2="158" y2="62" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="2 2" />
-        
-        <!-- Chassis frame rail -->
-        <path d="M12 52 L150 52 L150 56 L12 56 Z" fill="#2d3748" stroke="#4a5568" stroke-width="1"/>
-        
-        <!-- Long Hood & Front Bumper -->
-        <path d="M14 54 L6 54 L6 42 L22 42 L26 30 L48 30 L48 54 Z" fill="rgba(193,154,91,0.12)" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
-        <rect x="4" y="44" width="4" height="10" rx="1" fill="#718096" stroke="#a0aec0" stroke-width="0.8"/>
-        <!-- Headlight -->
-        <rect x="7" y="44" width="3" height="4" rx="0.5" fill="#fef08a"/>
-        
-        <!-- Windshield & A-Pillar -->
-        <path d="M48 30 L55 18 L76 18 L76 54 L48 54 Z" fill="rgba(193,154,91,0.18)" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
-        <path d="M50 30 L56 20 L66 20 L64 30 Z" fill="#38bdf8" fill-opacity="0.25" stroke="#38bdf8" stroke-width="0.8"/>
-        
-        <!-- Sleeper Berth Cab -->
-        <path d="M76 14 L102 14 L102 52 L76 52 Z" fill="rgba(193,154,91,0.15)" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
-        <rect x="80" y="22" width="10" height="8" rx="1" fill="#38bdf8" fill-opacity="0.2" stroke="#38bdf8" stroke-width="0.6"/>
-        <path d="M74 14 L104 12 L104 14 Z" fill="${accentColor}" opacity="0.6"/>
-        
-        <!-- Vertical Exhaust Stacks -->
-        <path d="M76 34 L76 6 L79 4 L79 34 Z" fill="#cbd5e1" stroke="#94a3b8" stroke-width="0.8"/>
-        <path d="M74 34 L74 8 L76 6" stroke="#64748b" stroke-width="0.8"/>
-        
-        <!-- Fuel Tanks (Cylindrical Aluminum) -->
-        <rect x="52" y="44" width="32" height="9" rx="3.5" fill="#475569" stroke="#94a3b8" stroke-width="0.8"/>
-        <line x1="62" y1="44" x2="62" y2="53" stroke="#94a3b8" stroke-width="0.8"/>
-        <line x1="74" y1="44" x2="74" y2="53" stroke="#94a3b8" stroke-width="0.8"/>
-        
-        <!-- Fifth Wheel Coupling Plate -->
-        <path d="M120 48 L138 48 L135 45 L123 45 Z" fill="#64748b" stroke="#94a3b8" stroke-width="1"/>
-        
-        <!-- Front Steer Wheel -->
-        <circle cx="28" cy="54" r="8" fill="#0f172a" stroke="#cbd5e1" stroke-width="1.5"/>
-        <circle cx="28" cy="54" r="4.5" fill="#334155" stroke="#94a3b8" stroke-width="0.8"/>
-        <circle cx="28" cy="54" r="1.5" fill="#cbd5e1"/>
-        
-        ${is6x4 ? `
-          <!-- Tandem Rear Drive Axle 1 -->
-          <circle cx="118" cy="54" r="8" fill="#0f172a" stroke="#cbd5e1" stroke-width="1.5"/>
-          <circle cx="118" cy="54" r="4.5" fill="#334155" stroke="#94a3b8" stroke-width="0.8"/>
-          <circle cx="118" cy="54" r="1.5" fill="#cbd5e1"/>
-          
-          <!-- Tandem Rear Drive Axle 2 -->
-          <circle cx="138" cy="54" r="8" fill="#0f172a" stroke="#cbd5e1" stroke-width="1.5"/>
-          <circle cx="138" cy="54" r="4.5" fill="#334155" stroke="#94a3b8" stroke-width="0.8"/>
-          <circle cx="138" cy="54" r="1.5" fill="#cbd5e1"/>
-          <!-- Mudflap -->
-          <path d="M147 48 L149 58 L146 58" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
-        ` : `
-          <!-- Single Rear Drive Axle -->
-          <circle cx="128" cy="54" r="8" fill="#0f172a" stroke="#cbd5e1" stroke-width="1.5"/>
-          <circle cx="128" cy="54" r="4.5" fill="#334155" stroke="#94a3b8" stroke-width="0.8"/>
-          <circle cx="128" cy="54" r="1.5" fill="#cbd5e1"/>
-          <!-- Mudflap -->
-          <path d="M137 48 L139 58 L136 58" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
-        `}
-      </svg>
+    // American Conventional (Long hood, vertical chrome exhaust stacks, sleeper cab)
+    tractorSvg = `
+      <!-- Chassis frame rail -->
+      <path d="M12 52 L148 52 L148 56 L12 56 Z" fill="#2d3748" stroke="#4a5568" stroke-width="1"/>
+      
+      <!-- Long Hood & Front Bumper -->
+      <path d="M14 54 L6 54 L6 42 L22 42 L26 30 L48 30 L48 54 Z" fill="rgba(193,154,91,0.12)" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
+      <rect x="4" y="44" width="4" height="10" rx="1" fill="#718096" stroke="#a0aec0" stroke-width="0.8"/>
+      <rect x="7" y="44" width="3" height="4" rx="0.5" fill="#fef08a"/>
+      
+      <!-- Windshield & A-Pillar -->
+      <path d="M48 30 L55 18 L76 18 L76 54 L48 54 Z" fill="rgba(193,154,91,0.18)" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M50 30 L56 20 L66 20 L64 30 Z" fill="#38bdf8" fill-opacity="0.25" stroke="#38bdf8" stroke-width="0.8"/>
+      
+      <!-- Sleeper Berth Cab -->
+      <path d="M76 14 L102 14 L102 52 L76 52 Z" fill="rgba(193,154,91,0.15)" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
+      <rect x="80" y="22" width="10" height="8" rx="1" fill="#38bdf8" fill-opacity="0.2" stroke="#38bdf8" stroke-width="0.6"/>
+      <path d="M74 14 L104 12 L104 14 Z" fill="${accentColor}" opacity="0.6"/>
+      
+      <!-- Vertical Chrome Exhaust Stacks -->
+      <path d="M76 34 L76 6 L79 4 L79 34 Z" fill="#cbd5e1" stroke="#94a3b8" stroke-width="0.8"/>
+      <path d="M74 34 L74 8 L76 6" stroke="#64748b" stroke-width="0.8"/>
+      
+      <!-- Cylindrical Aluminum Fuel Tank -->
+      <rect x="52" y="44" width="32" height="9" rx="3.5" fill="#475569" stroke="#94a3b8" stroke-width="0.8"/>
+      
+      <!-- Fifth Wheel Coupling Plate -->
+      <path d="M120 48 L138 48 L135 45 L123 45 Z" fill="#64748b" stroke="#94a3b8" stroke-width="1"/>
+      
+      <!-- Front Steer Wheel -->
+      ${wheelSvg(28, 54, 8)}
+      
+      ${is6x4 ? `
+        ${wheelSvg(118, 54, 8)}
+        ${wheelSvg(138, 54, 8)}
+        <path d="M147 48 L149 58 L146 58" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
+      ` : `
+        ${wheelSvg(128, 54, 8)}
+        <path d="M137 48 L139 58 L136 58" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
+      `}
     `;
   } else {
-    // European / Global Heavy Cabover (Highline Cab, Aerodynamic Deflector, Integrated Steps)
-    return `
-      <svg viewBox="0 0 160 70" class="truck-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <!-- Ground line -->
-        <line x1="2" y1="62" x2="158" y2="62" stroke="rgba(255,255,255,0.1)" stroke-width="1" stroke-dasharray="2 2" />
-        
-        <!-- Chassis frame rail -->
-        <path d="M12 52 L146 52 L146 56 L12 56 Z" fill="#2d3748" stroke="#4a5568" stroke-width="1"/>
-        
-        <!-- European Cabover Body -->
-        <!-- Front Aerodynamic Face -->
-        <path d="M10 52 L10 38 L14 20 L24 10 L56 8 L64 12 L64 52 Z" fill="rgba(193,154,91,0.15)" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
-        
-        <!-- Highline Roof Air Deflector -->
-        <path d="M22 10 L58 8 L72 12 L64 18 L56 12 Z" fill="${accentColor}" fill-opacity="0.3" stroke="${accentColor}" stroke-width="1"/>
-        
-        <!-- Large Panoramic Windshield -->
-        <path d="M14 24 L22 14 L44 13 L42 28 L15 28 Z" fill="#38bdf8" fill-opacity="0.25" stroke="#38bdf8" stroke-width="0.8"/>
-        <!-- Side Cab Window -->
-        <path d="M43 14 L56 14 L56 28 L43 28 Z" fill="#38bdf8" fill-opacity="0.2" stroke="#38bdf8" stroke-width="0.8"/>
-        
-        <!-- Grille & Headlamp Cluster -->
-        <path d="M10 32 L16 32 L16 46 L10 46 Z" fill="#1e293b" stroke="#64748b" stroke-width="0.8"/>
-        <line x1="10" y1="36" x2="16" y2="36" stroke="#94a3b8" stroke-width="0.6"/>
-        <line x1="10" y1="40" x2="16" y2="40" stroke="#94a3b8" stroke-width="0.6"/>
-        <rect x="9" y="44" width="3" height="5" rx="0.5" fill="#fef08a"/>
-        
-        <!-- Cab Steps -->
-        <rect x="22" y="46" width="10" height="2" rx="0.5" fill="#94a3b8"/>
-        <rect x="22" y="49" width="10" height="2" rx="0.5" fill="#94a3b8"/>
-        
-        <!-- Large Aluminum Fuel Tank -->
-        <rect x="52" y="43" width="36" height="10" rx="2" fill="#334155" stroke="#64748b" stroke-width="0.8"/>
-        <circle cx="56" cy="46" r="1.5" fill="#94a3b8"/>
-        
-        <!-- Fifth Wheel Coupling Plate -->
-        <path d="M110 48 L128 48 L125 45 L113 45 Z" fill="#64748b" stroke="#94a3b8" stroke-width="1"/>
-        
-        <!-- Front Steer Axle -->
-        <circle cx="34" cy="54" r="8" fill="#0f172a" stroke="#cbd5e1" stroke-width="1.5"/>
-        <circle cx="34" cy="54" r="4.5" fill="#334155" stroke="#94a3b8" stroke-width="0.8"/>
-        <circle cx="34" cy="54" r="1.5" fill="#cbd5e1"/>
-        
-        ${is6x4 ? `
-          <!-- Tandem Rear Drive Axle 1 -->
-          <circle cx="106" cy="54" r="8" fill="#0f172a" stroke="#cbd5e1" stroke-width="1.5"/>
-          <circle cx="106" cy="54" r="4.5" fill="#334155" stroke="#94a3b8" stroke-width="0.8"/>
-          <circle cx="106" cy="54" r="1.5" fill="#cbd5e1"/>
-          
-          <!-- Tandem Rear Drive Axle 2 -->
-          <circle cx="126" cy="54" r="8" fill="#0f172a" stroke="#cbd5e1" stroke-width="1.5"/>
-          <circle cx="126" cy="54" r="4.5" fill="#334155" stroke="#94a3b8" stroke-width="0.8"/>
-          <circle cx="126" cy="54" r="1.5" fill="#cbd5e1"/>
-          <!-- Rear Fenders / Mudguards -->
-          <path d="M96 52 Q106 42 116 52" stroke="#475569" stroke-width="1.5" fill="none"/>
-          <path d="M116 52 Q126 42 136 52" stroke="#475569" stroke-width="1.5" fill="none"/>
-          <path d="M136 50 L138 58 L135 58" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
-        ` : `
-          <!-- Single Rear Drive Axle -->
-          <circle cx="118" cy="54" r="8" fill="#0f172a" stroke="#cbd5e1" stroke-width="1.5"/>
-          <circle cx="118" cy="54" r="4.5" fill="#334155" stroke="#94a3b8" stroke-width="0.8"/>
-          <circle cx="118" cy="54" r="1.5" fill="#cbd5e1"/>
-          <!-- Rear Fender -->
-          <path d="M108 52 Q118 42 128 52" stroke="#475569" stroke-width="1.5" fill="none"/>
-          <path d="M128 50 L130 58 L127 58" stroke="#475569" stroke-width="1.5" stroke-linecap="round"/>
-        `}
-      </svg>
+    // European / Global Heavy Cabover (Highline Cab, Aerodynamic Deflector)
+    tractorSvg = `
+      <!-- Chassis frame rail -->
+      <path d="M12 52 L146 52 L146 56 L12 56 Z" fill="#2d3748" stroke="#4a5568" stroke-width="1"/>
+      
+      <!-- European Cabover Body -->
+      <path d="M10 52 L10 38 L14 20 L24 10 L56 8 L64 12 L64 52 Z" fill="rgba(193,154,91,0.15)" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
+      
+      <!-- Highline Roof Air Deflector -->
+      <path d="M22 10 L58 8 L72 12 L64 18 L56 12 Z" fill="${accentColor}" fill-opacity="0.3" stroke="${accentColor}" stroke-width="1"/>
+      
+      <!-- Large Panoramic Windshield & Side Glass -->
+      <path d="M14 24 L22 14 L44 13 L42 28 L15 28 Z" fill="#38bdf8" fill-opacity="0.25" stroke="#38bdf8" stroke-width="0.8"/>
+      <path d="M43 14 L56 14 L56 28 L43 28 Z" fill="#38bdf8" fill-opacity="0.2" stroke="#38bdf8" stroke-width="0.8"/>
+      
+      <!-- Grille & Headlamp Cluster -->
+      <path d="M10 32 L16 32 L16 46 L10 46 Z" fill="#1e293b" stroke="#64748b" stroke-width="0.8"/>
+      <rect x="9" y="44" width="3" height="5" rx="0.5" fill="#fef08a"/>
+      
+      <!-- Cab Entry Steps -->
+      <rect x="22" y="46" width="10" height="2" rx="0.5" fill="#94a3b8"/>
+      <rect x="22" y="49" width="10" height="2" rx="0.5" fill="#94a3b8"/>
+      
+      <!-- Aluminum Fuel Tank -->
+      <rect x="52" y="43" width="36" height="10" rx="2" fill="#334155" stroke="#64748b" stroke-width="0.8"/>
+      
+      <!-- Fifth Wheel Coupling Plate -->
+      <path d="M110 48 L128 48 L125 45 L113 45 Z" fill="#64748b" stroke="#94a3b8" stroke-width="1"/>
+      
+      <!-- Front Steer Wheel -->
+      ${wheelSvg(34, 54, 8)}
+      
+      ${is6x4 ? `
+        ${wheelSvg(106, 54, 8)}
+        ${wheelSvg(126, 54, 8)}
+        <path d="M96 52 Q106 42 116 52" stroke="#475569" stroke-width="1.5" fill="none"/>
+        <path d="M116 52 Q126 42 136 52" stroke="#475569" stroke-width="1.5" fill="none"/>
+      ` : `
+        ${wheelSvg(118, 54, 8)}
+        <path d="M108 52 Q118 42 128 52" stroke="#475569" stroke-width="1.5" fill="none"/>
+      `}
     `;
   }
+
+  return `
+    <svg viewBox="0 0 ${viewBoxWidth} 70" class="truck-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Ground line across full length -->
+      <line x1="2" y1="62" x2="${viewBoxWidth - 2}" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2 2" />
+      
+      <!-- Tractor Unit -->
+      ${tractorSvg}
+
+      <!-- Connected Trailer (if hitched) -->
+      ${hasTrailer ? renderCoupledTrailerSvg(trailerType as string, fifthWheelX, accentColor) : ''}
+    </svg>
+  `;
+}
+
+/**
+ * Standalone Trailer Blueprint SVG for Dealership Trailer Depot and HQ Storage Facility.
+ * Shows trailer parked with landing legs DEPLOYED down on the ground.
+ */
+export function getTrailerSilhouetteSvg(type: string, accentColor = 'var(--gold)'): string {
+  const startX = 25;
+  const trailerLen = 190;
+  const endX = startX + trailerLen;
+  const bogieAxle1 = endX - 44;
+  const bogieAxle2 = endX - 25;
+  const bogieAxle3 = endX - 6;
+
+  // Undercarriage with DEPLOYED landing legs resting on ground
+  const standUndercarriage = `
+    <!-- Deployed Landing Legs with Foot Pads -->
+    <rect x="${startX + 38}" y="48" width="4" height="14" rx="0.5" fill="#64748b" stroke="#94a3b8" stroke-width="0.8"/>
+    <rect x="${startX + 35}" y="60" width="10" height="2" rx="0.5" fill="#cbd5e1"/>
+    <circle cx="${startX + 40}" cy="52" r="1.5" fill="#eab308"/>
+    
+    <!-- Kingpin pin underneath front overhang -->
+    <rect x="${startX + 8}" y="48" width="4" height="4" rx="0.5" fill="#cbd5e1"/>
+
+    <!-- Side Protection Guard Rail -->
+    <line x1="${startX + 50}" y1="54" x2="${bogieAxle1 - 10}" y2="54" stroke="#64748b" stroke-width="1.2"/>
+
+    <!-- Rear Bogie Tri-Axle Wheels -->
+    ${wheelSvg(bogieAxle1, 54, 8)}
+    ${wheelSvg(bogieAxle2, 54, 8)}
+    ${wheelSvg(bogieAxle3, 54, 8)}
+
+    <!-- Rear Fenders & Mudguards -->
+    <path d="M${bogieAxle1 - 10} 52 Q${bogieAxle1} 43 ${bogieAxle1 + 10} 52" stroke="#475569" stroke-width="1.2" fill="none"/>
+    <path d="M${bogieAxle2 - 10} 52 Q${bogieAxle2} 43 ${bogieAxle2 + 10} 52" stroke="#475569" stroke-width="1.2" fill="none"/>
+    <path d="M${bogieAxle3 - 10} 52 Q${bogieAxle3} 43 ${bogieAxle3 + 10} 52" stroke="#475569" stroke-width="1.2" fill="none"/>
+    <rect x="${endX + 2}" y="52" width="2" height="7" fill="#dc2626"/>
+  `;
+
+  let bodySvg = '';
+
+  switch (type) {
+    case 'reefer':
+      bodySvg = `
+        <rect x="${startX - 12}" y="15" width="12" height="24" rx="2" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
+        <circle cx="${startX - 6}" cy="23" r="3" fill="#1e293b" stroke="#38bdf8" stroke-width="0.8"/>
+        <rect x="${startX}" y="12" width="${trailerLen}" height="38" rx="1.5" fill="rgba(56,189,248,0.12)" stroke="#38bdf8" stroke-width="1.5"/>
+        <line x1="${startX}" y1="24" x2="${endX}" y2="24" stroke="#38bdf8" stroke-width="0.5" opacity="0.5"/>
+        <line x1="${startX}" y1="36" x2="${endX}" y2="36" stroke="#38bdf8" stroke-width="0.5" opacity="0.5"/>
+        <text x="${startX + 20}" y="20" font-size="7" fill="#38bdf8">❄</text>
+        <text x="${startX + 32}" y="20" font-size="6" font-weight="900" fill="#38bdf8" font-family="monospace">REEFER COLD-CHAIN</text>
+        ${standUndercarriage}
+      `;
+      break;
+
+    case 'tanker':
+      bodySvg = `
+        <path d="M${startX + 6} 22 L${endX - 8} 22 Q${endX + 4} 36 ${endX - 8} 48 L${startX + 6} 48 Q${startX - 4} 36 ${startX + 6} 22 Z" fill="rgba(203,213,225,0.14)" stroke="#cbd5e1" stroke-width="1.5"/>
+        ${[0.25, 0.5, 0.75].map(pct => {
+          const x = Math.round(startX + trailerLen * pct);
+          return `<path d="M${x} 22 Q${x + 3} 36 ${x} 48" stroke="#94a3b8" stroke-width="1" fill="none"/>`;
+        }).join('')}
+        <ellipse cx="${startX + 40}" cy="20" rx="4" ry="1.5" fill="#64748b" stroke="#cbd5e1" stroke-width="0.8"/>
+        <ellipse cx="${startX + 120}" cy="20" rx="4" ry="1.5" fill="#64748b" stroke="#cbd5e1" stroke-width="0.8"/>
+        ${standUndercarriage}
+      `;
+      break;
+
+    case 'hazmat':
+      bodySvg = `
+        <path d="M${startX + 6} 22 L${endX - 8} 22 Q${endX + 4} 36 ${endX - 8} 48 L${startX + 6} 48 Q${startX - 4} 36 ${startX + 6} 22 Z" fill="rgba(234,88,12,0.15)" stroke="#ea580c" stroke-width="1.5"/>
+        <rect x="${startX + 40}" y="30" width="10" height="10" rx="1" transform="rotate(45 ${startX + 45} 35)" fill="#ea580c" stroke="#ffedd5" stroke-width="0.8"/>
+        <text x="${startX + 45}" y="36.5" font-size="5" font-weight="900" text-anchor="middle" fill="#fff" font-family="monospace">ADR</text>
+        <rect x="${startX + 95}" y="30" width="10" height="10" rx="1" transform="rotate(45 ${startX + 100} 35)" fill="#dc2626" stroke="#ffedd5" stroke-width="0.8"/>
+        <text x="${startX + 100}" y="36.5" font-size="6" font-weight="900" text-anchor="middle" fill="#fff" font-family="monospace">☣</text>
+        ${standUndercarriage}
+      `;
+      break;
+
+    case 'flatbed':
+      bodySvg = `
+        <path d="M${startX} 50 L${startX} 28 L${startX + 4} 28 L${startX + 4} 50 Z" fill="#475569" stroke="#94a3b8" stroke-width="1"/>
+        <rect x="${startX}" y="47" width="${trailerLen}" height="4" fill="#334155" stroke="#cbd5e1" stroke-width="1"/>
+        <rect x="${startX + 15}" y="35" width="${trailerLen - 45}" height="12" rx="1" fill="#1e293b" stroke="#94a3b8" stroke-width="1"/>
+        <line x1="${startX + 45}" y1="35" x2="${startX + 45}" y2="48" stroke="#eab308" stroke-width="1.5"/>
+        <line x1="${startX + 95}" y1="35" x2="${startX + 95}" y2="48" stroke="#eab308" stroke-width="1.5"/>
+        ${standUndercarriage}
+      `;
+      break;
+
+    case 'lowboy':
+      bodySvg = `
+        <path d="M${startX} 48 L${startX + 25} 48 L${startX + 35} 57 L${endX - 60} 57 L${endX - 50} 48 L${endX} 48 L${endX} 52 L${endX - 50} 52 L${endX - 60} 60 L${startX + 35} 60 L${startX + 22} 52 L${startX} 52 Z" fill="#1e293b" stroke="#eab308" stroke-width="1.2"/>
+        <rect x="${startX + 18}" y="48" width="4" height="14" fill="#64748b"/>
+        <rect x="${startX + 15}" y="60" width="10" height="2" fill="#cbd5e1"/>
+        ${wheelSvg(bogieAxle1 - 10, 54, 7.5)}
+        ${wheelSvg(bogieAxle2 - 5, 54, 7.5)}
+        ${wheelSvg(bogieAxle3, 54, 7.5)}
+        <path d="M${endX} 48 L${endX + 6} 34 L${endX + 8} 35 L${endX + 2} 50" fill="#475569" stroke="#94a3b8" stroke-width="1"/>
+      `;
+      break;
+
+    case 'tipper':
+      bodySvg = `
+        <path d="M${startX + 8} 22 L${endX - 4} 22 L${endX - 12} 49 L${startX - 4} 49 Z" fill="rgba(193,154,91,0.18)" stroke="${accentColor}" stroke-width="1.5"/>
+        <line x1="${startX - 6}" y1="24" x2="${startX + 2}" y2="48" stroke="#cbd5e1" stroke-width="3"/>
+        <circle cx="${endX - 4}" cy="22" r="2" fill="#eab308"/>
+        ${standUndercarriage}
+      `;
+      break;
+
+    case 'container':
+      bodySvg = `
+        <rect x="${startX}" y="48" width="${trailerLen}" height="3" fill="#334155" stroke="#64748b" stroke-width="1"/>
+        <rect x="${startX + 2}" y="15" width="${trailerLen - 4}" height="33" rx="1" fill="#1e293b" stroke="#38bdf8" stroke-width="1.2"/>
+        ${Array.from({ length: 16 }).map((_, idx) => {
+          const x = Math.round(startX + 8 + (idx * 11));
+          return `<line x1="${x}" y1="17" x2="${x}" y2="46" stroke="#38bdf8" stroke-width="0.6" opacity="0.4"/>`;
+        }).join('')}
+        <text x="${startX + 20}" y="24" font-size="6" font-weight="900" fill="#38bdf8" font-family="monospace">40FT INTERMODAL</text>
+        ${standUndercarriage}
+      `;
+      break;
+
+    case 'double_trailer':
+      bodySvg = `
+        <rect x="${startX}" y="16" width="95" height="34" rx="2" fill="rgba(193,154,91,0.14)" stroke="${accentColor}" stroke-width="1.2"/>
+        ${wheelSvg(startX + 78, 54, 7)}
+        ${wheelSvg(startX + 90, 54, 7)}
+        <rect x="${startX + 105}" y="16" width="95" height="34" rx="2" fill="rgba(193,154,91,0.14)" stroke="${accentColor}" stroke-width="1.2"/>
+        <text x="${startX + 120}" y="24" font-size="5" font-weight="900" fill="${accentColor}" font-family="monospace">LCV PUP 2</text>
+        ${wheelSvg(startX + 185, 54, 7)}
+        ${wheelSvg(startX + 197, 54, 7)}
+        <rect x="${startX + 22}" y="48" width="4" height="14" fill="#64748b"/>
+        <rect x="${startX + 19}" y="60" width="10" height="2" fill="#cbd5e1"/>
+      `;
+      break;
+
+    case 'carrier':
+      bodySvg = `
+        <line x1="${startX}" y1="49" x2="${endX}" y2="49" stroke="#64748b" stroke-width="1.5"/>
+        <line x1="${startX}" y1="20" x2="${endX}" y2="24" stroke="#64748b" stroke-width="1.5"/>
+        <path d="M${startX + 20} 20 L${startX + 27} 15 L${startX + 47} 15 L${startX + 55} 20 Z" fill="#38bdf8" fill-opacity="0.4" stroke="#38bdf8" stroke-width="0.8"/>
+        <path d="M${startX + 85} 21 L${startX + 92} 16 L${startX + 112} 16 L${startX + 120} 21 Z" fill="#eab308" fill-opacity="0.4" stroke="#eab308" stroke-width="0.8"/>
+        ${standUndercarriage}
+      `;
+      break;
+
+    case 'curtain':
+    default:
+      bodySvg = `
+        <rect x="${startX}" y="14" width="${trailerLen}" height="36" rx="2" fill="rgba(193,154,91,0.14)" stroke="${accentColor}" stroke-width="1.5"/>
+        ${[0.2, 0.4, 0.6, 0.8].map(pct => {
+          const x = Math.round(startX + trailerLen * pct);
+          return `<line x1="${x}" y1="16" x2="${x}" y2="49" stroke="${accentColor}" stroke-width="0.8" stroke-dasharray="3 2" opacity="0.6"/>`;
+        }).join('')}
+        ${standUndercarriage}
+      `;
+      break;
+  }
+
+  return `
+    <svg viewBox="0 0 240 70" class="trailer-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <line x1="2" y1="62" x2="238" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2 2" />
+      ${bodySvg}
+    </svg>
+  `;
 }

@@ -1,10 +1,10 @@
 import { ic } from '../core/icons';
 import { action, fmt, dur } from '../core/ui';
 import { refresh } from '../core/store';
-import { TRUCK_MODELS, TRAILERS } from '../domain/trucks/trucks.data';
+import { TRUCK_MODELS, TRAILERS, getTrailerIcon } from '../domain/trucks/trucks.data';
 import { CITIES, LOCATIONS } from '../data/world';
 import { stats, PART_LABELS, distKm } from '../systems/calc';
-import { refuel, repair, inspect, assign, transport, refuelCost, repairCost, transportInfo, inspectCost } from '../systems/fleet';
+import { refuel, repair, inspect, assign, transport, refuelCost, repairCost, transportInfo, inspectCost, unhitchTrailer, hitchTrailer } from '../systems/fleet';
 import { why } from '../systems/jobs';
 import { slots, upgradeGarage, upgradeGarageCost } from '../systems/offices';
 import { openJobSelector, renderJobSelectorOverlay, activeJobSelectorTruckId } from './garage/job-selector';
@@ -12,6 +12,8 @@ import { getTruckSilhouetteSvg } from '../domain/trucks/trucks.visuals';
 import { getManufacturerLogoSvg } from '../domain/trucks/trucks.logos';
 
 let openId: number | null = null, panel: string | null = null;
+let hitchModalTruckId: number | null = null;
+
 action('truck-toggle', d => { openId = openId === +(d as any).id ? null : +(d as any).id; panel = null; refresh(); });
 action('panel', d => { panel = panel === (d as any).kind ? null : (d as any).kind; refresh(); });
 action('refuel', d => refuel(+(d as any).id));
@@ -28,6 +30,27 @@ action('dispatch', d => openJobSelector(+(d as any).id));
 action('assign', d => assign(+(d as any).id, (d as any).driver ? +(d as any).driver : null));
 action('move', d => transport(+(d as any).id, (d as any).city));
 action('upgrade-garage', () => upgradeGarage());
+
+action('unhitch-trailer', d => {
+  unhitchTrailer(+(d as any).id);
+  refresh();
+});
+
+action('open-hitch-modal', d => {
+  hitchModalTruckId = +(d as any).id;
+  refresh();
+});
+
+action('close-hitch-modal', () => {
+  hitchModalTruckId = null;
+  refresh();
+});
+
+action('hitch-trailer', d => {
+  hitchTrailer(+(d as any).id, (d as any).trailer as any);
+  hitchModalTruckId = null;
+  refresh();
+});
 
 const meter = (label: string, value: number, formattedText: string, alertThreshold = 30) => {
   const isAlert = value < alertThreshold;
@@ -199,10 +222,35 @@ function body(S: any, t: any, m: any, a: any, now: number) {
         ${cell('FUEL RATE', `${st.fuelConsumption.toFixed(1)} L/100`, `Telematics Avg`)}
       </div>
 
-      <!-- Fifth Wheel Coupling Trailer Endorsement -->
-      <div style="font-size:9px; color:var(--mu); background:#0a0f1d; border:1px solid #1e293b; padding:8px 10px; border-radius:6px; margin-bottom:12px; display:flex; align-items:center; gap:6px;">
-        <span style="color:var(--gold); font-weight:800; text-transform:uppercase;">TRAILER ENDORSEMENTS:</span>
-        <span style="color:var(--tx);">${m.haul.map((h: any) => TRAILERS[h as keyof typeof TRAILERS] || h).join(' · ')}</span>
+      <!-- Fifth Wheel Coupling & Trailer Management -->
+      <div style="background:#0a0f1d; border:1px solid #1e293b; padding:10px 12px; border-radius:8px; margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <span style="color:var(--gold); font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">FIFTH WHEEL COUPLING STATUS</span>
+          <span style="font-size:8px; font-family:monospace; color:var(--mu);">SAE J700 PIN</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:18px;">${t.trailer ? getTrailerIcon(t.trailer) : '🚛'}</span>
+            <div>
+              <div style="font-size:11px; font-weight:800; color:var(--tx);">
+                ${t.trailer ? (TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer) : 'Bobtail (No Trailer Attached)'}
+              </div>
+              <div style="font-size:8px; color:var(--mu); font-family:monospace; margin-top:1px;">
+                Endorsements: ${m.haul.map((h: any) => TRAILERS[h as keyof typeof TRAILERS] || h).join(' · ')}
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            ${t.trailer ? `
+              <button class="btn alt" style="padding:4px 8px; font-size:9px; font-weight:800; color:var(--red); border-color:rgba(239,68,68,0.3);" data-act="unhitch-trailer" data-id="${t.id}" ${busy ? 'disabled' : ''}>
+                UNHITCH
+              </button>
+            ` : ''}
+            <button class="btn gold" style="padding:4px 10px; font-size:9px; font-weight:900;" data-act="open-hitch-modal" data-id="${t.id}" ${busy ? 'disabled' : ''}>
+              ${t.trailer ? 'SWAP' : 'HITCH TRAILER'}
+            </button>
+          </div>
+        </div>
       </div>
 
       <!-- Primary Dispatch Action -->
@@ -283,8 +331,15 @@ function truck(S: any, t: any) {
             <div style="font-size:15px; font-weight:900; color:var(--tx); margin-top:2px;">
               ${t.name}
             </div>
-            <div style="font-size:10px; color:var(--mu); font-family:monospace; margin-top:1px;">
-              ${m.brand} ${m.name} (${m.axle} · ${m.engine.hp} HP)
+            <div style="display:flex; align-items:center; gap:6px; margin-top:3px; flex-wrap:wrap;">
+              <span style="font-size:10px; color:var(--mu); font-family:monospace;">
+                ${m.brand} ${m.name} (${m.axle} · ${m.engine.hp} HP)
+              </span>
+              <!-- Trailer Badge -->
+              <span style="display:inline-flex; align-items:center; gap:4px; background:${t.trailer ? 'rgba(193,154,91,0.12)' : 'rgba(255,255,255,0.05)'}; border:1px solid ${t.trailer ? 'var(--gold)' : '#1e293b'}; border-radius:4px; padding:2px 6px; font-size:9px; font-weight:800; color:${t.trailer ? 'var(--gold)' : 'var(--mu)'};">
+                <span>${t.trailer ? getTrailerIcon(t.trailer) : '🚛'}</span>
+                <span>${t.trailer ? (TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer).toUpperCase() : 'BOBTAIL (NO TRAILER)'}</span>
+              </span>
             </div>
           </div>
         </div>
@@ -301,9 +356,9 @@ function truck(S: any, t: any) {
         </div>
       </div>
 
-      <!-- Vehicle Blueprint Silhouette Preview -->
-      <div style="background:#0a0f1d; border:1px solid #1e293b; border-radius:6px; padding:4px 10px; margin-bottom:8px; display:flex; justify-content:center; align-items:center;">
-        ${getTruckSilhouetteSvg(m, o ? 'var(--gold)' : 'rgba(193,154,91,0.6)', m.axle)}
+      <!-- Vehicle Blueprint Silhouette Preview (Bobtail or Connected Rig) -->
+      <div style="background:#0a0f1d; border:1px solid #1e293b; border-radius:6px; padding:6px 12px; margin-bottom:8px; display:flex; justify-content:center; align-items:center; min-height:64px;">
+        ${getTruckSilhouetteSvg(m, o ? 'var(--gold)' : 'rgba(193,154,91,0.6)', m.axle, t.trailer)}
       </div>
 
       <!-- Quick Telematics Bar -->
@@ -313,6 +368,77 @@ function truck(S: any, t: any) {
       </div>
 
       ${o ? body(S, t, m, a, now) : ''}
+    </div>
+  `;
+}
+
+function renderHitchModal(S: any) {
+  if (hitchModalTruckId === null) return '';
+  const t = S.fleet.find((x: any) => x.id === hitchModalTruckId);
+  if (!t) return '';
+  const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
+  const yardTrailers: string[] = S.trailers || [];
+  const compatibleYard = yardTrailers.filter((trailerType: string) => m.haul.includes(trailerType as any));
+
+  return `
+    <div style="position:fixed; inset:0; background:rgba(5,8,18,0.85); z-index:1200; display:flex; align-items:center; justify-content:center; padding:16px;">
+      <div style="background:#0f172a; border:1px solid var(--gold); border-radius:12px; width:100%; max-width:440px; padding:18px; position:relative; box-shadow:0 12px 36px rgba(0,0,0,0.6);">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+          <div>
+            <div style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">FIFTH WHEEL COUPLING</div>
+            <div style="font-size:15px; font-weight:900; color:var(--tx); margin-top:2px;">Hitch Trailer to Unit #${t.id}</div>
+            <div style="font-size:10px; color:var(--mu); font-family:monospace; margin-top:1px;">Approved Endorsements: ${m.haul.join(', ')}</div>
+          </div>
+          <button style="background:none; border:none; color:var(--mu); font-size:18px; cursor:pointer;" data-act="close-hitch-modal">✕</button>
+        </div>
+
+        ${t.trailer ? `
+          <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:8px 12px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="font-size:11px; color:var(--tx);">
+              Currently Coupled: <b style="color:var(--gold);">${getTrailerIcon(t.trailer as any)} ${TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer}</b>
+            </div>
+            <button class="btn alt" style="padding:4px 8px; font-size:9px; font-weight:800; color:var(--red); border-color:rgba(239,68,68,0.3);" data-act="unhitch-trailer" data-id="${t.id}">
+              UNHITCH
+            </button>
+          </div>
+        ` : ''}
+
+        <div style="font-size:10px; font-weight:800; color:var(--mu); text-transform:uppercase; margin-bottom:8px;">AVAILABLE IN HQ STORAGE YARD:</div>
+
+        ${compatibleYard.length === 0 ? `
+          <div style="background:#080c16; border:1px dashed #1e293b; border-radius:8px; padding:20px; text-align:center; margin-bottom:12px;">
+            <div style="font-size:24px; margin-bottom:6px;">🚛</div>
+            <div style="font-size:12px; font-weight:800; color:var(--tx);">No Compatible Trailers in Yard</div>
+            <div style="font-size:10px; color:var(--mu); margin-top:4px; line-height:1.4;">
+              Acquire new semi-trailers from the Dealership Trailer Depot, or unhitch from another compatible tractor.
+            </div>
+            <button class="btn gold" style="margin-top:12px; padding:8px 14px; font-size:10px; font-weight:900;" data-act="store-open" data-id="dealership">
+              VISIT TRAILER DEPOT
+            </button>
+          </div>
+        ` : `
+          <div style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; margin-bottom:12px;">
+            ${compatibleYard.map((trailerType: string) => `
+              <div style="display:flex; justify-content:space-between; align-items:center; background:#111827; border:1px solid #1f293d; border-radius:8px; padding:10px 12px;">
+                <div style="display:flex; align-items:center; gap:10px;">
+                  <span style="font-size:20px;">${getTrailerIcon(trailerType as any)}</span>
+                  <div>
+                    <div style="font-size:12px; font-weight:800; color:var(--tx);">${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}</div>
+                    <div style="font-size:9px; color:var(--mu); font-family:monospace;">Commercial Trailer · Ready to Hitch</div>
+                  </div>
+                </div>
+                <button class="btn gold" style="padding:6px 12px; font-size:10px; font-weight:900;" data-act="hitch-trailer" data-id="${t.id}" data-trailer="${trailerType}">
+                  COUPLE
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        `}
+
+        <button class="btn alt" style="width:100%; padding:8px; font-size:10px; font-weight:800;" data-act="close-hitch-modal">
+          CANCEL
+        </button>
+      </div>
     </div>
   `;
 }
@@ -355,6 +481,7 @@ export default {
 
       ${S.fleet.map((t: any) => truck(S, t)).join('')}
       ${activeJobSelectorTruckId !== null ? renderJobSelectorOverlay(S) : ''}
+      ${renderHitchModal(S)}
 
       <!-- OEM Dealership Gateway Card -->
       <div class="card" style="margin-top:14px; padding:14px; background:#0f172a; border:1px solid var(--gold); border-radius:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-act="store-open" data-id="dealership">
@@ -372,3 +499,4 @@ export default {
     `;
   }
 };
+

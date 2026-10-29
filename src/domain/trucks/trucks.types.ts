@@ -1,4 +1,4 @@
-export type TrailerType = 'box' | 'tipper' | 'carrier' | 'hazmat' | 'curtain' | 'reefer' | 'flatbed' | 'tanker' | 'lowboy' | 'rigid_box';
+export type TrailerType = 'box' | 'tipper' | 'carrier' | 'hazmat' | 'curtain' | 'reefer' | 'flatbed' | 'tanker' | 'lowboy' | 'rigid_box' | 'double_trailer' | 'container';
 export type AxleConfig = '4x2' | '6x2' | '6x4' | '8x4';
 export type Region = 'Europe' | 'America' | 'Asia';
 

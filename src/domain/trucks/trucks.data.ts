@@ -1,28 +1,52 @@
 import { TrailerType, TruckModel } from './trucks.types';
 
 export const TRAILERS: Record<TrailerType, string> = {
-  box: 'Box trailer',
-  tipper: 'Tipper',
-  carrier: 'Car carrier',
-  hazmat: 'Hazmat tanker',
-  curtain: 'Curtainside',
-  reefer: 'Refrigerated',
-  flatbed: 'Flatbed',
-  tanker: 'Liquid tanker',
-  lowboy: 'Lowboy trailer',
-  rigid_box: 'Rigid Box (Short Haul)'
+  box: 'Box Dry Van',
+  tipper: 'Aggregate Tipper',
+  carrier: 'Auto Car Transporter',
+  hazmat: 'ADR Hazmat Tanker (Shipper Supplied)',
+  curtain: 'Curtainside Trailer',
+  reefer: 'Refrigerated Reefer',
+  flatbed: 'Heavy Flatbed',
+  tanker: 'Foodgrade Liquid Tanker',
+  lowboy: 'Heavy Machinery Lowboy',
+  rigid_box: 'Rigid Distribution Box',
+  double_trailer: 'Double Trailer B-Train LCV',
+  container: 'Intermodal 40ft Chassis'
 };
 
+export const TRAILER_ICONS: Record<TrailerType, string> = {
+  curtain: '🚚',
+  reefer: '❄️',
+  flatbed: '📦',
+  lowboy: '🏗️',
+  tipper: '⛰️',
+  double_trailer: '🚛',
+  box: '📦',
+  carrier: '🚗',
+  container: '🚢',
+  tanker: '💧',
+  hazmat: '☣️',
+  rigid_box: '📦'
+};
+
+export function getTrailerIcon(type: TrailerType | null | 'none'): string {
+  if (!type || type === 'none') return '🚜';
+  return TRAILER_ICONS[type] || '🚚';
+}
+
 export const TRAILER_PRICES: Record<TrailerType, number> = {
-  box: 14000,
-  tipper: 18000,
-  carrier: 20000,
-  hazmat: 35000,
   curtain: 15000,
   reefer: 24000,
   flatbed: 12000,
-  tanker: 22000,
   lowboy: 30000,
+  tipper: 18000,
+  double_trailer: 36000,
+  box: 14000,
+  carrier: 22000,
+  container: 16000,
+  tanker: 20000,
+  hazmat: 0, // Supplied by consignor at chemical terminal
   rigid_box: 10000
 };
 
@@ -32,25 +56,25 @@ export const TRUCK_MODELS: Record<string, TruckModel> = {
     id: 'scania_s730', brand: 'Scania', name: 'S730 V8 Highline', region: 'Europe', axle: '6x4',
     engine: { name: 'DC16 107', cylinders: 8, displacement: 16.4, hp: 730, torque: 3500, fuelType: 'Diesel' },
     trans: 'Opticruise 12+2', tankSize: 1200, oilCapacity: 45, baseWeight: 9.5, maxGVW: 60, price: 185000,
-    haul: ['curtain', 'reefer', 'lowboy', 'tanker', 'hazmat', 'flatbed']
+    haul: ['curtain', 'reefer', 'lowboy', 'tanker', 'hazmat', 'flatbed', 'double_trailer', 'container', 'tipper']
   },
   'scania_770s': {
     id: 'scania_770s', brand: 'Scania', name: '770S V8 King of the Road', region: 'Europe', axle: '6x4',
     engine: { name: 'DC16 123', cylinders: 8, displacement: 16.4, hp: 770, torque: 3700, fuelType: 'Diesel' },
     trans: 'Opticruise GRSO935R', tankSize: 1300, oilCapacity: 48, baseWeight: 9.8, maxGVW: 65, price: 198000,
-    haul: ['curtain', 'reefer', 'lowboy', 'tanker', 'hazmat', 'flatbed']
+    haul: ['curtain', 'reefer', 'lowboy', 'tanker', 'hazmat', 'flatbed', 'double_trailer', 'container']
   },
   'scania_r500': {
     id: 'scania_r500', brand: 'Scania', name: 'R500 Super Highline', region: 'Europe', axle: '4x2',
     engine: { name: 'DC13 166', cylinders: 6, displacement: 13.0, hp: 500, torque: 2650, fuelType: 'Diesel' },
     trans: 'Opticruise G33CH', tankSize: 1000, oilCapacity: 40, baseWeight: 8.2, maxGVW: 44, price: 134000,
-    haul: ['curtain', 'reefer', 'box', 'tanker']
+    haul: ['curtain', 'reefer', 'box', 'tanker', 'container']
   },
   'scania_r500_8x4': {
     id: 'scania_r500_8x4', brand: 'Scania', name: 'R500 XT Heavy Tipper', region: 'Europe', axle: '8x4',
     engine: { name: 'DC13 155', cylinders: 6, displacement: 13.0, hp: 500, torque: 2550, fuelType: 'Diesel' },
     trans: 'Opticruise with Crawler', tankSize: 400, oilCapacity: 35, baseWeight: 15.0, maxGVW: 80, price: 168000,
-    haul: ['tipper', 'lowboy']
+    haul: ['tipper', 'lowboy', 'flatbed']
   },
   'scania_g410': {
     id: 'scania_g410', brand: 'Scania', name: 'G410 Distribution Day Cab', region: 'Europe', axle: '4x2',
@@ -64,7 +88,7 @@ export const TRUCK_MODELS: Record<string, TruckModel> = {
     id: 'volvo_fh16', brand: 'Volvo', name: 'FH16 750 Globetrotter XXL', region: 'Europe', axle: '6x4',
     engine: { name: 'D16K750', cylinders: 6, displacement: 16.1, hp: 750, torque: 3550, fuelType: 'Diesel' },
     trans: 'I-Shift Dual Clutch', tankSize: 1100, oilCapacity: 44, baseWeight: 9.8, maxGVW: 65, price: 195000,
-    haul: ['curtain', 'reefer', 'lowboy', 'flatbed', 'hazmat', 'tanker']
+    haul: ['curtain', 'reefer', 'lowboy', 'flatbed', 'hazmat', 'tanker', 'double_trailer', 'container']
   },
   'volvo_fh540': {
     id: 'volvo_fh540', brand: 'Volvo', name: 'FH 540 Globetrotter XL', region: 'Europe', axle: '4x2',

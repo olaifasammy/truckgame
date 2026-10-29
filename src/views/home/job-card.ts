@@ -57,7 +57,7 @@ export function renderJobDetails(j: any, why: string | null) {
 
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--mu); margin-bottom:8px;">
         <div><span>Client Shipper:</span> <b style="color:var(--tx);">${company?.name || 'Private Industrial Shipper'}</b></div>
-        <div><span>Coupling:</span> <b style="color:var(--gold);">${TRAILERS[cargo?.trailer || 'curtain']}</b></div>
+        <div><span>Coupling:</span> <b style="color:var(--gold);">${TRAILERS[(cargo?.trailer as keyof typeof TRAILERS) || 'curtain']}</b></div>
       </div>
 
       ${reqs.length ? `
