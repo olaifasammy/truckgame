@@ -4,6 +4,8 @@ import { refresh } from '../core/store';
 import { hire, fire, transferDriver, hireFee, transferFee, trainDriverSkill, certifyDriver, DRIVER_CERTIFICATIONS, skillUpgradeCost } from '../systems/drivers';
 import { TRAIT_REGISTRY } from '../domain/drivers/drivers.names';
 import { Region } from '../domain/drivers/drivers.types';
+import { sendDriverOnRest, awardDriverBonus, assignMentorship } from '../domain/regulations/hos';
+import { set } from '../core/store';
 
 let activeTab: 'employed' | 'pool' = 'employed';
 let selectedRegion: Region | 'All' = 'All';
@@ -29,6 +31,37 @@ action('train-driver-skill', d => {
 action('certify-driver', d => {
   certifyDriver(+(d as any).id, (d as any).cert);
   refresh();
+});
+
+action('send-driver-rest', d => {
+  set(S => {
+    const drv = S.drivers.find((x: any) => x.id === +(d as any).id);
+    if (drv) {
+      const res = sendDriverOnRest(drv, S, true);
+      toast(res.message, res.success ? 'success' : 'err');
+    }
+  });
+});
+
+action('award-driver-bonus', d => {
+  set(S => {
+    const drv = S.drivers.find((x: any) => x.id === +(d as any).id);
+    if (drv) {
+      const res = awardDriverBonus(drv, S, 500);
+      toast(res.message, res.success ? 'success' : 'err');
+    }
+  });
+});
+
+action('pair-mentor', d => {
+  set(S => {
+    const rookie = S.drivers.find((x: any) => x.id === +(d as any).rookieId);
+    const mentor = S.drivers.find((x: any) => x.id === +(d as any).mentorId);
+    if (rookie && mentor) {
+      const res = assignMentorship(mentor, rookie);
+      toast(res.message, res.success ? 'success' : 'err');
+    }
+  });
 });
 
 action('open-transfer-modal', d => {
@@ -201,6 +234,107 @@ export default {
                               `;
                             }).join('')}
                           </div>
+                        </div>
+
+                        <!-- EU/US Hours of Service (HOS) & Mandatory Rest -->
+                        <div style="background:#0a101f; border:1px solid #1e293b; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+                          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <span style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">HOURS OF SERVICE (HOS) · DOT COMPLIANCE</span>
+                            <span style="font-size:9px; font-family:monospace; color:${(d.hosHours || 0) >= 11 ? '#ef4444' : 'var(--mu)'};">
+                              ${d.hosRestUntil && d.hosRestUntil > Date.now() ? '🛌 TAKING MANDATORY 10H REST' : `${(d.hosHours || 0).toFixed(1)} / 11.0 HRS DRIVE LIMIT`}
+                            </span>
+                          </div>
+                          
+                          <div style="height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden; margin-bottom:8px;">
+                            <div style="width:${Math.min(100, ((d.hosHours || 0) / 11) * 100)}%; height:100%; background:${(d.hosHours || 0) >= 11 ? '#ef4444' : (d.hosHours || 0) > 8 ? 'var(--gold)' : 'var(--grn)'}; border-radius:3px;"></div>
+                          </div>
+
+                          <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div style="font-size:9px; color:var(--mu);">
+                              ${d.hosRestUntil && d.hosRestUntil > Date.now() ? `Rest ends in ${Math.ceil((d.hosRestUntil - Date.now())/1000)}s` : (d.hosHours || 0) >= 11 ? '⚠️ Legal limit reached! Violating HOS triggers $1,800 DOT citations.' : 'Driver certified within statutory shift limits.'}
+                            </div>
+                            <button class="btn gold" style="padding:4px 10px; font-size:9px; font-weight:800; white-space:nowrap;" data-act="send-driver-rest" data-id="${d.id}" ${d.hosRestUntil && d.hosRestUntil > Date.now() ? 'disabled' : ''}>
+                              🛏️ SEND TO MOTEL REST ($65)
+                            </button>
+                          </div>
+                        </div>
+
+                        <!-- Driver Morale, Stress & Welfare -->
+                        <div style="background:#0a101f; border:1px solid #1e293b; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+                          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                            <span style="font-size:10px; font-weight:800; color:var(--tx); text-transform:uppercase;">WORKFORCE SATISFACTION & RETENTION</span>
+                            <span style="font-size:9px; font-weight:800; color:${morale < 35 ? '#ef4444' : morale > 70 ? 'var(--grn)' : 'var(--gold)'};">
+                              ${morale < 35 ? '⚠️ RESIGNATION RISK' : morale > 70 ? 'OPTIMAL ENGAGEMENT' : 'AVERAGE MORALE'}
+                            </span>
+                          </div>
+                          
+                          <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:8px;">
+                            <div style="background:#111827; padding:6px 8px; border-radius:6px; border:1px solid #1f293d;">
+                              <div style="font-size:8px; color:var(--mu); font-weight:700;">MORALE</div>
+                              <div style="font-size:13px; font-weight:900; color:${morale > 60 ? 'var(--grn)' : '#ef4444'}; font-family:monospace;">${morale}%</div>
+                            </div>
+                            <div style="background:#111827; padding:6px 8px; border-radius:6px; border:1px solid #1f293d;">
+                              <div style="font-size:8px; color:var(--mu); font-weight:700;">STRESS</div>
+                              <div style="font-size:13px; font-weight:900; color:${(d.stress || 15) > 60 ? '#ef4444' : 'var(--gold)'}; font-family:monospace;">${d.stress || 15}%</div>
+                            </div>
+                            <div style="background:#111827; padding:6px 8px; border-radius:6px; border:1px solid #1f293d;">
+                              <div style="font-size:8px; color:var(--mu); font-weight:700;">SATISFACTION</div>
+                              <div style="font-size:13px; font-weight:900; color:var(--tx); font-family:monospace;">${d.satisfaction || 90}%</div>
+                            </div>
+                          </div>
+
+                          <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <span style="font-size:9px; color:var(--mu);">High morale prevents transit cargo mishandling and driver turnover.</span>
+                            <button class="btn alt" style="padding:4px 10px; font-size:9px; font-weight:800; color:var(--gold); border-color:rgba(193,154,91,0.4);" data-act="award-driver-bonus" data-id="${d.id}" ${S.money >= 500 ? '' : 'disabled'}>
+                              💵 AWARD $500 BONUS (+25% Morale)
+                            </button>
+                          </div>
+                        </div>
+
+                        <!-- Specialized Driver Mentorship Academy -->
+                        <div style="background:#0a101f; border:1px solid #1e293b; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+                          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                            <span style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase;">DRIVER MENTORSHIP ACADEMY</span>
+                            <span style="font-size:8px; font-family:monospace; color:var(--mu);">PEER ACCELERATION</span>
+                          </div>
+                          
+                          ${d.skill >= 5 ? `
+                            <div style="display:flex; align-items:center; gap:8px; background:rgba(193,154,91,0.1); border:1px solid var(--gold); border-radius:6px; padding:8px 10px;">
+                              <span style="font-size:16px;">🎓</span>
+                              <div style="font-size:10px; color:var(--gold); font-weight:800;">
+                                Master CDL Mentor: Qualified to mentor rookie drivers (Skill 1-2) to accelerate their promotion and eco-driving proficiency.
+                              </div>
+                            </div>
+                          ` : d.skill <= 2 ? `
+                            ${d.mentorId ? `
+                              <div style="display:flex; justify-content:space-between; align-items:center; background:#111827; border:1px solid var(--grn); border-radius:6px; padding:6px 10px;">
+                                <div style="font-size:10px; color:var(--grn); font-weight:800;">
+                                  ✓ Actively Mentored by Master Driver ${S.drivers.find((m: any) => m.id === d.mentorId)?.name || 'Instructor'}
+                                </div>
+                                <span style="font-size:8px; color:var(--mu); font-family:monospace;">+100% PROMOTION XP</span>
+                              </div>
+                            ` : `
+                              <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <span style="font-size:9px; color:var(--mu);">Rookie driver can be paired with an elite Level 5★ Master driver.</span>
+                                ${(() => {
+                                  const master = S.drivers.find((m: any) => m.id !== d.id && m.skill >= 5);
+                                  if (master) {
+                                    return `
+                                      <button class="btn gold" style="padding:4px 10px; font-size:9px; font-weight:800;" data-act="pair-mentor" data-rookie-id="${d.id}" data-mentor-id="${master.id}">
+                                        PAIR WITH ${master.name.split(' ')[0].toUpperCase()} (5★)
+                                      </button>
+                                    `;
+                                  } else {
+                                    return `<span style="font-size:8px; color:var(--mu); font-family:monospace;">Train a driver to 5★ to unlock mentoring</span>`;
+                                  }
+                                })()}
+                              </div>
+                            `}
+                          ` : `
+                            <div style="font-size:9px; color:var(--mu);">
+                              Mid-level commercial operator. Train to Level 5 Master CDL to become a designated academy instructor.
+                            </div>
+                          `}
                         </div>
 
                         <!-- Special Trait -->

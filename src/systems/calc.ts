@@ -1,6 +1,7 @@
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { calculatePerformance, calculateUsage, applyTripWear, EnvironmentalConditions } from '../domain/trucks/trucks.physics';
 import { CITIES, LOCATIONS } from '../data/world';
+import { pushNote } from './notify';
 
 export const PART_LABELS: Record<string, string> = { 
   engine: 'Engine Core', 
@@ -151,9 +152,37 @@ export function applyWear(t: any, km: number, payload = 0, env?: EnvironmentalCo
   applyTripWear(t, km, payload, env);
 }
 
-export function syncUsage(t: any, km: number, metrics: any) {
+export function syncUsage(t: any, km: number, metrics: any, env?: EnvironmentalConditions, S?: any) {
   const usage = calculateUsage(t, km, metrics);
-  t.fluids.fuel = Math.max(0, Math.round(t.fluids.fuel - usage.fuelUsed));
+  const startFuel = t.fluids?.fuel !== undefined ? t.fluids.fuel : 800;
+
+  if (usage.fuelUsed > startFuel) {
+    const roadsideLiters = Math.ceil(usage.fuelUsed - startFuel);
+    const roadsideRate = 1.65;
+    const roadsideCost = Math.round(roadsideLiters * roadsideRate);
+    if (S) {
+      S.money = Math.max(0, (S.money || 0) - roadsideCost);
+      pushNote(S, `ROADSIDE REFUEL: ${t.name} ran low on diesel en-route and bought ${roadsideLiters}L roadside fuel at $${roadsideRate}/L (-$${roadsideCost.toLocaleString()}).`);
+    }
+    t.fluids.fuel = Math.max(120, Math.min(800, 800 - Math.round(usage.fuelUsed % 800)));
+  } else {
+    t.fluids.fuel = Math.max(0, Math.round(startFuel - usage.fuelUsed));
+  }
+
   t.fluids.oil = Math.max(0, parseFloat((t.fluids.oil - usage.oilUsed).toFixed(2)));
+  
+  // AdBlue / DEF consumption (~4.5% of diesel fuel)
+  const adBlueUsedPct = parseFloat(((km / 100) * (metrics.fuelConsumption * 0.045) / 0.8).toFixed(1));
+  t.fluids.adBlue = Math.max(0, Math.round((t.fluids.adBlue !== undefined ? t.fluids.adBlue : 100) - adBlueUsedPct));
+
+  // Coolant depletion (higher under desert heatwave or mountain grades)
+  const isHeatwave = env?.weather === 'heatwave';
+  const coolantLoss = parseFloat(((km / 800) * (isHeatwave ? 3.5 : 1.0)).toFixed(1));
+  t.fluids.coolant = Math.max(0, Math.round((t.fluids.coolant !== undefined ? t.fluids.coolant : 100) - coolantLoss));
+
+  // Transmission oil breakdown
+  const transLoss = parseFloat(((km / 1000) * 0.8).toFixed(1));
+  t.fluids.transmissionOil = Math.max(0, Math.round((t.fluids.transmissionOil !== undefined ? t.fluids.transmissionOil : 100) - transLoss));
+
   t.odometer += km;
 }

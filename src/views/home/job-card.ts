@@ -74,8 +74,9 @@ export function renderJobDetails(j: any, why: string | null) {
       ` : ''}
 
       ${why ? `
-        <div style="padding:8px 10px; background:rgba(239,68,68,0.1); border:1px solid var(--red); color:var(--red); border-radius:6px; font-size:10px; font-weight:700; margin-top:6px;">
-          ⚠ DISPATCH WARNING: ${why}
+        <div style="padding:8px 10px; background:rgba(239,68,68,0.1); border:1px solid var(--red); color:var(--red); border-radius:6px; font-size:10px; font-weight:700; margin-top:6px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+          <span>⚠ ${why}</span>
+          <button class="btn gold" style="padding:3px 8px; font-size:8px; font-weight:900;" data-act="home-take" data-id="${j.id}">RESOLVE IN DISPATCH</button>
         </div>
       ` : ''}
     </div>
@@ -177,7 +178,7 @@ export function renderJobCard(S: any, j: any) {
               <button class="btn ${why ? 'alt' : 'gold'}" 
                       style="padding:5px 12px; font-size:9px; font-weight:900; letter-spacing:0.5px; border-radius:4px; text-transform:uppercase;" 
                       data-act="home-take" data-id="${j.id}">
-                ${why ? 'UNAVAILABLE' : 'ACCEPT LOAD'}
+                ${why ? 'CHECK FLEET' : 'ACCEPT LOAD'}
               </button>
             `;
           })()}

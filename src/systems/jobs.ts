@@ -33,14 +33,33 @@ import { hasLicense } from '../domain/freight/licenses';
 
 export function why(S: any, t: any, j: any) {
   if (t.status !== 'idle') return 'Truck is busy';
+  if ((S.subcontractedTrucks || []).includes(t.id)) return 'Truck is currently leased out on charter sub-contract';
   if (!t.driverId) return 'Assign a CDL driver';
 
   const d = (S.drivers || []).find((x: any) => x.id === t.driverId);
   if (!d) return 'Driver not found';
 
+  // Hours of Service (HOS) & Fatigue Check
+  if (d.hosRestUntil && d.hosRestUntil > Date.now()) {
+    const sec = Math.ceil((d.hosRestUntil - Date.now()) / 1000);
+    return `Driver on mandatory 10h HOS rest (${sec}s remaining)`;
+  }
+  if ((d.hosHours || 0) >= 11) {
+    return 'Driver exceeded 11h HOS daily limit (Send to Motel in Drivers)';
+  }
+  if ((d.fatigue || 0) > 85) {
+    return 'Driver critically fatigued (Send to Motel in Drivers)';
+  }
+
   const cargo = CARGO_TYPES.find(c => c.id === j.cargoId);
   const trailerType = cargo?.trailer || j.trailer || 'curtain';
   const truckModel = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
+
+  // Gross Axle Rating Verification
+  const grossTonnes = (truckModel.baseWeight || 8) + (j.weight || 0);
+  if (grossTonnes > (truckModel.maxGVW || 44) && !hasLicense(S, 'heavy_haul')) {
+    return `Gross mass (${grossTonnes}t) exceeds chassis max GVW (${truckModel.maxGVW}t). Requires Heavy Abnormal Permit`;
+  }
 
   // 1. Company Corporate License Verification
   if (cargo?.isHazmat && !hasLicense(S, 'adr_hazmat')) {
@@ -79,7 +98,7 @@ export function why(S: any, t: any, j: any) {
 
   // 3. Chassis & Trailer Coupling Verification
   const isHazmatJob = cargo?.isHazmat || trailerType === 'tanker' || trailerType === 'hazmat';
-  const isRigidOnly = truckModel.category === 'Rigid' || (truckModel.haul?.length === 1 && truckModel.haul[0] === 'rigid_box');
+  const isRigidOnly = truckModel.haul?.length === 1 && truckModel.haul[0] === 'rigid_box';
   
   if (isRigidOnly) {
     if (trailerType !== 'rigid_box') {
@@ -101,16 +120,15 @@ export function why(S: any, t: any, j: any) {
   const avgHealth = healthValues.reduce((a, b) => a + b, 0) / healthValues.length;
   if (avgHealth < 20) return 'Major repair needed';
 
-  // 5. Fuel Range Verification
-  const deadheadDist = distKm(t.loc, j.from);
-  const initialStintKm = deadheadDist + Math.min(j.km || 0, 450);
-  const departureFuelNeeded = Math.round(fuelCostForTrip(initialStintKm, t, j.weight));
-  if (t.fluids.fuel < departureFuelNeeded || t.fluids.fuel < 60) return 'Refuel needed';
-
   return null;
 }
 
-const ok = (S: any, j: any) => !(j.vip && S.vip < 5);
+const ok = (S: any, j: any) => {
+  if (j.isAuctionWon) return true;
+  if (!j.vip) return true;
+  const prog = getCompanyProgression(S);
+  return prog.tier >= 3 || S.companyTier >= 3 || (S.vip && S.vip >= 1);
+};
 export const findTruck = (S: any, j: any) => S.fleet.filter((t: any) => !why(S, t, j)).sort((a: any, b: any) => distKm(a.loc, j.from) - distKm(b.loc, j.from))[0];
 
 export function blocker(S: any, j: any) {
@@ -136,7 +154,7 @@ export function blocker(S: any, j: any) {
 
   const ableTractors = S.fleet.filter((t: any) => {
     const truckModel = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
-    const isRigidOnly = truckModel.category === 'Rigid' || (truckModel.haul?.length === 1 && truckModel.haul[0] === 'rigid_box');
+    const isRigidOnly = truckModel.haul?.length === 1 && truckModel.haul[0] === 'rigid_box';
     if (isRigidOnly) return trailerType === 'rigid_box';
     if (cargo?.isHazmat || trailerType === 'tanker' || trailerType === 'hazmat') return true;
     return t.trailer === trailerType;
@@ -151,7 +169,7 @@ export function blocker(S: any, j: any) {
 
   if (!ableTractors.some((t: any) => t.status === 'idle')) return 'All coupled tractors are currently busy';
   if (!ableTractors.some((t: any) => t.status === 'idle' && t.driverId)) return 'Assign a qualified CDL driver';
-  if (!findTruck(S, j)) return 'Check Driver Certifications, Fuel, or Repair in Garage';
+  if (!findTruck(S, j)) return 'Check Driver Endorsements, Trailer, or Mechanical Condition';
   return null;
 }
 
@@ -159,7 +177,10 @@ export function takeJob(id: number, truckId?: number) {
   set(S => {
     const j = S.jobs.find((x: any) => x.id === id);
     if (!j) return;
-    if (!ok(S, j)) return toast('VIP only');
+    if (!ok(S, j)) {
+      const prog = getCompanyProgression(S);
+      return toast(`VIP Exclusive Contract: Requires VIP Rank (Tier 3+). Current: ${prog.title}`, 'err');
+    }
     
     let t;
     if (truckId) {
@@ -173,6 +194,32 @@ export function takeJob(id: number, truckId?: number) {
     }
     
     const cargo = CARGO_TYPES.find(c => c.id === j.cargoId);
+
+    // Automatic Pre-Dispatch Refuel from Company Depot Storage / Station
+    const tankCapacity = 800;
+    const currentFuel = t.fluids?.fuel !== undefined ? t.fluids.fuel : 800;
+    const neededFuel = Math.max(0, tankCapacity - currentFuel);
+    if (neededFuel > 0) {
+      if (!S.fuelBunker) S.fuelBunker = { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
+      const fromBunker = Math.min(neededFuel, S.fuelBunker.currentLiters || 0);
+      if (fromBunker > 0) {
+        S.fuelBunker.currentLiters -= fromBunker;
+      }
+      const stillNeeded = neededFuel - fromBunker;
+      let stationCost = 0;
+      if (stillNeeded > 0) {
+        stationCost = Math.round(stillNeeded * 1.25);
+        S.money = Math.max(0, S.money - stationCost);
+      }
+      t.fluids.fuel = tankCapacity;
+      if (fromBunker > 0 && stillNeeded > 0) {
+        pushNote(S, `AUTO-REFUEL: ${t.name} topped up to 100% (${fromBunker}L Depot Bunker, ${stillNeeded}L station top-off: -$${stationCost}).`);
+      } else if (fromBunker > 0) {
+        pushNote(S, `AUTO-REFUEL: ${t.name} filled tank (800L) from Depot Fuel Bunker before departure.`);
+      } else {
+        pushNote(S, `AUTO-REFUEL: ${t.name} filled tank (800L) at station (-$${stationCost}).`);
+      }
+    }
 
     // Enforce 5 free daily bidded dispatches, 4 Gold Coins thereafter
     let quotaNote = '';
@@ -208,7 +255,8 @@ export function takeJob(id: number, truckId?: number) {
     }
 
     S.jobs = S.jobs.filter((x: any) => x.id !== id);
-    S.active.push({ ...j, truck: t.id, dh, start: now, end: now + duration, env: routeEnv, isShipperTanker: isHazmatJob, unhitchedTrailer: previousTrailer });
+    const cargoName = cargo?.name || j.cargo || 'Commercial Freight';
+    S.active.push({ ...j, cargo: cargoName, truck: t.id, dh, start: now, end: now + duration, env: routeEnv, isShipperTanker: isHazmatJob, unhitchedTrailer: previousTrailer });
     t.status = 'busy';
     replenish(S);
     pushNote(S, `Consignment Dispatched: ${cargo?.name || 'Cargo'} · ${j.from} → ${j.to}${quotaNote}`);
@@ -223,33 +271,109 @@ export function completeJobs(S: any, now: number) {
     S.active = S.active.filter((a: any) => a.end > now);
     for (const a of done) {
       const t = S.fleet.find((x: any) => x.id === a.truck), km = a.km + (a.dh || 0);
+      const cargo = CARGO_TYPES.find(c => c.id === a.cargoId);
+      const truckModel = t ? (TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730']) : null;
+
       if (t) {
         const st = stats(S, t, a.weight || 0, a.env);
         t.status = 'idle';
         t.loc = a.to;
-        syncUsage(t, km, st);
+        syncUsage(t, km, st, a.env, S);
         applyWear(t, km, a.weight || 0, a.env);
 
-        // If this was a shipper-supplied tanker, return it to consignor terminal
+        // Driver Hours of Service, Fatigue & Welfare Accrual
+        const drv = (S.drivers || []).find((x: any) => x.id === t.driverId);
+        if (drv) {
+          if (!drv.stats) drv.stats = { tripsCompleted: 0, kmDriven: 0, earned: 0 };
+          drv.stats.tripsCompleted++;
+          drv.stats.kmDriven += km;
+          drv.stats.earned += Math.round(a.pay * 0.12);
+
+          const tripDriveHours = km / Math.max(50, st.topSpeed);
+          drv.hosHours = parseFloat(((drv.hosHours || 0) + tripDriveHours).toFixed(1));
+          drv.fatigue = Math.min(100, Math.round((drv.fatigue || 10) + (km / 75)));
+
+          // Environmental stress & weather wear
+          if (a.env?.weather === 'snow' || a.env?.weather === 'heatwave') {
+            drv.stress = Math.min(100, (drv.stress || 15) + 10);
+            drv.morale = Math.max(10, (drv.morale || 90) - 4);
+          }
+
+          // Mentorship Academy skill acceleration
+          if (drv.mentorId) {
+            const mentor = S.drivers.find((m: any) => m.id === drv.mentorId);
+            if (mentor && drv.skill < 3 && Math.random() < 0.25) {
+              drv.skill++;
+              pushNote(S, `MENTORSHIP ACADEMY: Under Master Driver ${mentor.name}'s guidance, ${drv.name} advanced to Level ${drv.skill}★ CDL!`);
+            }
+          }
+
+          // HOS Enforcement Check
+          if (drv.hosHours > 11.0) {
+            const fine = 1800;
+            if (S.insurance?.liability) {
+              pushNote(S, `HOS ENFORCEMENT: ${drv.name} logged 11h+ continuous drive. $${fine} DOT citation covered under Statutory Liability Policy.`);
+            } else {
+              S.money = Math.max(0, S.money - fine);
+              pushNote(S, `DOT CITATION: ${drv.name} exceeded 11.0h statutory HOS limit without mandatory rest. Fined $${fine.toLocaleString()}.`);
+            }
+          }
+        }
+
+        // Weigh Station Axle Enforcement
+        if (truckModel && (truckModel.baseWeight + (a.weight || 0) > truckModel.maxGVW) && !hasLicense(S, 'heavy_haul')) {
+          const fine = 2400;
+          if (S.insurance?.liability) {
+            pushNote(S, `WEIGH STATION INSPECTION: Gross mass exceeded chassis rating. $${fine} Overweight citation covered by Liability Insurance.`);
+          } else {
+            S.money = Math.max(0, S.money - fine);
+            pushNote(S, `WEIGH STATION CITATION: Gross mass exceeded rating without Heavy Permit. Transport Police fine: $${fine.toLocaleString()}.`);
+          }
+        }
+
+        // Return shipper-supplied tanker if applicable
         if (a.isShipperTanker) {
-          t.trailer = null; // Returned to consignor terminal, tractor returns bobtail
-          pushNote(S, `CONSIGNOR RETURN: Shipper's hazardous tanker returned to terminal in ${a.to}. Tractor ready for new trailer.`);
+          t.trailer = null;
+          pushNote(S, `CONSIGNOR RETURN: Shipper's hazardous tanker returned to chemical terminal in ${a.to}. Tractor returns bobtail.`);
         }
       }
+
       if (a.kind === 'move') {
         pushNote(S, `${t ? t.name : 'Truck'} arrived in ${a.to}`);
         continue;
       }
-      S.money += a.pay;
+
+      let finalPay = a.pay;
+
+      // Warehouse Infrastructure Bonuses
+      if (S.warehouseUpgrades?.cold_vault && (a.trailer === 'reefer' || cargo?.tempControlled)) {
+        const coldBonus = Math.round(a.pay * 0.20);
+        finalPay += coldBonus;
+        pushNote(S, `COLD STORAGE VAULT: +$${coldBonus.toLocaleString()} premium earned via Cryogenic Warehouse Vault.`);
+      }
+
+      S.money += finalPay;
       S.loads++;
       const repGain = a.isAuctionWon ? 45 : 15;
-      S.stats.earned += a.pay;
+      S.stats.earned += finalPay;
       S.stats.km += a.km;
       
       if (!S.reputation) S.reputation = 0;
       S.reputation += repGain;
 
-      const cargo = CARGO_TYPES.find(c => c.id === a.cargoId);
+      // Corporate Tender Progress Tracking
+      if (a.tenderId && S.corporateTenders) {
+        const tender = S.corporateTenders.find((ct: any) => ct.id === a.tenderId);
+        if (tender) {
+          tender.completedLoads = (tender.completedLoads || 0) + 1;
+          tender.loadsRemaining = Math.max(0, tender.loadsRemaining - 1);
+          if (tender.loadsRemaining === 0) {
+            S.money += tender.bonusPayout;
+            pushNote(S, `CONTRACT OF AFFREIGHTMENT COMPLETED: ${tender.client} awarded $${tender.bonusPayout.toLocaleString()} SLA performance bonus!`);
+          }
+        }
+      }
+
       const baseXp = 140;
       const kmXp = Math.round((a.km || 0) * 0.12);
       const auctionBonus = a.isAuctionWon ? 90 : 0;
@@ -259,5 +383,21 @@ export function completeJobs(S: any, now: number) {
       addCompanyXp(S, totalXp, `Delivery: ${cargo?.name || 'Freight'}`);
     }
   }
+
+  // Passive Warehouse Income & Fleet Sub-contracting Retainer (Ticks every period)
+  if (done.length > 0) {
+    if (S.warehouseUpgrades?.cross_docking) {
+      S.money += 1200;
+    }
+    if (S.warehouseUpgrades?.gantry_crane) {
+      S.money += 600;
+    }
+    const subcontractCount = (S.subcontractedTrucks || []).length;
+    if (subcontractCount > 0) {
+      const retainerIncome = subcontractCount * 1800;
+      S.money += retainerIncome;
+    }
+  }
+
   return { done, auctionChanged };
 }

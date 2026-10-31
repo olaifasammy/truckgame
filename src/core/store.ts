@@ -41,7 +41,15 @@ const DEF = () => ({
     engine: 0,
     transmission: 0
   } as Record<string, number>,
-  fleet: [createTruck(1, 'scania_s730', 'Flagship S730 #1', 'LAGOS')]
+  fleet: [createTruck(1, 'scania_s730', 'Flagship S730 #1', 'LAGOS')],
+  loans: [] as any[],
+  leases: [] as any[],
+  insurance: { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 },
+  fuelBunker: { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 },
+  depots: ['hub_lagos'] as string[],
+  warehouseUpgrades: { cross_docking: false, cold_vault: false, gantry_crane: false } as Record<string, boolean>,
+  corporateTenders: [] as any[],
+  subcontractedTrucks: [] as number[]
 });
 
 let S: any;
@@ -51,6 +59,15 @@ function fix(state: any) {
   if (state.isAuthenticated === undefined) state.isAuthenticated = false;
   if (!state.licenses) state.licenses = ['standard'];
   if (!state.trailers) state.trailers = ['curtain', 'flatbed', 'reefer'];
+  if (!state.loans) state.loans = [];
+  if (!state.leases) state.leases = [];
+  if (!state.insurance) state.insurance = { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 };
+  if (!state.fuelBunker) state.fuelBunker = { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
+  if (!state.depots) state.depots = ['hub_lagos'];
+  if (!state.warehouseUpgrades) state.warehouseUpgrades = { cross_docking: false, cold_vault: false, gantry_crane: false };
+  if (!state.corporateTenders) state.corporateTenders = [];
+  if (!state.subcontractedTrucks) state.subcontractedTrucks = [];
+
   if (!state.partsInventory) {
     state.partsInventory = {
       tires: 4,
@@ -67,12 +84,16 @@ function fix(state: any) {
       transmission: 0
     };
   }
-  if (!state.drivers) state.drivers = [{ id: 1, name: 'Sam Okafor', region: 'Africa', skill: 3, salary: 250, morale: 95, fatigue: 5, trait: 'careful', certifications: ['Cold Chain'], stats: { tripsCompleted: 0, kmDriven: 0, earned: 0 } }];
+  if (!state.drivers) state.drivers = [{ id: 1, name: 'Sam Okafor', region: 'Africa', skill: 3, salary: 250, morale: 95, fatigue: 5, stress: 15, satisfaction: 90, hosHours: 2.5, hosRestUntil: null, trait: 'careful', certifications: ['Cold Chain'], stats: { tripsCompleted: 0, kmDriven: 0, earned: 0 } }];
   if (state.drivers) {
     state.drivers.forEach((d: any) => {
       if (!d.region) d.region = 'Africa';
       if (d.morale === undefined) d.morale = 90;
       if (d.fatigue === undefined) d.fatigue = 10;
+      if (d.stress === undefined) d.stress = 15;
+      if (d.satisfaction === undefined) d.satisfaction = 90;
+      if (d.hosHours === undefined) d.hosHours = 0;
+      if (d.hosRestUntil === undefined) d.hosRestUntil = null;
       if (!d.trait) d.trait = 'careful';
       if (!d.certifications) d.certifications = d.id === 1 ? ['Cold Chain'] : [];
       if (!d.salary) d.salary = d.skill * 150 + 100;
@@ -86,11 +107,27 @@ function fix(state: any) {
       if (!d.trait) d.trait = 'careful';
       if (!d.certifications) d.certifications = d.skill >= 3 ? ['Cold Chain'] : [];
       if (!d.salary) d.salary = d.skill * 150 + 100;
+      if (d.morale === undefined) d.morale = 85;
+      if (d.stress === undefined) d.stress = 20;
     });
   }
   if (!state.fleet) state.fleet = [];
   state.fleet.forEach((t: any) => {
     if (t.trailer === undefined) t.trailer = 'curtain';
+    if (!t.fluids) {
+      t.fluids = { fuel: 800, oil: 35, coolant: 100, adBlue: 100, transmissionOil: 100 };
+    } else {
+      if (t.fluids.transmissionOil === undefined) t.fluids.transmissionOil = 100;
+      if (t.fluids.adBlue === undefined) t.fluids.adBlue = 100;
+      if (t.fluids.coolant === undefined) t.fluids.coolant = 100;
+    }
+    if (!t.upgrades) {
+      t.upgrades = { ecoTuning: 0, performanceChip: 0, heavyDutySuspension: false, gearbox: '12spd_highway', axleRatio: 'highway_eco', tireCompound: 'highway_eco' };
+    } else {
+      if (!t.upgrades.gearbox) t.upgrades.gearbox = '12spd_highway';
+      if (!t.upgrades.axleRatio) t.upgrades.axleRatio = 'highway_eco';
+      if (!t.upgrades.tireCompound) t.upgrades.tireCompound = 'highway_eco';
+    }
   });
   if (!state.perks) state.perks = {};
   if (!state.offices) state.offices = [];
@@ -113,8 +150,22 @@ function fix(state: any) {
     const now = Date.now();
     state.auctions = state.auctions.filter((a: any) => a && a.expiresAt && a.expiresAt > now);
   }
-  if (state.jobs && state.jobs.length > 0 && !state.jobs[0].cargoId) {
-    state.jobs = [];
+  if (state.jobs && state.jobs.length > 0) {
+    if (!state.jobs[0].cargoId) {
+      state.jobs = [];
+    } else {
+      state.jobs.forEach((j: any) => {
+        if (j.isAuctionWon) j.vip = false;
+      });
+    }
+  }
+
+  if (state.active && state.active.length > 0) {
+    state.active.forEach((a: any) => {
+      if (!a.cargo) {
+        a.cargo = a.cargoId ? a.cargoId.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Commercial Freight';
+      }
+    });
   }
   
   // Migration: Fresh start for new physics if old schema found

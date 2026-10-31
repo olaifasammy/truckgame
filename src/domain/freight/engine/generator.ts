@@ -186,8 +186,10 @@ export class FreightEngine {
     }
 
     // Ensure jobs board has enough contracts
+    const prog = S ? getCompanyProgression(S) : { tier: 0 };
+    const isVipCarrier = prog.tier >= 3;
     while (S.jobs.length < count) {
-      S.jobs.push(this.generate(S, { vip: Math.random() < 0.15 }));
+      S.jobs.push(this.generate(S, { vip: isVipCarrier && Math.random() < 0.15 }));
     }
   }
 }

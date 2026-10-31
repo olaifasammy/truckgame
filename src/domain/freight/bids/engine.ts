@@ -185,7 +185,7 @@ export class BiddingEngine {
         pay: auc.currentBid, 
         deadline: Date.now() + (auc.km * 3600000 / 60) + (24 * 3600000),
         requirements: auc.requirements,
-        vip: auc.vip,
+        vip: false,
         isAuctionWon: true,
         wonAt: Date.now()
       };

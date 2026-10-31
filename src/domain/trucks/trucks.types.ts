@@ -37,6 +37,7 @@ export interface TruckFluids {
   oil: number; // Current Liters
   coolant: number; // Current %
   adBlue: number; // Current %
+  transmissionOil?: number; // Current %
 }
 
 export interface TruckComponents {
@@ -66,5 +67,8 @@ export interface Truck {
     ecoTuning: number; // 0-3
     performanceChip: number; // 0-3
     heavyDutySuspension: boolean;
+    gearbox?: '12spd_highway' | '16spd_crawler';
+    axleRatio?: 'highway_eco' | 'heavy_diff_lock';
+    tireCompound?: 'highway_eco' | 'all_terrain_winter';
   };
 }

@@ -1,6 +1,6 @@
 import { ic } from '../core/icons';
-import { action, fmt, dur } from '../core/ui';
-import { refresh } from '../core/store';
+import { action, fmt, dur, toast } from '../core/ui';
+import { refresh, set } from '../core/store';
 import { TRUCK_MODELS, TRAILERS, getTrailerIcon } from '../domain/trucks/trucks.data';
 import { CITIES, LOCATIONS } from '../data/world';
 import { stats, distKm } from '../systems/calc';
@@ -10,6 +10,7 @@ import { slots, upgradeGarage, upgradeGarageCost } from '../systems/offices';
 import { openJobSelector, renderJobSelectorOverlay, activeJobSelectorTruckId } from './garage/job-selector';
 import { getTruckSilhouetteSvg } from '../domain/trucks/trucks.visuals';
 import { getManufacturerLogoSvg } from '../domain/trucks/trucks.logos';
+import { renderTelematicsOverlay } from './telematics-modal';
 
 let openId: number | null = null, panel: string | null = null;
 let hitchModalTruckId: number | null = null;
@@ -17,6 +18,67 @@ let hitchModalTruckId: number | null = null;
 action('truck-toggle', d => { openId = openId === +(d as any).id ? null : +(d as any).id; panel = null; refresh(); });
 action('panel', d => { panel = panel === (d as any).kind ? null : (d as any).kind; refresh(); });
 action('refuel', d => refuel(+(d as any).id));
+
+action('set-powertrain-gearbox', d => {
+  set(S => {
+    const t = S.fleet.find((x: any) => x.id === +(d as any).id);
+    if (t) {
+      const type = (d as any).gearbox;
+      const cost = type === '16spd_crawler' ? 12500 : 0;
+      if (cost > 0 && S.money < cost) return toast('Insufficient funds for 16-speed crawler transmission ($12,500)', 'err');
+      S.money -= cost;
+      if (!t.upgrades) t.upgrades = {} as any;
+      t.upgrades.gearbox = type;
+      toast(`Installed ${type === '16spd_crawler' ? '16-Speed Heavy Crawler Transmission' : '12-Speed Automated Highway Transmission'}`, 'success');
+    }
+  });
+});
+
+action('set-powertrain-axle', d => {
+  set(S => {
+    const t = S.fleet.find((x: any) => x.id === +(d as any).id);
+    if (t) {
+      const ratio = (d as any).ratio;
+      const cost = ratio === 'heavy_diff_lock' ? 8500 : 0;
+      if (cost > 0 && S.money < cost) return toast('Insufficient funds for 3.42:1 diff lock ratio ($8,500)', 'err');
+      S.money -= cost;
+      if (!t.upgrades) t.upgrades = {} as any;
+      t.upgrades.axleRatio = ratio;
+      toast(`Configured ${ratio === 'heavy_diff_lock' ? '3.42:1 Heavy Ratio with Inter-Axle Diff Lock' : '2.64:1 Long-Haul Highway Eco Ratio'}`, 'success');
+    }
+  });
+});
+
+action('set-powertrain-tires', d => {
+  set(S => {
+    const t = S.fleet.find((x: any) => x.id === +(d as any).id);
+    if (t) {
+      const compound = (d as any).compound;
+      const cost = compound === 'all_terrain_winter' ? 6000 : 4500;
+      if (S.money < cost) return toast(`Insufficient funds for tire compound upgrade ($${cost.toLocaleString()})`, 'err');
+      S.money -= cost;
+      if (!t.upgrades) t.upgrades = {} as any;
+      t.upgrades.tireCompound = compound;
+      t.components.tires.health = 100;
+      toast(`Mounted fresh ${compound === 'all_terrain_winter' ? 'All-Terrain Winter M+S Treads' : 'Low Rolling Resistance Eco Highway Tires'}`, 'success');
+    }
+  });
+});
+
+action('top-up-consumables', d => {
+  set(S => {
+    const t = S.fleet.find((x: any) => x.id === +(d as any).id);
+    if (t) {
+      const cost = 450;
+      if (S.money < cost) return toast(`Insufficient funds for consumables service ($${cost})`, 'err');
+      S.money -= cost;
+      t.fluids.adBlue = 100;
+      t.fluids.coolant = 100;
+      t.fluids.transmissionOil = 100;
+      toast(`Topped up AdBlue / DEF, flushed Coolant & refreshed Transmission Fluid ($${cost})`, 'success');
+    }
+  });
+});
 action('repair', d => {
   const S = (window as any).__getStore?.();
   if (S) {
@@ -184,20 +246,110 @@ function body(S: any, t: any, m: any, a: any, now: number) {
           <div class="bar" style="height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;" data-start="${a.start}" data-end="${a.end}">
             <div style="width:${pct}%; height:100%; background:var(--blu); border-radius:3px; transition:width 0.5s linear;"></div>
           </div>
+          <button class="btn alt" style="width:100%; margin-top:8px; padding:6px 10px; font-size:10px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.4); display:flex; align-items:center; justify-content:center; gap:6px;" data-act="open-telematics" data-id="${t.id}">
+            <span>🛰️</span> STREAM LIVE GPS TELEMATICS & DASHCAM COCKPIT
+          </button>
         </div>
-      ` : ''}
+      ` : `
+        <button class="btn alt" style="width:100%; margin-bottom:12px; padding:6px 10px; font-size:10px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.3); display:flex; align-items:center; justify-content:center; gap:6px;" data-act="open-telematics" data-id="${t.id}">
+          <span>🛰️</span> OPEN VEHICLE TELEMETRICS & DASHCAM DIAGNOSTICS
+        </button>
+      `}
 
       <!-- Heavy Vehicle Technical Specification Grid -->
       <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:12px;">
         ${cell('ENGINE', m.engine.name, `${m.engine.displacement}L · ${m.engine.cylinders === 8 ? 'V8' : 'I6'}`)}
         ${cell('POWER', `${m.engine.hp} HP`, `@ 1,900 RPM`)}
         ${cell('TORQUE', `${m.engine.torque} Nm`, `Peak Output`)}
-        ${cell('TRANSMISSION', m.trans, `Automated Manual`)}
-        ${cell('AXLE RATIO', m.axle, `Inter-Axle Lock`)}
+        ${cell('TRANSMISSION', t.upgrades?.gearbox === '16spd_crawler' ? '16-Spd Crawler' : '12-Spd Automated', t.upgrades?.gearbox === '16spd_crawler' ? 'Vocational Heavy' : 'Direct Drive')}
+        ${cell('AXLE RATIO', t.upgrades?.axleRatio === 'heavy_diff_lock' ? '3.42:1 Diff Lock' : '2.64:1 Highway', m.axle)}
         ${cell('CRUISE RANGE', `~${estimatedRangeKm} km`, `Calculated`)}
         ${cell('LIFETIME ODO', `${Math.round(t.odometer).toLocaleString()} km`, `Total Distance`)}
         ${cell('ENGINE HOURS', `${estimatedHours} hrs`, `Cumulative Run`)}
         ${cell('FUEL RATE', `${st.fuelConsumption.toFixed(1)} L/100`, `Telematics Avg`)}
+      </div>
+
+      <!-- Powertrain Engineering & Consumables Breakdown -->
+      <div style="background:#0a0f1d; border:1px solid #1e293b; padding:10px 12px; border-radius:8px; margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="color:var(--gold); font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">POWERTRAIN CUSTOMIZATION & CONSUMABLES</span>
+          <span style="font-size:8px; font-family:monospace; color:var(--mu);">SAE J1939</span>
+        </div>
+
+        <!-- Consumables Levels Row -->
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:10px;">
+          <div style="background:#111827; border:1px solid #1f293d; padding:6px 8px; border-radius:6px;">
+            <div style="font-size:7px; color:var(--mu); font-weight:700;">DIESEL FUEL</div>
+            <div style="font-size:11px; font-weight:800; color:var(--tx); font-family:monospace;">${t.fluids.fuel}L <span style="font-size:8px; color:var(--mu);">(${fuelPctVal}%)</span></div>
+          </div>
+          <div style="background:#111827; border:1px solid #1f293d; padding:6px 8px; border-radius:6px;">
+            <div style="font-size:7px; color:var(--mu); font-weight:700;">ADBLUE / DEF</div>
+            <div style="font-size:11px; font-weight:800; color:#38bdf8; font-family:monospace;">${t.fluids.adBlue || 100}%</div>
+          </div>
+          <div style="background:#111827; border:1px solid #1f293d; padding:6px 8px; border-radius:6px;">
+            <div style="font-size:7px; color:var(--mu); font-weight:700;">ENGINE COOLANT</div>
+            <div style="font-size:11px; font-weight:800; color:${(t.fluids.coolant || 100) < 25 ? '#ef4444' : 'var(--grn)'}; font-family:monospace;">${t.fluids.coolant || 100}%</div>
+          </div>
+          <div style="background:#111827; border:1px solid #1f293d; padding:6px 8px; border-radius:6px;">
+            <div style="font-size:7px; color:var(--mu); font-weight:700;">TRANSMISSION FLUID</div>
+            <div style="font-size:11px; font-weight:800; color:var(--gold); font-family:monospace;">${t.fluids.transmissionOil || 100}%</div>
+          </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px;">
+          <span style="font-size:9px; color:var(--mu);">Low coolant risks engine thermal shutdown during desert heatwaves.</span>
+          <button class="btn alt" style="padding:4px 8px; font-size:8px; font-weight:800; color:var(--grn); border-color:rgba(34,197,94,0.3);" data-act="top-up-consumables" data-id="${t.id}" ${busy ? 'disabled' : ''}>
+            💧 FLUSH & REFILL FLUIDS ($450)
+          </button>
+        </div>
+
+        <!-- Gearbox, Differential & Tire Selector Controls -->
+        <div style="display:flex; flex-direction:column; gap:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:10px; font-weight:800; color:var(--tx);">Gearbox: ${t.upgrades?.gearbox === '16spd_crawler' ? '16-Speed Heavy Crawler' : '12-Speed Automated Highway'}</div>
+              <div style="font-size:8px; color:var(--mu);">16-speed adds low crawler ratios for heavy 50t+ lowboys & grades.</div>
+            </div>
+            <div style="display:flex; gap:4px;">
+              <button class="btn ${t.upgrades?.gearbox !== '16spd_crawler' ? 'gold' : 'alt'}" style="padding:3px 8px; font-size:8px; font-weight:800;" data-act="set-powertrain-gearbox" data-id="${t.id}" data-gearbox="12spd_highway" ${busy ? 'disabled' : ''}>
+                12-SPD
+              </button>
+              <button class="btn ${t.upgrades?.gearbox === '16spd_crawler' ? 'gold' : 'alt'}" style="padding:3px 8px; font-size:8px; font-weight:800;" data-act="set-powertrain-gearbox" data-id="${t.id}" data-gearbox="16spd_crawler" ${busy ? 'disabled' : ''}>
+                16-SPD CRAWLER ($12.5k)
+              </button>
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:10px; font-weight:800; color:var(--tx);">Axle Differential: ${t.upgrades?.axleRatio === 'heavy_diff_lock' ? '3.42:1 Inter-Axle Diff Lock' : '2.64:1 Highway Eco'}</div>
+              <div style="font-size:8px; color:var(--mu);">Diff lock provides +15% wet/snow traction; 2.64 saves 6% highway fuel.</div>
+            </div>
+            <div style="display:flex; gap:4px;">
+              <button class="btn ${t.upgrades?.axleRatio !== 'heavy_diff_lock' ? 'gold' : 'alt'}" style="padding:3px 8px; font-size:8px; font-weight:800;" data-act="set-powertrain-axle" data-id="${t.id}" data-ratio="highway_eco" ${busy ? 'disabled' : ''}>
+                2.64 ECO
+              </button>
+              <button class="btn ${t.upgrades?.axleRatio === 'heavy_diff_lock' ? 'gold' : 'alt'}" style="padding:3px 8px; font-size:8px; font-weight:800;" data-act="set-powertrain-axle" data-id="${t.id}" data-ratio="heavy_diff_lock" ${busy ? 'disabled' : ''}>
+                3.42 DIFF LOCK ($8.5k)
+              </button>
+            </div>
+          </div>
+
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div>
+              <div style="font-size:10px; font-weight:800; color:var(--tx);">Tires: ${t.upgrades?.tireCompound === 'all_terrain_winter' ? '❄️ All-Terrain Winter M+S' : '🍃 Low Rolling Resistance Eco'}</div>
+              <div style="font-size:8px; color:var(--mu);">Winter treads prevent jackknife/black ice; Eco saves 8% fuel.</div>
+            </div>
+            <div style="display:flex; gap:4px;">
+              <button class="btn ${t.upgrades?.tireCompound !== 'all_terrain_winter' ? 'gold' : 'alt'}" style="padding:3px 8px; font-size:8px; font-weight:800;" data-act="set-powertrain-tires" data-id="${t.id}" data-compound="highway_eco" ${busy ? 'disabled' : ''}>
+                ECO TIRES ($4.5k)
+              </button>
+              <button class="btn ${t.upgrades?.tireCompound === 'all_terrain_winter' ? 'gold' : 'alt'}" style="padding:3px 8px; font-size:8px; font-weight:800;" data-act="set-powertrain-tires" data-id="${t.id}" data-compound="all_terrain_winter" ${busy ? 'disabled' : ''}>
+                WINTER M+S ($6.0k)
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Fifth Wheel Coupling & Trailer Management -->
@@ -384,25 +536,25 @@ function renderHitchModal(S: any) {
         <div style="font-size:10px; font-weight:800; color:var(--mu); text-transform:uppercase; margin-bottom:8px;">AVAILABLE IN HQ STORAGE YARD:</div>
 
         ${compatibleYard.length === 0 ? `
-          <div style="background:#080c16; border:1px dashed #1e293b; border-radius:8px; padding:20px; text-align:center; margin-bottom:12px;">
-            <div style="font-size:24px; margin-bottom:6px;">🚛</div>
-            <div style="font-size:12px; font-weight:800; color:var(--tx);">No Compatible Trailers in Yard</div>
-            <div style="font-size:10px; color:var(--mu); margin-top:4px; line-height:1.4;">
-              Acquire new semi-trailers from the Dealership Trailer Depot, or unhitch from another compatible tractor.
+          <div style="background:#080c16; border:1px dashed #1e293b; border-radius:8px; padding:16px; text-align:center; margin-bottom:12px;">
+            <div style="font-size:20px; margin-bottom:4px;">🚛</div>
+            <div style="font-size:11px; font-weight:800; color:var(--tx);">No Compatible Trailers in Yard</div>
+            <div style="font-size:9px; color:var(--mu); margin-top:3px; line-height:1.4;">
+              This tractor's <b>${m.axle}</b> chassis (${m.maxGVW}t GVW) supports: ${m.haul.map((h: any) => TRAILERS[h as keyof typeof TRAILERS] || h).join(', ')}.
             </div>
-            <button class="btn gold" style="margin-top:12px; padding:8px 14px; font-size:10px; font-weight:900;" data-act="store-open" data-id="dealership">
+            <button class="btn gold" style="margin-top:10px; padding:6px 12px; font-size:9px; font-weight:900;" data-act="store-open" data-id="dealership">
               VISIT TRAILER DEPOT
             </button>
           </div>
         ` : `
-          <div style="display:flex; flex-direction:column; gap:6px; max-height:220px; overflow-y:auto; margin-bottom:12px;">
+          <div style="display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto; margin-bottom:12px;">
             ${compatibleYard.map((trailerType: string) => `
-              <div style="display:flex; justify-content:space-between; align-items:center; background:#111827; border:1px solid #1f293d; border-radius:8px; padding:10px 12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; background:#111827; border:1px solid #1f293d; border-radius:8px; padding:8px 12px;">
                 <div style="display:flex; align-items:center; gap:10px;">
                   <span style="font-size:20px;">${getTrailerIcon(trailerType as any)}</span>
                   <div>
                     <div style="font-size:12px; font-weight:800; color:var(--tx);">${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}</div>
-                    <div style="font-size:9px; color:var(--mu); font-family:monospace;">Commercial Trailer · Ready to Hitch</div>
+                    <div style="font-size:9px; color:var(--grn); font-family:monospace;">✓ Chassis Approved (${m.axle})</div>
                   </div>
                 </div>
                 <button class="btn gold" style="padding:6px 12px; font-size:10px; font-weight:900;" data-act="hitch-trailer" data-id="${t.id}" data-trailer="${trailerType}">
@@ -412,6 +564,39 @@ function renderHitchModal(S: any) {
             `).join('')}
           </div>
         `}
+
+        ${(() => {
+          const incompatibleYard = yardTrailers.filter((trailerType: string) => !m.haul.includes(trailerType as any));
+          if (incompatibleYard.length === 0) return '';
+          return `
+            <div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.08); padding-top:10px;">
+              <div style="font-size:9px; font-weight:800; color:#ef4444; text-transform:uppercase; margin-bottom:6px; display:flex; align-items:center; gap:4px;">
+                <span>⚠️ INCOMPATIBLE WITH THIS CHASSIS (${incompatibleYard.length})</span>
+              </div>
+              <div style="display:flex; flex-direction:column; gap:4px; max-height:130px; overflow-y:auto; margin-bottom:12px;">
+                ${incompatibleYard.map((trailerType: string) => {
+                  let reason = `Chassis (${m.axle}) not certified for this payload`;
+                  if (trailerType === 'lowboy') reason = `Requires 6x4/8x4 tandem axle heavy-haul chassis (Current: ${m.axle})`;
+                  else if (trailerType === 'double_trailer') reason = `Requires 6x4 tandem-drive LCV prime mover (Current: ${m.axle})`;
+                  else if (trailerType === 'tipper') reason = `Requires 8x4/6x4 vocational dump chassis with PTO`;
+                  else if (m.haul?.length === 1 && m.haul[0] === 'rigid_box') reason = `Rigid box chassis has no fifth-wheel turntable`;
+                  return `
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(239,68,68,0.06); border:1px solid rgba(239,68,68,0.2); border-radius:6px; padding:6px 10px;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:16px; opacity:0.6;">${getTrailerIcon(trailerType as any)}</span>
+                        <div>
+                          <div style="font-size:11px; font-weight:700; color:#cbd5e1;">${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}</div>
+                          <div style="font-size:8px; color:#f87171; font-family:monospace;">${reason}</div>
+                        </div>
+                      </div>
+                      <span style="font-size:8px; font-weight:800; color:#f87171; background:rgba(239,68,68,0.15); padding:2px 6px; border-radius:4px;">LOCKED</span>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            </div>
+          `;
+        })()}
 
         <button class="btn alt" style="width:100%; padding:8px; font-size:10px; font-weight:800;" data-act="close-hitch-modal">
           CANCEL
@@ -460,6 +645,7 @@ export default {
       ${S.fleet.map((t: any) => truck(S, t)).join('')}
       ${activeJobSelectorTruckId !== null ? renderJobSelectorOverlay(S) : ''}
       ${renderHitchModal(S)}
+      ${renderTelematicsOverlay(S)}
 
       <!-- OEM Dealership Gateway Card -->
       <div class="card" style="margin-top:14px; padding:14px; background:#0f172a; border:1px solid var(--gold); border-radius:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-act="store-open" data-id="dealership">

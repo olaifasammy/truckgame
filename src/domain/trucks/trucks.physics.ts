@@ -140,12 +140,32 @@ export function calculatePerformance(
   // 9. Dynamic Fuel Consumption (L/100km)
   let fuelConsumption = ((model.engine.displacement * 1.5) + (grossVehicleMass * 0.45)) * gradeInclineDrag * weatherFuelMod;
   fuelConsumption *= (2 - engineHealth);
-  if (truck.upgrades?.ecoTuning > 0) {
-    fuelConsumption *= (1 - 0.04 * truck.upgrades.ecoTuning);
+  // Powertrain Customizations
+  if (truck.upgrades?.gearbox === '16spd_crawler') {
+    // 16-speed transmission provides crawler ratio on steep inclines and heavy trailers
+    if (grade > 2 || grossVehicleMass > 35) {
+      topSpeed = Math.min(115, topSpeed * 1.12);
+    }
   }
-  fuelConsumption *= (1.05 - (driverSkill * 0.02)); // Skilful driver reduces fuel burn
 
-  // 10. Oil Consumption (L/100km)
+  if (truck.upgrades?.axleRatio === 'highway_eco') {
+    // Tall 2.64:1 highway axle ratio drops engine cruising RPM and fuel burn
+    fuelConsumption *= 0.94;
+  } else if (truck.upgrades?.axleRatio === 'heavy_diff_lock') {
+    // 3.42:1 heavy vocational ratio with inter-axle diff lock boosts wet/snow traction
+    weatherTractionMod = Math.min(1.0, weatherTractionMod + 0.15);
+  }
+
+  if (truck.upgrades?.tireCompound === 'highway_eco') {
+    // Low Rolling Resistance Steer/Drive Tires
+    fuelConsumption *= 0.92;
+  } else if (truck.upgrades?.tireCompound === 'all_terrain_winter') {
+    // Heavy-Duty All-Terrain Winter M+S Treads
+    weatherTractionMod = Math.min(1.0, weatherTractionMod + 0.22);
+    weatherBrakeMod = Math.max(0.95, weatherBrakeMod * 0.82);
+  }
+
+  // 10. Engine Oil Consumption (L/100km)
   let oilConsumption = (model.engine.displacement / 2.5) * (2 - engineHealth);
   if (weather === 'heatwave') oilConsumption *= 1.20;
 
@@ -218,7 +238,8 @@ export function createTruck(id: number, modelId: string, name: string, loc: stri
       fuel: model.tankSize,
       oil: model.oilCapacity,
       coolant: 100,
-      adBlue: 100
+      adBlue: 100,
+      transmissionOil: 100
     },
     components: {
       engine: { health: 100, wearRate: 1 },
@@ -234,7 +255,10 @@ export function createTruck(id: number, modelId: string, name: string, loc: stri
     upgrades: {
       ecoTuning: 0,
       performanceChip: 0,
-      heavyDutySuspension: false
+      heavyDutySuspension: false,
+      gearbox: '12spd_highway',
+      axleRatio: 'highway_eco',
+      tireCompound: 'highway_eco'
     }
   };
 }
