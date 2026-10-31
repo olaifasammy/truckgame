@@ -3,7 +3,7 @@ import { action, fmt, dur } from '../core/ui';
 import { refresh } from '../core/store';
 import { TRUCK_MODELS, TRAILERS, getTrailerIcon } from '../domain/trucks/trucks.data';
 import { CITIES, LOCATIONS } from '../data/world';
-import { stats, PART_LABELS, distKm } from '../systems/calc';
+import { stats, distKm } from '../systems/calc';
 import { refuel, repair, inspect, assign, transport, refuelCost, repairCost, transportInfo, inspectCost, unhitchTrailer, hitchTrailer } from '../systems/fleet';
 import { why } from '../systems/jobs';
 import { slots, upgradeGarage, upgradeGarageCost } from '../systems/offices';
@@ -160,11 +160,6 @@ function body(S: any, t: any, m: any, a: any, now: number) {
 
   const hasCompatibleJobs = S.jobs.some((j: any) => !why(S, t, j));
 
-  // 9 Monitored Subsystems
-  const componentMeters = Object.entries(t.components).map(([k, c]: [string, any]) => 
-    meter(PART_LABELS[k] || k, c.health, `${Math.round(c.health)}%`, 35)
-  ).join('');
-
   return `
     <div style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);">
       <!-- Real-time Active Consignment Bar -->
@@ -191,23 +186,6 @@ function body(S: any, t: any, m: any, a: any, now: number) {
           </div>
         </div>
       ` : ''}
-
-      <!-- Real Telematics Dual Primary Gauges -->
-      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
-        ${meter('Diesel Reservoir', fuelPctVal, `${Math.round(t.fluids.fuel)} / ${m.tankSize} L (${fuelPctVal}%)`, 20)}
-        ${meter('Mechanical Integrity', avgCond, `${avgCond}% Nominal`, 35)}
-      </div>
-
-      <!-- SAE Diagnostic Telematics Grid (9 Subsystems) -->
-      <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <span style="font-size:9px; font-weight:800; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">SAE J1939 DIAGNOSTIC SUBSYSTEMS</span>
-          <span style="font-size:8px; font-family:monospace; color:var(--mu);">${avgCond > 70 ? 'ALL SENSORS NOMINAL' : 'MAINTENANCE ADVISORY'}</span>
-        </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px;">
-          ${componentMeters}
-        </div>
-      </div>
 
       <!-- Heavy Vehicle Technical Specification Grid -->
       <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:12px;">

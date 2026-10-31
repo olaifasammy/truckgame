@@ -117,32 +117,34 @@ export const fuelCostForTrip = (km: number, t: any, payload = 0, env?: Environme
 };
 
 /**
- * Calculates authentic logistics transit duration at 2.5x real-world speed.
+ * Calculates continuous physical transit duration for highway haulage.
  * 
- * Physics formulation:
- * - Real-world duration: T_real = (km / effectiveSpeed) hours = (km / effectiveSpeed) * 3600 seconds.
- * - At 2.5x real-world speed: T_game = T_real / 2.5 = (km / effectiveSpeed) * 1440 seconds.
+ * Exact Physics Formulation:
+ * - Real-world duration: T_real = (distance_km / cruising_speed_kmh) hours.
+ * - Real-world duration in seconds: T_sec = (distance_km / cruising_speed_kmh) * 3600.
+ * - Deterministic physical time compression scale (1 real minute = 12 simulation minutes, 1:12 scale):
+ *   T_simulation_ms = (distance_km / cruising_speed_kmh) * 300 * 1000 ms.
  */
 export const tripMs = (km: number, speed: number = 80, env?: EnvironmentalConditions): number => {
-  let effectiveSpeed = Math.max(40, Math.min(125, speed || 80));
+  let effectiveSpeed = Math.max(30, Math.min(125, speed || 80));
 
   if (env) {
     if (env.weather === 'snow') {
-      effectiveSpeed *= 0.75; // Snow chains / low traction
+      effectiveSpeed *= 0.80; // Reduced traction
     } else if (env.weather === 'rain') {
-      effectiveSpeed *= 0.90; // Wet pavement braking buffer
+      effectiveSpeed *= 0.92; // Wet pavement
     }
 
     if ((env.roadGrade || 0) > 4) {
-      effectiveSpeed *= 0.85; // Steep mountain crawl
+      effectiveSpeed *= 0.82; // Incline gravity drag
     } else if ((env.roadGrade || 0) > 2) {
-      effectiveSpeed *= 0.93;
+      effectiveSpeed *= 0.92;
     }
   }
 
-  // Exact 2.5x real-world simulation speed
-  const seconds = Math.max(15, Math.round((km / effectiveSpeed) * 1440));
-  return seconds * 1000;
+  // Exact continuous physics time calculation: T_ms = (km / speed) * 300,000 ms
+  const totalSeconds = (km / effectiveSpeed) * 300;
+  return Math.round(totalSeconds * 1000);
 };
 
 export function applyWear(t: any, km: number, payload = 0, env?: EnvironmentalConditions) {

@@ -34,6 +34,14 @@ export interface PerformanceMetrics {
 
 /**
  * Calculates current truck performance based on state, payload, and regional environmental physics.
+ * 
+ * Physics formulation:
+ * - Gross Mass GVW = Tractor Base Mass + Trailer Tare Mass + Cargo Mass.
+ * - Effective Horsepower Peff = Model HP * Engine Health * Altitude Air Density Factor.
+ * - Power-To-Weight Ratio PWR = Peff / GVW.
+ * - Incline Drag Factor = 1 + (Road Grade * 0.045 * (GVW / 30)).
+ * - Aerodynamic Drag CdA depends on trailer coupling body.
+ * - Equilibrium Cruising Speed v_cruise = min(Legal Governor, PWR * 12.5 / sqrt(CdA * Incline Drag) * Weather * Driver Skill).
  */
 export function calculatePerformance(
   truck: Truck,
@@ -42,13 +50,27 @@ export function calculatePerformance(
   env?: EnvironmentalConditions
 ): PerformanceMetrics {
   const model = TRUCK_MODELS[truck.modelId] || TRUCK_MODELS['scania_s730'];
-  const totalWeight = model.baseWeight + payloadTonnes;
+  
+  // Trailer Tare Masses (Tonnes)
+  const trailerTareMap: Record<string, number> = {
+    curtain: 6.5,
+    reefer: 7.5,
+    tanker: 7.2,
+    hazmat: 7.2,
+    lowboy: 9.8,
+    flatbed: 6.0,
+    double_trailer: 13.5,
+    tipper: 8.0,
+    container: 6.8
+  };
+  const trailerTare = truck.trailer ? (trailerTareMap[truck.trailer] || 6.5) : 0;
+  const grossVehicleMass = Math.max(8.0, model.baseWeight + trailerTare + payloadTonnes);
   
   // 1. Component Health Modifiers
-  const engineHealth = (truck.components?.engine?.health || 100) / 100;
-  const transHealth = (truck.components?.transmission?.health || 100) / 100;
-  const tireHealth = (truck.components?.tires?.health || 100) / 100;
-  const brakeHealth = (truck.components?.brakes?.health || 100) / 100;
+  const engineHealth = Math.max(0.2, (truck.components?.engine?.health || 100) / 100);
+  const transHealth = Math.max(0.2, (truck.components?.transmission?.health || 100) / 100);
+  const tireHealth = Math.max(0.2, (truck.components?.tires?.health || 100) / 100);
+  const brakeHealth = Math.max(0.2, (truck.components?.brakes?.health || 100) / 100);
 
   // 2. Environmental Physics Modifiers
   let weatherSpeedMod = 1.0;
@@ -59,66 +81,77 @@ export function calculatePerformance(
 
   const weather = env?.weather || 'clear';
   if (weather === 'rain') {
-    weatherTractionMod = 0.82;
-    weatherBrakeMod = 1.25;
-    weatherSpeedMod = 0.92;
+    weatherTractionMod = 0.88;
+    weatherBrakeMod = 1.20;
+    weatherSpeedMod = 0.93;
   } else if (weather === 'snow') {
-    weatherTractionMod = 0.58;
-    weatherBrakeMod = 1.60;
+    weatherTractionMod = 0.65;
+    weatherBrakeMod = 1.50;
     weatherSpeedMod = 0.78;
-    weatherWearMod = 1.35;
+    weatherWearMod = 1.30;
   } else if (weather === 'fog') {
-    weatherSpeedMod = 0.85;
-    weatherBrakeMod = 1.15;
+    weatherSpeedMod = 0.88;
+    weatherBrakeMod = 1.12;
   } else if (weather === 'heatwave') {
-    weatherFuelMod = 1.12; // Extra cooling fan and cabin AC fuel burn
-    weatherWearMod = 1.25; // High oil breakdown and tire degradation
+    weatherFuelMod = 1.10;
+    weatherWearMod = 1.20;
   }
 
-  // 3. Elevation & Thin Air Physics
+  // 3. Elevation & Thin Air Oxygen Density Drop
   const elevation = env?.elevation || 200;
-  let altitudeAirDensityMod = 1.0;
-  if (elevation > 800) {
-    // Air density drop decreases naturally aspirated / cooling efficiency
-    altitudeAirDensityMod = Math.max(0.85, 1 - ((elevation - 800) / 1000) * 0.08);
-  }
+  const altitudeAirDensityMod = elevation > 500
+    ? Math.max(0.80, 1 - ((elevation - 500) / 10000))
+    : 1.0;
 
-  // 4. Road Incline Grade Physics
-  const grade = env?.roadGrade || 1.5;
-  const gradeInclineDrag = 1 + (grade * 0.035); // Steeper grade = higher fuel & drag
+  // 4. Road Grade Incline Gravity Drag
+  const grade = Math.max(0, env?.roadGrade || 1.5);
+  const gradeInclineDrag = 1 + (grade * 0.045 * (grossVehicleMass / 30));
 
-  // Driver skill mitigation (experienced drivers optimize gears and retarders)
+  // 5. Aerodynamic Drag Coefficient (CdA) by Trailer Body Coupling
+  const cdAMap: Record<string, number> = {
+    curtain: 1.05,
+    reefer: 1.05,
+    tanker: 0.98,
+    hazmat: 0.98,
+    lowboy: 1.20,
+    flatbed: 1.10,
+    double_trailer: 1.30,
+    tipper: 1.12,
+    container: 1.10
+  };
+  const cdA = truck.trailer ? (cdAMap[truck.trailer] || 1.05) : 0.85; // Bobtail has low drag
+
+  // Driver Skill Factor
   const driverSkill = driver ? driver.skill : 1;
-  const skillMitigation = 1 - (driverSkill - 1) * 0.08;
+  const driverFactor = 0.92 + (driverSkill * 0.02); // Skill ranges 1 to 5
 
-  // 5. Power / Weight Ratio
+  // 6. Effective Power & Power-to-Weight Ratio
   const effectiveHp = model.engine.hp * engineHealth * altitudeAirDensityMod;
-  const powerWeightRatio = effectiveHp / totalWeight;
+  const powerWeightRatio = effectiveHp / grossVehicleMass; // HP per tonne
 
-  // 6. Realistic Top Speed
-  let topSpeed = (powerWeightRatio * 15) * weatherSpeedMod / Math.sqrt(gradeInclineDrag);
-  topSpeed = Math.min(topSpeed, 135);
-  topSpeed = Math.max(45, topSpeed);
-  if (driver) topSpeed *= (1 + (driverSkill / 45));
+  // 7. Physics Highway Cruising Speed
+  const rawCruisingSpeed = (powerWeightRatio * 12.8) / Math.sqrt(cdA * gradeInclineDrag);
+  let topSpeed = Math.min(110, rawCruisingSpeed) * weatherSpeedMod * driverFactor * transHealth;
+  topSpeed = Math.max(30, Math.min(120, topSpeed));
 
-  // 7. Acceleration Factor
-  const acceleration = (powerWeightRatio / 100) * transHealth * weatherTractionMod;
+  // 8. Acceleration Factor (0 - 1)
+  const acceleration = Math.max(0.1, Math.min(1.0, (powerWeightRatio / 60) * transHealth * weatherTractionMod));
 
-  // 8. Dynamic Fuel Consumption (L/100km)
-  let fuelConsumption = ((model.engine.displacement * 1.6) + (payloadTonnes * 0.75)) * gradeInclineDrag * weatherFuelMod;
+  // 9. Dynamic Fuel Consumption (L/100km)
+  let fuelConsumption = ((model.engine.displacement * 1.5) + (grossVehicleMass * 0.45)) * gradeInclineDrag * weatherFuelMod;
   fuelConsumption *= (2 - engineHealth);
   if (truck.upgrades?.ecoTuning > 0) {
-    fuelConsumption *= (1 - 0.05 * truck.upgrades.ecoTuning);
+    fuelConsumption *= (1 - 0.04 * truck.upgrades.ecoTuning);
   }
-  fuelConsumption *= (1 - (driverSkill - 1) * 0.03); // Good drivers save fuel
+  fuelConsumption *= (1.05 - (driverSkill * 0.02)); // Skilful driver reduces fuel burn
 
-  // 9. Oil Consumption
-  let oilConsumption = (model.engine.displacement / 2) * (2 - engineHealth);
-  if (weather === 'heatwave') oilConsumption *= 1.25;
+  // 10. Oil Consumption (L/100km)
+  let oilConsumption = (model.engine.displacement / 2.5) * (2 - engineHealth);
+  if (weather === 'heatwave') oilConsumption *= 1.20;
 
-  // 10. Braking Distance (meters)
-  let brakingDistance = 35 * (totalWeight / 10) * (2 - brakeHealth) * (2 - tireHealth) * weatherBrakeMod;
-  brakingDistance *= skillMitigation;
+  // 11. Pneumatic Braking Distance (meters from 80 km/h)
+  let brakingDistance = 32 * (grossVehicleMass / 20) * (2 - brakeHealth) * (2 - tireHealth) * weatherBrakeMod;
+  brakingDistance *= (1.05 - (driverSkill * 0.02));
 
   return {
     topSpeed: Math.round(topSpeed),

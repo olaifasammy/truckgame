@@ -20,10 +20,6 @@ export const replenish = (S: any) => FreightEngine.replenish(S);
 export const makeJob = (S: any, vip = false) => FreightEngine.generate(S, { vip });
 export const placeBid = (auctionId: number, amount: number) => {
   set(S => {
-    const prog = getCompanyProgression(S);
-    if (prog.tier < 3) {
-      return toast(`Job Bidding unlocks at VIP Rank (Tier 3+). Your rank: ${prog.title}`, 'err');
-    }
     const success = BiddingEngine.placePlayerBid(S, auctionId, amount);
     if (success) {
       toast(`Tender Submitted: $${amount.toLocaleString()}`, 'success');
@@ -68,31 +64,32 @@ export function why(S: any, t: any, j: any) {
 
   // 2. Driver Certification & Endorsement Verification
   const certs = d.certifications || [];
-  if (cargo?.isHazmat && !certs.includes('ADR Hazmat') && d.skill < 4) {
+  if (cargo?.isHazmat && !certs.includes('ADR Hazmat') && d.skill < 3) {
     return 'Driver lacks ADR Hazmat Certification (Train in Drivers)';
   }
-  if (cargo?.tempControlled && !certs.includes('Cold Chain') && d.skill < 3) {
+  if (cargo?.tempControlled && !certs.includes('Cold Chain') && d.skill < 2) {
     return 'Driver lacks Cold Chain Certification (Train in Drivers)';
   }
-  if (trailerType === 'lowboy' && !certs.includes('Heavy Haul') && d.skill < 4) {
+  if (trailerType === 'lowboy' && !certs.includes('Heavy Haul') && d.skill < 3) {
     return 'Driver lacks Heavy Haul Lowboy Endorsement';
   }
-  if (trailerType === 'double_trailer' && !certs.includes('Double Trailer LCV') && d.skill < 4) {
+  if (trailerType === 'double_trailer' && !certs.includes('Double Trailer LCV') && d.skill < 3) {
     return 'Driver lacks Double Trailer LCV Endorsement';
   }
 
   // 3. Chassis & Trailer Coupling Verification
   const isHazmatJob = cargo?.isHazmat || trailerType === 'tanker' || trailerType === 'hazmat';
-  if (isHazmatJob) {
-    // Shipper Terminal Supplies Hazmat/Chemical Tanker directly
-    if (!truckModel.haul.includes('tanker') && !truckModel.haul.includes('hazmat')) {
-      return 'Tractor chassis incompatible with liquid tanker fifth-wheel coupling';
+  const isRigidOnly = truckModel.category === 'Rigid' || (truckModel.haul?.length === 1 && truckModel.haul[0] === 'rigid_box');
+  
+  if (isRigidOnly) {
+    if (trailerType !== 'rigid_box') {
+      return 'Rigid box truck chassis cannot haul articulated semi-trailers';
     }
+  } else if (isHazmatJob) {
+    // Shipper Terminal Supplies Hazmat/Chemical Tanker directly at zero capital cost
+    // All highway semi-tractors are equipped with universal fifth-wheel couplings
   } else {
-    // Commercial freight trailers: must have exact trailer coupled to tractor
-    if (!truckModel.haul.includes(trailerType as any)) {
-      return 'Tractor chassis cannot haul ' + (TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType);
-    }
+    // Commercial freight trailers: must have required trailer type coupled to tractor
     if (t.trailer !== trailerType) {
       const currentDesc = t.trailer ? (TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer) : 'Bobtail (No Trailer)';
       return `Requires ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType} (Current: ${currentDesc})`;
@@ -139,9 +136,9 @@ export function blocker(S: any, j: any) {
 
   const ableTractors = S.fleet.filter((t: any) => {
     const truckModel = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
-    if (cargo?.isHazmat || trailerType === 'tanker' || trailerType === 'hazmat') {
-      return truckModel.haul.includes('tanker') || truckModel.haul.includes('hazmat');
-    }
+    const isRigidOnly = truckModel.category === 'Rigid' || (truckModel.haul?.length === 1 && truckModel.haul[0] === 'rigid_box');
+    if (isRigidOnly) return trailerType === 'rigid_box';
+    if (cargo?.isHazmat || trailerType === 'tanker' || trailerType === 'hazmat') return true;
     return t.trailer === trailerType;
   });
 
@@ -220,46 +217,47 @@ export function takeJob(id: number, truckId?: number) {
 }
 
 export function completeJobs(S: any, now: number) {
-  BiddingEngine.tickAuctions(S, now);
-  const done = S.active.filter((a: any) => a.end <= now);
-  if (!done.length) return done;
-  S.active = S.active.filter((a: any) => a.end > now);
-  for (const a of done) {
-    const t = S.fleet.find((x: any) => x.id === a.truck), km = a.km + (a.dh || 0);
-    if (t) {
-      const st = stats(S, t, a.weight || 0, a.env);
-      t.status = 'idle';
-      t.loc = a.to;
-      syncUsage(t, km, st);
-      applyWear(t, km, a.weight || 0, a.env);
+  const auctionChanged = BiddingEngine.tickAuctions(S, now);
+  const done: any[] = S.active.filter((a: any) => a.end <= now);
+  if (done.length > 0) {
+    S.active = S.active.filter((a: any) => a.end > now);
+    for (const a of done) {
+      const t = S.fleet.find((x: any) => x.id === a.truck), km = a.km + (a.dh || 0);
+      if (t) {
+        const st = stats(S, t, a.weight || 0, a.env);
+        t.status = 'idle';
+        t.loc = a.to;
+        syncUsage(t, km, st);
+        applyWear(t, km, a.weight || 0, a.env);
 
-      // If this was a shipper-supplied tanker, return it to consignor terminal
-      if (a.isShipperTanker) {
-        t.trailer = null; // Returned to consignor terminal, tractor returns bobtail
-        pushNote(S, `CONSIGNOR RETURN: Shipper's hazardous tanker returned to terminal in ${a.to}. Tractor ready for new trailer.`);
+        // If this was a shipper-supplied tanker, return it to consignor terminal
+        if (a.isShipperTanker) {
+          t.trailer = null; // Returned to consignor terminal, tractor returns bobtail
+          pushNote(S, `CONSIGNOR RETURN: Shipper's hazardous tanker returned to terminal in ${a.to}. Tractor ready for new trailer.`);
+        }
       }
-    }
-    if (a.kind === 'move') {
-      pushNote(S, `${t ? t.name : 'Truck'} arrived in ${a.to}`);
-      continue;
-    }
-    S.money += a.pay;
-    S.loads++;
-    const repGain = a.isAuctionWon ? 45 : 15;
-    S.stats.earned += a.pay;
-    S.stats.km += a.km;
-    
-    if (!S.reputation) S.reputation = 0;
-    S.reputation += repGain;
+      if (a.kind === 'move') {
+        pushNote(S, `${t ? t.name : 'Truck'} arrived in ${a.to}`);
+        continue;
+      }
+      S.money += a.pay;
+      S.loads++;
+      const repGain = a.isAuctionWon ? 45 : 15;
+      S.stats.earned += a.pay;
+      S.stats.km += a.km;
+      
+      if (!S.reputation) S.reputation = 0;
+      S.reputation += repGain;
 
-    const cargo = CARGO_TYPES.find(c => c.id === a.cargoId);
-    const baseXp = 140;
-    const kmXp = Math.round((a.km || 0) * 0.12);
-    const auctionBonus = a.isAuctionWon ? 90 : 0;
-    const hazmatBonus = cargo?.isHazmat ? 75 : 0;
-    const totalXp = baseXp + kmXp + auctionBonus + hazmatBonus;
+      const cargo = CARGO_TYPES.find(c => c.id === a.cargoId);
+      const baseXp = 140;
+      const kmXp = Math.round((a.km || 0) * 0.12);
+      const auctionBonus = a.isAuctionWon ? 90 : 0;
+      const hazmatBonus = cargo?.isHazmat ? 75 : 0;
+      const totalXp = baseXp + kmXp + auctionBonus + hazmatBonus;
 
-    addCompanyXp(S, totalXp, `Delivery: ${cargo?.name || 'Freight'}`);
+      addCompanyXp(S, totalXp, `Delivery: ${cargo?.name || 'Freight'}`);
+    }
   }
-  return done;
+  return { done, auctionChanged };
 }

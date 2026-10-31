@@ -35,7 +35,7 @@ export class BiddingEngine {
   /**
    * Process AI competitor bids during game loop tick
    */
-  static tickAuctions(S: any, now: number) {
+  static tickAuctions(S: any, now: number): boolean {
     if (!S.auctions) S.auctions = [];
     if (!S.jobs) S.jobs = [];
     
@@ -81,13 +81,15 @@ export class BiddingEngine {
       }
     }
 
-    if (stateChanged) {
+    if (expired.length > 0) {
+      stateChanged = true;
       S.auctions = active;
-      // Handle expired auctions
       for (const auc of expired) {
         this.finalizeAuction(S, auc);
       }
     }
+
+    return stateChanged;
   }
 
   /**
@@ -139,8 +141,6 @@ export class BiddingEngine {
    */
   static placePlayerBid(S: any, auctionId: number, bidAmount: number): boolean {
     if (!S.auctions) return false;
-    const prog = getCompanyProgression(S);
-    if (prog.tier < 3) return false; // VIP Rank required to participate in bidding
 
     const auc = S.auctions.find((a: any) => a.id === auctionId);
     if (!auc || Date.now() >= auc.expiresAt) return false;
@@ -191,7 +191,9 @@ export class BiddingEngine {
       };
 
       if (!S.jobs) S.jobs = [];
-      S.jobs.unshift(wonJob);
+      if (!S.jobs.some((j: any) => j.id === wonJob.id)) {
+        S.jobs.unshift(wonJob);
+      }
       pushNote(S, `🏆 Tender Won: Secured ${cargo?.name || 'Cargo'} haul for $${auc.currentBid.toLocaleString()}! Dispatch within 5 mins.`);
     } else {
       pushNote(S, `Contract Awarded: ${auc.currentWinnerName} won the ${auc.from} → ${auc.to} freight contract at $${auc.currentBid.toLocaleString()}`);

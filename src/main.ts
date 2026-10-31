@@ -12,6 +12,8 @@ import * as nav from './ui/nav';
 import { replenish, completeJobs } from './systems/jobs';
 import { fillPool } from './systems/drivers';
 import { completeRepairs } from './systems/maintenance';
+import { activeAuctionModalId, renderModalOverlay } from './views/home/auction-modal';
+import { tripMs } from './systems/calc';
 
 console.log('Main: Imports completed');
 
@@ -85,6 +87,17 @@ try {
 
   // Sync systems
   set(st => {
+    // Migrate legacy active jobs with huge end times
+    if (st.active && st.active.length > 0) {
+      const now = Date.now();
+      st.active.forEach((a: any) => {
+        const remaining = a.end - now;
+        if (remaining > 3600000) { // Cap legacy stuck jobs to 1 hour max
+          const fastDuration = tripMs(a.km || 200, 80, a.env);
+          a.end = Math.min(a.end, now + fastDuration);
+        }
+      });
+    }
     replenish(st);
     fillPool(st);
     completeJobs(st, Date.now());
@@ -101,7 +114,7 @@ try {
     localStorage.setItem('last_active', now.toString());
     
     // 1. Silent Simulation Processing (No intrusive view teardown or reload)
-    const done = completeJobs(st, now) || [];
+    const { done = [], auctionChanged = false } = completeJobs(st, now) || {};
     const repCount = completeRepairs(st, now) || 0;
 
     // Periodic freight replenishment (every 45s) or if contracts dry up
@@ -110,8 +123,13 @@ try {
       lastReplenish = now;
     }
 
-    // Refresh UI only if a delivery or repair actually finished
-    if (done.length > 0 || repCount > 0) {
+    // Live update auction modal if active
+    if (activeAuctionModalId !== null) {
+      renderModalOverlay(st);
+    }
+
+    // Refresh UI if a delivery finished, repair finished, or auction state changed
+    if (done.length > 0 || repCount > 0 || auctionChanged) {
       if (done.length > 0) {
         toast(`Delivered ${done.length} consignment${done.length > 1 ? 's' : ''}`, 'success');
       }

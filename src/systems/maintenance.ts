@@ -52,9 +52,8 @@ export function calculateRepairDurationMs(truck: any, selectedParts: string[]): 
     }
   });
 
-  // Convert minutes to ms (speeded up for gameplay: 1 real minute = 1 game repair minute, or scaled so 30 secs to 5 mins)
-  // Let's make 1 minute = 30 seconds (30,000 ms) or standard 1 min = 60,000 ms.
-  return Math.round(Math.max(15000, totalMinutes * 15000)); // Minimum 15 seconds, realistic scaling
+  // Physical repair time: 1 in-game minute = 5 real seconds (1:12 time scale)
+  return Math.max(10000, Math.round(totalMinutes * 5000));
 }
 
 /**

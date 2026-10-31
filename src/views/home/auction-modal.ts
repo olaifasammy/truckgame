@@ -13,13 +13,6 @@ export let activeAuctionModalId: number | null = null;
 
 export function openAuctionModal(auctionId: number) {
   const S = (window as any).__getStore?.();
-  if (S) {
-    const prog = getCompanyProgression(S);
-    if (prog.tier < 3) {
-      toast(`Job Bidding unlocks at VIP Rank (Tier 3+). Current rank: ${prog.title}`, 'err');
-      return;
-    }
-  }
   activeAuctionModalId = auctionId;
   if (S) renderModalOverlay(S);
 }
@@ -85,9 +78,9 @@ export function renderModalOverlay(S: any) {
       <!-- Close Button -->
       <button id="close-auc-modal" style="position:absolute; top:12px; right:14px; background:rgba(255,255,255,0.06); border:none; color:var(--mu); font-size:14px; cursor:pointer; width:28px; height:28px; border-radius:6px; display:grid; place-items:center; z-index:10;">✕</button>
       
-      <!-- VIP & Daily Dispatch Telematics Pill -->
+      <!-- Spot Clearance & Daily Dispatch Telematics Pill -->
       <div style="display:flex; justify-content:space-between; align-items:center; background:#070b14; border:1px solid rgba(193,154,91,0.25); border-radius:6px; padding:6px 10px; margin-bottom:10px; font-size:9px; font-family:monospace;">
-        <span style="color:var(--gold); font-weight:800;">★ VIP ${prog.tier - 2} SPOT CLEARANCE</span>
+        <span style="color:var(--gold); font-weight:800;">★ FREIGHT BIDDING ROOM</span>
         <span style="color:${quota.isFree ? 'var(--grn)' : 'var(--gold)'};">
           Daily Dispatches: <b>${quota.freeRemaining}/5 Free</b> ${!quota.isFree ? '(Extra: 4 Coins)' : ''}
         </span>
