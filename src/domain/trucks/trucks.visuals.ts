@@ -4,9 +4,22 @@
 
 // Helper to render high-definition dual/steer wheels
 const wheelSvg = (cx: number, cy: number = 54, r: number = 8) => `
-  <circle cx="${cx}" cy="${cy}" r="${r}" fill="#0f172a" stroke="#cbd5e1" stroke-width="1.5"/>
-  <circle cx="${cx}" cy="${cy}" r="${r * 0.55}" fill="#334155" stroke="#94a3b8" stroke-width="0.8"/>
-  <circle cx="${cx}" cy="${cy}" r="${r * 0.2}" fill="#cbd5e1"/>
+  <!-- Commercial tyre and reinforced sidewall -->
+  <circle cx="${cx}" cy="${cy}" r="${r}" fill="#101820" stroke="#64748b" stroke-width="1"/>
+  <circle cx="${cx}" cy="${cy}" r="${r * 0.82}" fill="#17212b" stroke="#334155" stroke-width="0.7"/>
+
+  <!-- Alloy wheel rim -->
+  <circle cx="${cx}" cy="${cy}" r="${r * 0.55}" fill="#64748b" stroke="#cbd5e1" stroke-width="0.8"/>
+  <circle cx="${cx}" cy="${cy}" r="${r * 0.39}" fill="#334155" stroke="#94a3b8" stroke-width="0.6"/>
+
+  <!-- Hub and wheel fasteners -->
+  ${Array.from({ length: 6 }).map((_, i) => {
+    const a = (Math.PI * 2 * i) / 6;
+    const bx = cx + Math.cos(a) * r * 0.43;
+    const by = cy + Math.sin(a) * r * 0.43;
+    return `<circle cx="${bx.toFixed(2)}" cy="${by.toFixed(2)}" r="${Math.max(0.65, r * 0.075)}" fill="#cbd5e1"/>`;
+  }).join('')}
+  <circle cx="${cx}" cy="${cy}" r="${r * 0.19}" fill="#cbd5e1" stroke="#e2e8f0" stroke-width="0.5"/>
 `;
 
 /**
@@ -72,9 +85,13 @@ function renderCoupledTrailerSvg(type: string, startX: number, accentColor: stri
       return `
         <!-- Refrigerated Reefer Cooling Compressor Unit -->
         <rect x="${startX - 16}" y="15" width="13" height="24" rx="2" fill="#0f172a" stroke="#38bdf8" stroke-width="1"/>
-        <circle cx="${startX - 9.5}" cy="23" r="3.5" fill="#1e293b" stroke="#38bdf8" stroke-width="0.8"/>
-        <line x1="${startX - 13}" y1="23" x2="${startX - 6}" y2="23" stroke="#38bdf8" stroke-width="0.8"/>
-        <rect x="${startX - 14}" y="32" width="9" height="3" rx="0.5" fill="#38bdf8" fill-opacity="0.8"/>
+        <circle cx="${startX - 9.5}" cy="23" r="4.5" fill="#1e293b" stroke="#38bdf8" stroke-width="0.8"/>
+        <circle cx="${startX - 9.5}" cy="23" r="3.2" fill="none" stroke="#7dd3fc" stroke-width="0.6"/>
+        <path d="M${startX - 9.5} 20 L${startX - 7.5} 23 L${startX - 9.5} 26 L${startX - 11.5} 23 Z" fill="#38bdf8" opacity="0.8"/>
+        <rect x="${startX - 14}" y="30" width="9" height="5" rx="0.5" fill="#0f172a" stroke="#38bdf8" stroke-width="0.6"/>
+        <line x1="${startX - 12}" y1="32" x2="${startX - 7}" y2="32" stroke="#7dd3fc" stroke-width="0.6"/>
+        <line x1="${startX - 12}" y1="34" x2="${startX - 7}" y2="34" stroke="#7dd3fc" stroke-width="0.6"/>
+        <rect x="${startX - 14}" y="37" width="9" height="2" rx="0.5" fill="#38bdf8" fill-opacity="0.8"/>
         <!-- Insulated Composite Box Body -->
         <rect x="${startX - 4}" y="12" width="${trailerLen + 4}" height="39" rx="1.5" fill="rgba(56,189,248,0.12)" stroke="#38bdf8" stroke-width="1.5"/>
         <!-- Horizontal Insulated Panels -->
@@ -103,8 +120,19 @@ function renderCoupledTrailerSvg(type: string, startX: number, accentColor: stri
         <ellipse cx="${startX + 40}" cy="20" rx="3.5" ry="1.5" fill="#64748b" stroke="#cbd5e1" stroke-width="0.8"/>
         <ellipse cx="${startX + 95}" cy="20" rx="3.5" ry="1.5" fill="#64748b" stroke="#cbd5e1" stroke-width="0.8"/>
         <ellipse cx="${startX + 145}" cy="20" rx="3.5" ry="1.5" fill="#64748b" stroke="#cbd5e1" stroke-width="0.8"/>
+        <!-- Tank Support Saddles and Reinforced Mounting Brackets -->
+        ${[35, 145].map(offset => `
+          <path d="M${startX + offset - 5} 45 L${startX + offset - 5} 51 L${startX + offset + 5} 51 L${startX + offset + 5} 45"
+            fill="none" stroke="#64748b" stroke-width="1.5"/>
+          <line x1="${startX + offset}" y1="48" x2="${startX + offset}" y2="53" stroke="#cbd5e1" stroke-width="0.8"/>
+        `).join('')}
+        <!-- Tank Access Ladder -->
+        <path d="M${endX - 15} 23 L${endX - 15} 48 M${endX - 11} 23 L${endX - 11} 48"
+          stroke="#94a3b8" stroke-width="0.9"/>
+        ${[28, 34, 40, 46].map(y => `<line x1="${endX - 15}" y1="${y}" x2="${endX - 11}" y2="${y}" stroke="#cbd5e1" stroke-width="0.8"/>`).join('')}
         <!-- Bottom Discharge Cabinet -->
         <rect x="${startX + 65}" y="49" width="18" height="6" fill="#334155" stroke="#64748b" stroke-width="0.8"/>
+        <rect x="${startX + 70}" y="50" width="8" height="3" fill="#64748b" stroke="#cbd5e1" stroke-width="0.5"/>
         ${undercarriage}
       `;
 
@@ -143,7 +171,21 @@ function renderCoupledTrailerSvg(type: string, startX: number, accentColor: stri
         <!-- High-Visibility Yellow Ratchet Tie-Down Straps -->
         ${[0.18, 0.35, 0.52, 0.68].map(pct => {
           const x = Math.round(startX + 10 + (trailerLen - 40) * pct);
-          return `<line x1="${x}" y1="35" x2="${x}" y2="49" stroke="#eab308" stroke-width="1.5"/>`;
+          return `
+            <line x1="${x}" y1="35" x2="${x}" y2="49" stroke="#eab308" stroke-width="1.5"/>
+            <rect x="${x - 1.5}" y="47" width="3" height="2" rx="0.5" fill="#facc15" stroke="#a16207" stroke-width="0.4"/>
+            <circle cx="${x}" cy="34.5" r="1.3" fill="#facc15" stroke="#a16207" stroke-width="0.4"/>
+          `;
+        }).join('')}
+        <!-- Exposed Industrial Pipe Bundle Ends -->
+        ${[38, 42, 46].map(y => `
+          <circle cx="${startX + 10}" cy="${y}" r="2" fill="#64748b" stroke="#cbd5e1" stroke-width="0.6"/>
+          <circle cx="${startX + 10}" cy="${y}" r="0.9" fill="#1e293b"/>
+        `).join('')}
+        <!-- Side Tie-Down Anchor Hooks -->
+        ${[0.22, 0.42, 0.62, 0.82].map(pct => {
+          const x = Math.round(startX + 10 + (trailerLen - 40) * pct);
+          return `<path d="M${x} 50 L${x} 53 Q${x + 2} 55 ${x + 3} 52" fill="none" stroke="#cbd5e1" stroke-width="0.8"/>`;
         }).join('')}
         ${undercarriage}
       `;
@@ -212,6 +254,16 @@ function renderCoupledTrailerSvg(type: string, startX: number, accentColor: stri
         <rect x="${endX - 4}" y="15" width="4" height="4" fill="#64748b" stroke="#cbd5e1" stroke-width="0.5"/>
         <rect x="${startX - 6}" y="45" width="4" height="4" fill="#64748b" stroke="#cbd5e1" stroke-width="0.5"/>
         <rect x="${endX - 4}" y="45" width="4" height="4" fill="#64748b" stroke="#cbd5e1" stroke-width="0.5"/>
+        <!-- Rear Container Double Doors and Locking Bars -->
+        <line x1="${endX - 9}" y1="17" x2="${endX - 9}" y2="47" stroke="#94a3b8" stroke-width="1"/>
+        <line x1="${endX - 5}" y1="17" x2="${endX - 5}" y2="47" stroke="#94a3b8" stroke-width="1"/>
+        ${[20, 44].map(y => `
+          <rect x="${endX - 10}" y="${y}" width="6" height="2" rx="0.4" fill="#cbd5e1"/>
+        `).join('')}
+        <!-- Chassis Twist-Lock Mounts -->
+        ${[startX + 5, endX - 8].map(x => `
+          <rect x="${x}" y="49" width="4" height="2" rx="0.3" fill="#eab308" stroke="#a16207" stroke-width="0.4"/>
+        `).join('')}
         ${undercarriage}
       `;
 
@@ -244,21 +296,56 @@ function renderCoupledTrailerSvg(type: string, startX: number, accentColor: stri
     case 'carrier':
       return `
         <!-- Multi-Deck Auto Car Transporter Framework -->
-        <line x1="${startX - 6}" y1="50" x2="${endX}" y2="50" stroke="#64748b" stroke-width="1.5"/>
-        <!-- Angled Top Vehicle Deck -->
-        <line x1="${startX - 6}" y1="20" x2="${endX}" y2="24" stroke="#64748b" stroke-width="1.5"/>
-        <!-- Supporting Trusses -->
-        ${[0.2, 0.4, 0.6, 0.8].map(pct => {
+        <!-- Main Chassis & Lower Deck -->
+        <rect x="${startX - 6}" y="48" width="${trailerLen + 6}" height="3" fill="#334155" stroke="#64748b" stroke-width="1"/>
+        
+        <!-- Structural Vertical Posts -->
+        ${[0.05, 0.25, 0.5, 0.75, 0.95].map(pct => {
           const x = Math.round(startX + trailerLen * pct);
-          return `<line x1="${x}" y1="22" x2="${x}" y2="50" stroke="#475569" stroke-width="1"/>`;
+          return `<rect x="${x}" y="18" width="2" height="32" fill="#475569" stroke="#64748b" stroke-width="0.5"/>`;
         }).join('')}
-        <!-- Loaded Cars Silhouettes (Top & Bottom Decks) -->
-        <!-- Car 1 Top Deck -->
-        <path d="M${startX + 15} 20 L${startX + 22} 15 L${startX + 42} 15 L${startX + 50} 20 Z" fill="#38bdf8" fill-opacity="0.4" stroke="#38bdf8" stroke-width="0.8"/>
-        <!-- Car 2 Top Deck -->
-        <path d="M${startX + 80} 21 L${startX + 87} 16 L${startX + 107} 16 L${startX + 115} 21 Z" fill="#eab308" fill-opacity="0.4" stroke="#eab308" stroke-width="0.8"/>
-        <!-- Car 3 Bottom Deck -->
-        <path d="M${startX + 40} 50 L${startX + 47} 45 L${startX + 67} 45 L${startX + 75} 50 Z" fill="#ef4444" fill-opacity="0.4" stroke="#ef4444" stroke-width="0.8"/>
+
+        <!-- Top Vehicle Deck (Angled Front for Aerodynamics) -->
+        <path d="M${startX - 8} 24 L${startX + 15} 18 L${endX} 18 L${endX} 21 L${startX + 15} 21 L${startX - 8} 27 Z" fill="#334155" stroke="#64748b" stroke-width="1"/>
+
+        <!-- Loaded Cars Silhouettes (Top Deck) -->
+        <!-- Car 1 Top Front (Angled) -->
+        <g transform="rotate(-12 ${startX + 10} 22)">
+          <path d="M${startX + 10} 22 L${startX + 16} 16 L${startX + 34} 16 L${startX + 42} 22 Z" fill="#38bdf8" fill-opacity="0.4" stroke="#38bdf8" stroke-width="0.8"/>
+          <circle cx="${startX + 18}" cy="22" r="2" fill="#0f172a"/>
+          <circle cx="${startX + 34}" cy="22" r="2" fill="#0f172a"/>
+        </g>
+        <!-- Car 2 Top Rear -->
+        <g>
+          <path d="M${startX + 90} 18 L${startX + 96} 12 L${startX + 114} 12 L${startX + 122} 18 Z" fill="#eab308" fill-opacity="0.4" stroke="#eab308" stroke-width="0.8"/>
+          <circle cx="${startX + 98}" cy="18" r="2" fill="#0f172a"/>
+          <circle cx="${startX + 114}" cy="18" r="2" fill="#0f172a"/>
+        </g>
+        <!-- Car 3 Top End -->
+        <g>
+          <path d="M${startX + 145} 18 L${startX + 151} 12 L${startX + 169} 12 L${startX + 177} 18 Z" fill="#ef4444" fill-opacity="0.4" stroke="#ef4444" stroke-width="0.8"/>
+          <circle cx="${startX + 153}" cy="18" r="2" fill="#0f172a"/>
+          <circle cx="${startX + 169}" cy="18" r="2" fill="#0f172a"/>
+        </g>
+
+        <!-- Loaded Cars Silhouettes (Bottom Deck) -->
+        <!-- Car 4 Bottom Middle -->
+        <g>
+          <path d="M${startX + 55} 48 L${startX + 61} 42 L${startX + 79} 42 L${startX + 87} 48 Z" fill="#10b981" fill-opacity="0.4" stroke="#10b981" stroke-width="0.8"/>
+          <circle cx="${startX + 63}" cy="48" r="2" fill="#0f172a"/>
+          <circle cx="${startX + 79}" cy="48" r="2" fill="#0f172a"/>
+        </g>
+        <!-- Car 5 Bottom Rear -->
+        <g>
+          <path d="M${startX + 110} 48 L${startX + 116} 42 L${startX + 134} 42 L${startX + 142} 48 Z" fill="#6366f1" fill-opacity="0.4" stroke="#6366f1" stroke-width="0.8"/>
+          <circle cx="${startX + 118}" cy="48" r="2" fill="#0f172a"/>
+          <circle cx="${startX + 134}" cy="48" r="2" fill="#0f172a"/>
+        </g>
+
+        <!-- Rear Loading Ramps (Folded) -->
+        <line x1="${endX}" y1="48" x2="${endX + 6}" y2="35" stroke="#64748b" stroke-width="2"/>
+        <line x1="${endX}" y1="18" x2="${endX + 6}" y2="28" stroke="#64748b" stroke-width="1.5"/>
+
         ${undercarriage}
       `;
 
@@ -303,6 +390,16 @@ export function getTruckSilhouetteSvg(model: any, accentColor = 'var(--gold)', a
       <rect x="4" y="44" width="4" height="10" rx="1" fill="#718096" stroke="#a0aec0" stroke-width="0.8"/>
       <rect x="7" y="44" width="3" height="4" rx="0.5" fill="#fef08a"/>
       
+      <!-- Front grille with vertical chrome bars -->
+      <rect x="10" y="43" width="9" height="9" rx="0.8" fill="#17212b" stroke="#94a3b8" stroke-width="0.8"/>
+      ${[0, 1, 2, 3].map(i => `<line x1="${12 + i * 2}" y1="44" x2="${12 + i * 2}" y2="51" stroke="#cbd5e1" stroke-width="0.65"/>`).join('')}
+      <!-- Headlamp and indicator cluster -->
+      <rect x="6" y="40" width="5" height="3" rx="0.6" fill="#fef3c7" stroke="#fbbf24" stroke-width="0.5"/>
+      <rect x="7" y="49" width="3" height="2" fill="#f97316"/>
+      <!-- Hood side panel detail -->
+      <line x1="25" y1="34" x2="45" y2="34" stroke="${accentColor}" stroke-width="0.6" opacity="0.65"/>
+      <line x1="27" y1="37" x2="45" y2="37" stroke="#94a3b8" stroke-width="0.5" opacity="0.6"/>
+
       <!-- Windshield & A-Pillar -->
       <path d="M48 30 L55 18 L76 18 L76 54 L48 54 Z" fill="rgba(193,154,91,0.18)" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
       <path d="M50 30 L56 20 L66 20 L64 30 Z" fill="#38bdf8" fill-opacity="0.25" stroke="#38bdf8" stroke-width="0.8"/>
@@ -312,6 +409,10 @@ export function getTruckSilhouetteSvg(model: any, accentColor = 'var(--gold)', a
       <rect x="80" y="22" width="10" height="8" rx="1" fill="#38bdf8" fill-opacity="0.2" stroke="#38bdf8" stroke-width="0.6"/>
       <path d="M74 14 L104 12 L104 14 Z" fill="${accentColor}" opacity="0.6"/>
       
+      <!-- Driver-side mirror assembly -->
+      <path d="M48 27 L43 25 L42 21" stroke="#94a3b8" stroke-width="1" fill="none"/>
+      <rect x="39" y="18" width="4" height="6" rx="1" fill="#334155" stroke="#cbd5e1" stroke-width="0.7"/>
+
       <!-- Vertical Chrome Exhaust Stacks -->
       <path d="M76 34 L76 6 L79 4 L79 34 Z" fill="#cbd5e1" stroke="#94a3b8" stroke-width="0.8"/>
       <path d="M74 34 L74 8 L76 6" stroke="#64748b" stroke-width="0.8"/>
@@ -354,10 +455,24 @@ export function getTruckSilhouetteSvg(model: any, accentColor = 'var(--gold)', a
       <path d="M10 32 L16 32 L16 46 L10 46 Z" fill="#1e293b" stroke="#64748b" stroke-width="0.8"/>
       <rect x="9" y="44" width="3" height="5" rx="0.5" fill="#fef08a"/>
       
+      <!-- Wide European front grille -->
+      <rect x="11" y="32" width="8" height="12" rx="0.8" fill="#17212b" stroke="#94a3b8" stroke-width="0.8"/>
+      ${[0, 1, 2, 3, 4].map(i => `<line x1="12" y1="${34 + i * 2}" x2="18" y2="${34 + i * 2}" stroke="#cbd5e1" stroke-width="0.65"/>`).join('')}
+      <!-- Modern headlamp cluster -->
+      <path d="M10 44 L16 44 L16 50 L11 50 Z" fill="#fef3c7" stroke="#fbbf24" stroke-width="0.7"/>
+      <rect x="11" y="49" width="4" height="1.5" fill="#f97316"/>
+      <!-- Lower bumper detailing -->
+      <line x1="11" y1="51" x2="25" y2="51" stroke="#94a3b8" stroke-width="1"/>
+      <line x1="18" y1="47" x2="18" y2="50" stroke="#64748b" stroke-width="0.6"/>
+
       <!-- Cab Entry Steps -->
       <rect x="22" y="46" width="10" height="2" rx="0.5" fill="#94a3b8"/>
       <rect x="22" y="49" width="10" height="2" rx="0.5" fill="#94a3b8"/>
       
+      <!-- Wide-angle exterior mirror -->
+      <path d="M14 29 L8 27 L6 22" stroke="#94a3b8" stroke-width="1" fill="none"/>
+      <rect x="3" y="19" width="4" height="6" rx="1" fill="#334155" stroke="#cbd5e1" stroke-width="0.7"/>
+
       <!-- Aluminum Fuel Tank -->
       <rect x="52" y="43" width="36" height="10" rx="2" fill="#334155" stroke="#64748b" stroke-width="0.8"/>
       
@@ -531,10 +646,50 @@ export function getTrailerSilhouetteSvg(type: string, accentColor = 'var(--gold)
 
     case 'carrier':
       bodySvg = `
-        <line x1="${startX}" y1="49" x2="${endX}" y2="49" stroke="#64748b" stroke-width="1.5"/>
-        <line x1="${startX}" y1="20" x2="${endX}" y2="24" stroke="#64748b" stroke-width="1.5"/>
-        <path d="M${startX + 20} 20 L${startX + 27} 15 L${startX + 47} 15 L${startX + 55} 20 Z" fill="#38bdf8" fill-opacity="0.4" stroke="#38bdf8" stroke-width="0.8"/>
-        <path d="M${startX + 85} 21 L${startX + 92} 16 L${startX + 112} 16 L${startX + 120} 21 Z" fill="#eab308" fill-opacity="0.4" stroke="#eab308" stroke-width="0.8"/>
+        <!-- Multi-Deck Auto Car Transporter Framework -->
+        <rect x="${startX}" y="48" width="${trailerLen}" height="3" fill="#334155" stroke="#64748b" stroke-width="1"/>
+        
+        <!-- Structural Vertical Posts -->
+        ${[0.1, 0.3, 0.5, 0.7, 0.9].map(pct => {
+          const x = Math.round(startX + trailerLen * pct);
+          return `<rect x="${x}" y="18" width="2" height="32" fill="#475569" stroke="#64748b" stroke-width="0.5"/>`;
+        }).join('')}
+
+        <!-- Top Vehicle Deck -->
+        <rect x="${startX}" y="18" width="${trailerLen}" height="3" fill="#334155" stroke="#64748b" stroke-width="1"/>
+
+        <!-- Loaded Cars Silhouettes (Top Deck) -->
+        <g>
+          <path d="M${startX + 20} 18 L${startX + 26} 12 L${startX + 44} 12 L${startX + 52} 18 Z" fill="#38bdf8" fill-opacity="0.4" stroke="#38bdf8" stroke-width="0.8"/>
+          <circle cx="${startX + 28}" cy="18" r="2" fill="#0f172a"/>
+          <circle cx="${startX + 44}" cy="18" r="2" fill="#0f172a"/>
+        </g>
+        <g>
+          <path d="M${startX + 80} 18 L${startX + 86} 12 L${startX + 104} 12 L${startX + 112} 18 Z" fill="#eab308" fill-opacity="0.4" stroke="#eab308" stroke-width="0.8"/>
+          <circle cx="${startX + 88}" cy="18" r="2" fill="#0f172a"/>
+          <circle cx="${startX + 104}" cy="18" r="2" fill="#0f172a"/>
+        </g>
+        <g>
+          <path d="M${startX + 140} 18 L${startX + 146} 12 L${startX + 164} 12 L${startX + 172} 18 Z" fill="#ef4444" fill-opacity="0.4" stroke="#ef4444" stroke-width="0.8"/>
+          <circle cx="${startX + 148}" cy="18" r="2" fill="#0f172a"/>
+          <circle cx="${startX + 164}" cy="18" r="2" fill="#0f172a"/>
+        </g>
+
+        <!-- Loaded Cars Silhouettes (Bottom Deck) -->
+        <g>
+          <path d="M${startX + 50} 48 L${startX + 56} 42 L${startX + 74} 42 L${startX + 82} 48 Z" fill="#10b981" fill-opacity="0.4" stroke="#10b981" stroke-width="0.8"/>
+          <circle cx="${startX + 58}" cy="48" r="2" fill="#0f172a"/>
+          <circle cx="${startX + 74}" cy="48" r="2" fill="#0f172a"/>
+        </g>
+        <g>
+          <path d="M${startX + 110} 48 L${startX + 116} 42 L${startX + 134} 42 L${startX + 142} 48 Z" fill="#6366f1" fill-opacity="0.4" stroke="#6366f1" stroke-width="0.8"/>
+          <circle cx="${startX + 118}" cy="48" r="2" fill="#0f172a"/>
+          <circle cx="${startX + 134}" cy="48" r="2" fill="#0f172a"/>
+        </g>
+
+        <!-- Rear Loading Ramps (Folded) -->
+        <line x1="${endX}" y1="48" x2="${endX + 6}" y2="35" stroke="#64748b" stroke-width="2"/>
+
         ${standUndercarriage}
       `;
       break;

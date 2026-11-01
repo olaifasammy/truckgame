@@ -23,7 +23,7 @@ export const hire = (id: number) => set(S => {
   S.pool = S.pool.filter((x: any) => x.id !== id);
   S.drivers.push(d);
   fillDriverPool(S, 8);
-  pushNote(S, 'Hired driver ' + d.name);
+  pushNote(S, `Contracted new driver ${d.name} for regional fleet operations.`, { title: 'RECRUITMENT', type: 'ops' });
   toast('Successfully hired ' + d.name, 'success');
 });
 
@@ -89,7 +89,7 @@ export function trainDriverSkill(driverId: number) {
     d.skill++;
     d.salary = Math.round(d.salary * 1.15); // Promotion wage raise
     d.morale = 100; // Boosted morale
-    pushNote(S, `DRIVER ACADEMY: ${d.name} graduated and reached Skill Level ${d.skill}★!`);
+    pushNote(S, `${d.name} graduated and reached Skill Level ${d.skill}★!`, { title: 'DRIVER ACADEMY', type: 'ops', priority: 1 });
     toast(`Promoted ${d.name} to Skill Level ${d.skill}★!`, 'success');
   });
 }
@@ -113,9 +113,14 @@ export function certifyDriver(driverId: number, certId: string) {
     }
 
     S.money -= cert.cost;
+    pushNote(S, `Professional Certification: ${cert.name} for ${d.name} (-$${cert.cost.toLocaleString()})`, {
+      title: 'Financial Transaction',
+      type: 'finance',
+      body: `Endorsement Training: ${cert.name}\nCandidate: ${d.name}\nFee: $${cert.cost.toLocaleString()}\nTimestamp: ${new Date().toLocaleString()}`
+    });
     d.certifications.push(certId);
     d.morale = 100;
-    pushNote(S, `CERTIFICATION AWARDED: ${d.name} achieved official ${cert.name} certification!`);
+    pushNote(S, `${d.name} achieved official ${cert.name} certification!`, { title: 'CERTIFICATION AWARDED', type: 'ops' });
     toast(`${d.name} certified: ${cert.id}!`, 'success');
   });
 }

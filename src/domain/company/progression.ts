@@ -149,7 +149,7 @@ export function addCompanyXp(S: any, amount: number, source: string = 'Freight O
 
   if (leveledUp) {
     const newTitle = getRankTitle(currentTier);
-    pushNote(S, `COMPANY PROMOTION: Your carrier has attained the rank of ${newTitle.toUpperCase()}!`);
+    pushNote(S, `Your carrier has attained the rank of ${newTitle.toUpperCase()}!`, { title: 'COMPANY PROMOTION', type: 'system', priority: 2 });
     toast(`PROMOTED: ${newTitle}!`, 'success');
   }
 }

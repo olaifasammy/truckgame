@@ -12,8 +12,13 @@ export const upgradeGarage = () => set(S => {
   if (S.money < cost) return toast('Not enough cash');
   
   S.money -= cost;
+  pushNote(S, `Garage expansion to Level ${S.garageLevel + 1} (-$${cost.toLocaleString()})`, {
+    title: 'Financial Transaction',
+    type: 'finance',
+    body: `Facility Infrastructure Upgrade authorized.\nLevel: ${S.garageLevel + 1}\nNew Capacity: +2 Slots\nFee: $${cost.toLocaleString()}\nTimestamp: ${new Date().toLocaleString()}`
+  });
   S.garageLevel++;
-  pushNote(S, `Garage expanded to Level ${S.garageLevel} (+2 slots)`);
+  pushNote(S, `Garage expanded to Level ${S.garageLevel} (+2 vehicle slots).`, { title: 'FACILITY UPGRADE', type: 'ops', priority: 1 });
   toast(`Garage Expanded!`, 'success');
 });
 
@@ -23,7 +28,12 @@ export const buyOffice = (id: string) => set(S => {
   if (S.vip < o.vip) return toast('Requires VIP ' + o.vip);
   if (S.money < o.price) return toast('Not enough cash');
   S.money -= o.price;
+  pushNote(S, `Depot Acquisition: ${o.name} (-$${o.price.toLocaleString()})`, {
+    title: 'Financial Transaction',
+    type: 'finance',
+    body: `Regional Expansion authorized.\nLocation: ${o.name}\nCapacity: +${o.slots} Slots\nFee: $${o.price.toLocaleString()}\nTimestamp: ${new Date().toLocaleString()}`
+  });
   S.offices.push(id);
-  pushNote(S, 'Opened ' + o.name + ' · +' + o.slots + ' truck slots');
+  pushNote(S, `Registered ${o.name} depot facility. (+${o.slots} truck slots).`, { title: 'REGIONAL DEPOT', type: 'ops' });
   toast('Opened ' + o.name);
 });

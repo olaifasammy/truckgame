@@ -51,7 +51,7 @@ export function renderAuctionCard(S: any, j: any) {
         <!-- Right: Lowest Bid, Countdown & Enter Button -->
         <div style="text-align:right; flex-shrink:0; display:flex; align-items:center; gap:10px;">
           <div style="line-height:1.2;">
-            <div style="font-size:13px; font-weight:900; color:${isWinning ? 'var(--grn)' : 'var(--gold)'}; font-family:monospace;">
+            <div style="font-size:13px; font-weight:900; color:${isWinning ? 'var(--grn)' : 'var(--gold)'}; font-family:monospace;" data-auc-bid="${auc.id}">
               ${fmt(auc.currentBid || 0)}
             </div>
             <div style="font-size:8px; color:${timeLeft < 20000 ? '#ef4444' : 'var(--mu)'}; font-weight:800; font-family:monospace;">

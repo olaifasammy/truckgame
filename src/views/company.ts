@@ -64,6 +64,7 @@ export default {
       yardTrailers[t] = (yardTrailers[t] || 0) + 1;
     });
     const totalYardTrailers = (S.trailers || []).length;
+    const pendingTrailersCount = (S.pendingTrailers || []).length;
 
     return `
       <div class="profile-wrap" style="background:linear-gradient(180deg, #111827 0%, #0a0f1d 100%); border-bottom:1px solid #1f293d; padding:28px 16px 20px; text-align:center;">
@@ -265,6 +266,7 @@ export default {
                 </div>
                 <div style="font-size:10px; color:var(--mu); margin-top:2px; font-family:monospace;">
                   <b style="color:var(--gold);">${totalYardTrailers}</b> Unhitched Trailers · <b style="color:var(--tx);">${Object.values(S.partsInventory || {}).reduce((a: number, b: any) => a + Number(b), 0)}</b> Spares in Stock
+                  ${pendingTrailersCount > 0 ? `<br><span style="color:var(--gold); font-size:8px;">🚢 ${pendingTrailersCount} TRAILERS IN LOGISTICS TRANSIT</span>` : ''}
                 </div>
               </div>
             </div>

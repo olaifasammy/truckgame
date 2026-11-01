@@ -209,6 +209,32 @@ function panelHtml(S: any, t: any, busy: boolean) {
 }
 
 function body(S: any, t: any, m: any, a: any, now: number) {
+  if (t.status === 'delivering') {
+    const totalTime = 15 * 60 * 1000;
+    const remaining = Math.max(0, (t.availableAt || now) - now);
+    const progress = 100 - (remaining / totalTime * 100);
+
+    return `
+      <div style="margin-top:14px; background:#0f172a; border:1px solid var(--gold); border-radius:10px; padding:20px; text-align:center;">
+        <div style="font-size:32px; margin-bottom:12px;">🚢</div>
+        <div style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">Vehicle in Logistics Transit</div>
+        <div style="font-size:13px; font-weight:900; color:var(--tx); margin:4px 0 12px;">FACTORY-TO-DEPOT DELIVERY</div>
+        
+        <div style="font-size:10px; color:var(--mu); font-family:monospace; margin-bottom:6px; display:flex; justify-content:space-between;">
+          <span>EST. ARRIVAL: ${new Date(t.availableAt).toLocaleTimeString()}</span>
+          <span>${Math.round(progress)}%</span>
+        </div>
+        <div class="bar" style="height:8px; background:rgba(255,255,255,0.05); border-radius:4px; overflow:hidden;">
+          <div style="width:${progress}%; height:100%; background:var(--gold); border-radius:4px; transition:width 1s linear;"></div>
+        </div>
+        
+        <div style="font-size:9px; color:var(--mu); margin-top:12px; line-height:1.4;">
+          Professional merchandise transport is currently repositioning this unit from the manufacturer regional distribution hub to your local terminal.
+        </div>
+      </div>
+    `;
+  }
+
   const st = stats(S, t);
   const busy = !!a;
   const drv = S.drivers.find((x: any) => x.id === t.driverId);
@@ -246,9 +272,14 @@ function body(S: any, t: any, m: any, a: any, now: number) {
           <div class="bar" style="height:6px; background:rgba(255,255,255,0.1); border-radius:3px; overflow:hidden;" data-start="${a.start}" data-end="${a.end}">
             <div style="width:${pct}%; height:100%; background:var(--blu); border-radius:3px; transition:width 0.5s linear;"></div>
           </div>
-          <button class="btn alt" style="width:100%; margin-top:8px; padding:6px 10px; font-size:10px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.4); display:flex; align-items:center; justify-content:center; gap:6px;" data-act="open-telematics" data-id="${t.id}">
-            <span>🛰️</span> STREAM LIVE GPS TELEMATICS & DASHCAM COCKPIT
-          </button>
+          <div style="display:flex; gap:6px; margin-top:8px;">
+            <button class="btn alt" style="flex:1; padding:6px 10px; font-size:10px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.4); display:flex; align-items:center; justify-content:center; gap:6px;" data-act="open-telematics" data-id="${t.id}">
+              <span>🛰️</span> LIVE TELEMATICS
+            </button>
+            <button class="btn" style="padding:6px 10px; font-size:9px; font-weight:900; background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.2); letter-spacing:0.5px;" data-act="recall-truck" data-id="${t.id}">
+              RECALL
+            </button>
+          </div>
         </div>
       ` : `
         <button class="btn alt" style="width:100%; margin-bottom:12px; padding:6px 10px; font-size:10px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.3); display:flex; align-items:center; justify-content:center; gap:6px;" data-act="open-telematics" data-id="${t.id}">

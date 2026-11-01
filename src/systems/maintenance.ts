@@ -1,5 +1,6 @@
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { toast } from '../core/ui';
+import { pushNote } from './notify';
 
 export const PART_BASE_PRICES: Record<string, number> = {
   engine: 15000,
@@ -96,6 +97,11 @@ export function startRepair(S: any, truckId: number, selectedParts: string[]): b
 
   // Deduct money
   S.money -= totalCost;
+  pushNote(S, `Workshop Service: Unit #${truckId} (-$${totalCost.toLocaleString()})`, {
+    title: 'Financial Transaction',
+    type: 'finance',
+    body: `Service authorization for Unit: ${truck.name} (#${truckId})\nParts/Fluids: ${selectedParts.join(', ')}\nTotal Fee: $${totalCost.toLocaleString()}\nStatus: Maintenance in Progress`
+  });
 
   // Set truck status to repair
   truck.status = 'repair';

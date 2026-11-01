@@ -111,7 +111,7 @@ export function buyLicense(licenseId: string): boolean {
     S.money -= lic.price;
     S.licenses.push(licenseId);
     purchased = true;
-    pushNote(S, `LICENSING AUTHORITY GRANTED: ${lic.name} (${lic.code}) officially registered to ${S.company}.`);
+    pushNote(S, `${lic.name} (${lic.code}) officially registered to ${S.company}.`, { title: 'LICENSING AUTHORITY', type: 'compliance', priority: 1 });
     toast(`Acquired: ${lic.name}!`, 'success');
   });
 

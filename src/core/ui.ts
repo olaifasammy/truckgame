@@ -1,6 +1,14 @@
 export const $ = (id: string): HTMLElement | null => document.getElementById(id);
 
-export const fmt = (n: number): string => '$' + n.toLocaleString();
+export const fmt = Object.assign(
+  (n: number): string => '$' + Math.round(n).toLocaleString(),
+  {
+    time: (at: number): string => {
+      const d = new Date(at);
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+  }
+);
 
 export const dur = (ms: number): string => {
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));

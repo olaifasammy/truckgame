@@ -16,7 +16,7 @@ const DEF = () => ({
   nextId: 100,
   jobs: [] as any[],
   active: [] as any[],
-  notes: [{ t: 'Welcome to NexHaul Logistics', r: 0 }],
+  notes: [{ id: '1', title: 'Welcome', msg: 'Welcome to NexHaul Logistics Management System.', at: Date.now(), read: false, type: 'system', priority: 1 }] as any[],
   pool: [] as any[],
   drivers: [{ id: 1, name: 'Sam Okafor', skill: 3 }],
   perks: {} as Record<string, number>,
@@ -27,6 +27,7 @@ const DEF = () => ({
   repairTruckId: null as number | null,
   licenses: ['standard'] as string[],
   trailers: ['curtain', 'flatbed', 'reefer'] as string[],
+  pendingTrailers: [] as { type: string, availableAt: number }[],
   partsInventory: {
     tires: 4,
     brakes: 2,
@@ -49,7 +50,8 @@ const DEF = () => ({
   depots: ['hub_lagos'] as string[],
   warehouseUpgrades: { cross_docking: false, cold_vault: false, gantry_crane: false } as Record<string, boolean>,
   corporateTenders: [] as any[],
-  subcontractedTrucks: [] as number[]
+  subcontractedTrucks: [] as number[],
+  lastTick: Date.now()
 });
 
 let S: any;
@@ -65,8 +67,20 @@ function fix(state: any) {
   if (!state.fuelBunker) state.fuelBunker = { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
   if (!state.depots) state.depots = ['hub_lagos'];
   if (!state.warehouseUpgrades) state.warehouseUpgrades = { cross_docking: false, cold_vault: false, gantry_crane: false };
-  if (!state.corporateTenders) state.corporateTenders = [];
-  if (!state.subcontractedTrucks) state.subcontractedTrucks = [];
+  if (!state.pendingTrailers) state.pendingTrailers = [];
+  if (!state.notes) state.notes = [];
+  // Migrate legacy notes
+  if (state.notes.length > 0 && state.notes[0].t !== undefined) {
+    state.notes = state.notes.map((n: any, i: number) => ({
+      id: 'legacy-' + i + '-' + Date.now(),
+      title: 'Legacy Alert',
+      msg: n.t,
+      at: Date.now() - (i * 60000),
+      read: !!n.r,
+      type: 'system',
+      priority: 0
+    }));
+  }
 
   if (!state.partsInventory) {
     state.partsInventory = {
@@ -144,6 +158,7 @@ function fix(state: any) {
   
   if (!state.repairs) state.repairs = [];
   if (state.repairTruckId === undefined) state.repairTruckId = null;
+  if (state.lastTick === undefined) state.lastTick = Date.now();
   if (!state.auctions) {
     state.auctions = [];
   } else {

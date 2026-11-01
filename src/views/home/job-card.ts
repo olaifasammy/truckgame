@@ -8,15 +8,19 @@ import { dur, fmt } from '../../core/ui';
 import { LOCATIONS } from '../../data/world';
 import { getRouteEnv, tripMs } from '../../systems/calc';
 import { getDailyBidDispatchQuota } from '../../domain/freight/bids/quota';
+import { SAMPLE_TENDERS } from '../../domain/logistics/network';
 
 export function renderJobDetails(j: any, why: string | null) {
   const cargo = CARGO_TYPES.find(c => c.id === j.cargoId);
-  const company = COMPANIES.find(c => c.id === j.companyId);
+  const tender = j.tenderId ? SAMPLE_TENDERS.find(t => t.id === j.tenderId) : null;
+  const company = tender ? { name: tender.client } : COMPANIES.find(c => c.id === j.companyId);
   const reqs = j.requirements?.requiredSkills || [];
   const env = j.env || getRouteEnv(j.from, j.to);
   const locFrom = LOCATIONS[j.from];
   const locTo = LOCATIONS[j.to];
   const estTripMs = tripMs(j.km, 80, env);
+  
+  const clientName = tender ? tender.client : (company?.name || 'Private Industrial Shipper');
 
   const weatherLabel = env.weather === 'snow' ? '❄ Alpine Snow / Ice' 
     : env.weather === 'rain' ? '🌧 Tropical Heavy Rain' 
@@ -56,7 +60,7 @@ export function renderJobDetails(j: any, why: string | null) {
       </div>
 
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--mu); margin-bottom:8px;">
-        <div><span>Client Shipper:</span> <b style="color:var(--tx);">${company?.name || 'Private Industrial Shipper'}</b></div>
+        <div><span>Client Shipper:</span> <b style="color:var(--tx);">${clientName}</b></div>
         <div><span>Coupling:</span> <b style="color:var(--gold);">${TRAILERS[(cargo?.trailer as keyof typeof TRAILERS) || 'curtain']}</b></div>
       </div>
 
@@ -85,6 +89,8 @@ export function renderJobDetails(j: any, why: string | null) {
 
 export function renderJobCard(S: any, j: any) {
   const cargo = CARGO_TYPES.find(c => c.id === j.cargoId);
+  const tender = j.tenderId ? SAMPLE_TENDERS.find(t => t.id === j.tenderId) : null;
+  
   const why = blocker(S, j);
   const isOpen = homeState.openJobId === j.id;
   const env = j.env || getRouteEnv(j.from, j.to);
@@ -93,6 +99,7 @@ export function renderJobCard(S: any, j: any) {
   
   const cargoName = cargo?.name || j.cargo || 'General Commercial Freight';
   const isAuctionWon = (j as any).isAuctionWon;
+  const isTender = !!j.tenderId;
   const wonAt = (j as any).wonAt;
   const FIVE_MINS = 5 * 60 * 1000;
   const expiryTime = wonAt ? wonAt + FIVE_MINS : 0;
@@ -104,21 +111,26 @@ export function renderJobCard(S: any, j: any) {
     : '☀️ CLEAR';
   
   return `
-    <div class="card job ${j.vip || isAuctionWon ? 'vipj' : ''} ${isOpen ? 'open' : ''}" 
-         style="margin-bottom:10px; background:#0e1320; border:1px solid ${isOpen ? 'var(--gold)' : isAuctionWon ? 'var(--grn)' : '#1e2638'}; border-radius:10px; padding:12px 14px; cursor:pointer; transition:all 0.2s;" 
+    <div class="card job ${j.vip || isAuctionWon || isTender ? 'vipj' : ''} ${isOpen ? 'open' : ''}" 
+         style="margin-bottom:10px; background:#0e1320; border:1px solid ${isOpen ? 'var(--gold)' : isAuctionWon ? 'var(--grn)' : isTender ? '#38bdf8' : '#1e2638'}; border-radius:10px; padding:12px 14px; cursor:pointer; transition:all 0.2s;" 
          data-act="home-toggle" data-id="${j.id}">
       
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
         <!-- Left: Icon & Route Info -->
         <div style="display:flex; align-items:center; gap:12px; min-width:0;">
-          <div style="width:38px; height:38px; background:#080c16; border:1px solid ${isAuctionWon ? 'var(--grn)' : 'rgba(193,154,91,0.3)'}; border-radius:8px; display:grid; place-items:center; color:${isAuctionWon ? 'var(--grn)' : 'var(--gold)'}; font-size:18px; flex-shrink:0;">
-            ${ic(isAuctionWon ? 'check' : (cargo?.icon || (cargo?.trailer === 'reefer' ? 'snowflake' : cargo?.trailer === 'tanker' ? 'fuel' : 'box')))}
+          <div style="width:38px; height:38px; background:#080c16; border:1px solid ${isAuctionWon ? 'var(--grn)' : isTender ? '#38bdf8' : 'rgba(193,154,91,0.3)'}; border-radius:8px; display:grid; place-items:center; color:${isAuctionWon ? 'var(--grn)' : isTender ? '#38bdf8' : 'var(--gold)'}; font-size:18px; flex-shrink:0;">
+            ${ic(isAuctionWon ? 'check' : isTender ? 'truck' : (cargo?.icon || (cargo?.trailer === 'reefer' ? 'snowflake' : cargo?.trailer === 'tanker' ? 'fuel' : 'box')))}
           </div>
           <div style="min-width:0;">
             <div style="display:flex; align-items:center; gap:6px;">
               <span style="font-weight:900; font-size:13px; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                 ${cargoName}
               </span>
+              ${isTender ? `
+                <span style="font-size:7px; background:rgba(56,189,248,0.15); border:1px solid #38bdf8; color:#38bdf8; padding:0 4px; border-radius:2px; font-weight:800; font-family:monospace; text-transform:uppercase;">
+                  ${tender?.client || 'LINEHAUL TENDER'}
+                </span>
+              ` : ''}
               ${cargo?.isHazmat ? `
                 <span title="ADR Hazardous Cargo Placard" style="display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; background:linear-gradient(135deg, #ef4444, #b91c1c); border:1px solid #fca5a5; border-radius:3px; box-shadow:0 1px 4px rgba(239,68,68,0.4); vertical-align:middle; flex-shrink:0;">
                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">

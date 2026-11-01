@@ -9,7 +9,7 @@ import authView from './views/auth';
 import './views/index';
 import * as header from './ui/header';
 import * as nav from './ui/nav';
-import { replenish, completeJobs } from './systems/jobs';
+import { replenish, completeJobs, processEconomics } from './systems/jobs';
 import { fillPool } from './systems/drivers';
 import { completeRepairs } from './systems/maintenance';
 import { activeAuctionModalId, renderModalOverlay } from './views/home/auction-modal';
@@ -87,6 +87,7 @@ try {
 
   // Sync systems
   set(st => {
+    const now = Date.now();
     // Migrate legacy active jobs with huge end times
     if (st.active && st.active.length > 0) {
       const now = Date.now();
@@ -100,8 +101,9 @@ try {
     }
     replenish(st);
     fillPool(st);
-    completeJobs(st, Date.now());
-    completeRepairs(st, Date.now());
+    processEconomics(st, now);
+    completeJobs(st, now);
+    completeRepairs(st, now);
   });
 
   let lastReplenish = Date.now();
@@ -114,6 +116,7 @@ try {
     localStorage.setItem('last_active', now.toString());
     
     // 1. Silent Simulation Processing (No intrusive view teardown or reload)
+    processEconomics(st, now);
     const { done = [], auctionChanged = false } = completeJobs(st, now) || {};
     const repCount = completeRepairs(st, now) || 0;
 
@@ -128,21 +131,15 @@ try {
       renderModalOverlay(st);
     }
 
-    // Refresh UI if a delivery finished, repair finished, or auction state changed
-    if (done.length > 0 || repCount > 0 || auctionChanged) {
-      if (done.length > 0) {
-        toast(`Delivered ${done.length} consignment${done.length > 1 ? 's' : ''}`, 'success');
-      }
-      set(() => {}); // Saves and cleanly updates UI for real events
-      return;
+    // Toast delivery completion non-intrusively without view teardown
+    if (done.length > 0) {
+      toast(`Delivered ${done.length} consignment${done.length > 1 ? 's' : ''}`, 'success');
     }
 
-    // Save state snapshot to localStorage periodically (every 10s) without triggering full render
-    if (Math.floor(now / 1000) % 10 === 0) {
-      try {
-        localStorage.setItem('sam.v3', JSON.stringify(st));
-      } catch (e) {}
-    }
+    // Save state snapshot to localStorage silently on simulation updates
+    try {
+      localStorage.setItem('sam.v3', JSON.stringify(st));
+    } catch (e) {}
 
     // 2. Surgical Live UI Updates in-place (Completely silent to the user)
     // Update live delivery and trip countdowns
@@ -163,8 +160,17 @@ try {
       const targetTime = +(el as HTMLElement).dataset.auctionEta!;
       const diff = Math.max(0, targetTime - now);
       (el as HTMLElement).textContent = dur(diff);
-      if (diff <= 0) {
-        set(() => {}); // Auction finalized
+    });
+
+    // Update auction card bid amounts surgically if visible on screen
+    document.querySelectorAll('[data-auc-bid]').forEach(el => {
+      const aucId = +(el as HTMLElement).dataset.aucBid!;
+      const auc = (st.auctions || []).find((a: any) => a.id === aucId);
+      if (auc) {
+        const formatted = fmt(auc.currentBid || 0);
+        if ((el as HTMLElement).textContent?.trim() !== formatted) {
+          (el as HTMLElement).textContent = formatted;
+        }
       }
     });
 

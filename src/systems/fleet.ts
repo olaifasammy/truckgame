@@ -37,9 +37,14 @@ const idle = (S: any, id: number) => {
   if (!t || t.status !== 'idle') { toast('Truck is busy'); return null; }
   return t;
 };
-const pay = (S: any, c: number) => {
+const pay = (S: any, c: number, purpose: string) => {
   if (S.money < c) { toast('Not enough cash'); return false; }
   S.money -= c;
+  pushNote(S, `Transaction: ${purpose} (-$${c.toLocaleString()})`, {
+    title: 'Financial Transaction',
+    type: 'finance',
+    body: `Payment authorized for: ${purpose}\nAmount: $${c.toLocaleString()}\nTimestamp: ${new Date().toLocaleString()}`
+  });
   return true;
 };
 
@@ -49,7 +54,7 @@ export const refuel = (id: number) => set(S => {
   const model = TRUCK_MODELS[t.modelId];
   const c = refuelCost(t);
   if (c <= 0) return;
-  if (!pay(S, c)) return;
+  if (!pay(S, c, `Refuel Unit #${id} (${t.name})`)) return;
   t.fluids.fuel = model.tankSize;
 });
 
@@ -57,7 +62,7 @@ export const repair = (id: number) => set(S => {
   const t = idle(S, id);
   if (!t) return;
   const c = repairCost(t);
-  if (c <= 0 || !pay(S, c)) return;
+  if (c <= 0 || !pay(S, c, `Repair Service Unit #${id} (${t.name})`)) return;
   Object.values(t.components).forEach((comp: any) => {
     comp.health = 100;
   });
@@ -65,7 +70,9 @@ export const repair = (id: number) => set(S => {
 
 export const inspect = (id: number) => set(S => {
   const t = idle(S, id);
-  if (!t || !pay(S, inspectCost())) return;
+  if (!t) return;
+  const cost = inspectCost();
+  if (!pay(S, cost, `Safety Inspection Unit #${id} (${t.name})`)) return;
   t.lastInspection = { at: Date.now(), components: JSON.parse(JSON.stringify(t.components)) };
 });
 
@@ -101,7 +108,7 @@ export const transport = (id: number, city: string) => set(S => {
   toast('Moving to ' + city);
 });
 
-export function buyTruckBatch(modelId: string, trailerType: TrailerType | null, quantity: number, destinationCity: string) {
+export const buyTruckBatch = (modelId: string, trailerType: TrailerType | null, quantity: number, destinationCity: string) => {
   set(S => {
     const m = TRUCK_MODELS[modelId];
     if (!m) return toast('Invalid model');
@@ -113,17 +120,26 @@ export function buyTruckBatch(modelId: string, trailerType: TrailerType | null, 
       toast(`Garage slots full! Need ${S.fleet.length + quantity} slots (Capacity: ${slots(S)})`, 'err');
       return;
     }
-    if (!pay(S, totalPrice)) return;
+    if (!pay(S, totalPrice, `Fleet Purchase: ${quantity}x ${m.brand} ${m.name}`)) return;
+
+    const deliveryTimeMs = 15 * 60 * 1000; // 15 Minutes Factory-to-Depot Transit
+    const arrivalTime = Date.now() + deliveryTimeMs;
 
     for (let i = 0; i < quantity; i++) {
       const truck = newTruck(S, modelId, trailerType, destinationCity);
+      truck.status = 'delivering';
+      truck.availableAt = arrivalTime;
       S.fleet.push(truck);
     }
 
-    pushNote(S, `Acquired ${quantity}x ${m.brand} ${m.name} with ${trailerType ? TRAILERS[trailerType] : 'Tractor Only'} to ${destinationCity}`);
-    toast(`Successfully acquired ${quantity} vehicle(s)!`, 'success');
+    pushNote(S, `Purchase processed for ${quantity}x ${m.brand} ${m.name}. Logistics team is currently transporting the vehicles to ${destinationCity}.`, { 
+      title: 'EQUIPMENT IN TRANSIT', 
+      type: 'ops',
+      body: `Order Details:\nQuantity: ${quantity}\nModel: ${m.brand} ${m.name}\nDestination: ${destinationCity} Terminal\nEstimated Arrival: ${new Date(arrivalTime).toLocaleTimeString()}`
+    });
+    toast(`Order Processed: ${quantity} vehicle(s) in transit to garage`, 'success');
   });
-}
+};
 
 export function unhitchTrailer(truckId: number) {
   set(S => {
@@ -137,7 +153,7 @@ export function unhitchTrailer(truckId: number) {
     S.trailers.push(detached);
     t.trailer = null;
 
-    pushNote(S, `TRAILER DECOUPLED: Unit #${t.id} unhitched ${TRAILERS[detached as keyof typeof TRAILERS] || detached}. Staged at HQ Storage Yard.`);
+    pushNote(S, `Unit #${t.id} unhitched ${TRAILERS[detached as keyof typeof TRAILERS] || detached}. Staged at HQ Storage Yard.`, { title: 'TRAILER DECOUPLED', type: 'ops' });
     toast(`Unhitched ${TRAILERS[detached as keyof typeof TRAILERS] || detached} to HQ Yard`, 'success');
   });
 }
@@ -166,7 +182,7 @@ export function hitchTrailer(truckId: number, trailerType: TrailerType) {
     if (idx >= 0) S.trailers.splice(idx, 1);
 
     t.trailer = trailerType;
-    pushNote(S, `TRAILER COUPLED: Unit #${t.id} successfully coupled with ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}.`);
+    pushNote(S, `Unit #${t.id} successfully coupled with ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}.`, { title: 'TRAILER COUPLED', type: 'ops' });
     toast(`Coupled ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}!`, 'success');
   });
 }
@@ -174,21 +190,25 @@ export function hitchTrailer(truckId: number, trailerType: TrailerType) {
 export function buyTrailerToYard(trailerType: TrailerType) {
   set(S => {
     const price = TRAILER_PRICES[trailerType] || 15000;
-    if (S.money < price) {
-      toast(`Insufficient funds. Need $${price.toLocaleString()}`, 'err');
-      return;
-    }
+    if (!pay(S, price, `Trailer Purchase: ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}`)) return;
+    
     if (trailerType === 'hazmat') {
       toast('ADR Hazmat tankers are provided by consignor terminals on dispatch (no purchase necessary)', 'info');
       return;
     }
 
-    S.money -= price;
-    if (!S.trailers) S.trailers = [];
-    S.trailers.push(trailerType);
+    const deliveryTimeMs = 8 * 60 * 1000; // 8 Minutes Delivery
+    const arrivalTime = Date.now() + deliveryTimeMs;
 
-    pushNote(S, `COMMERCIAL TRAILER ACQUIRED: Added 1x ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType} to Central Trailer Storage Facility.`);
-    toast(`Purchased ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}!`, 'success');
+    if (!S.pendingTrailers) S.pendingTrailers = [];
+    S.pendingTrailers.push({ type: trailerType, availableAt: arrivalTime });
+
+    pushNote(S, `Commercial Trailer Order: 1x ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType} is being delivered to Central Storage.`, { 
+      title: 'TRAILER IN TRANSIT', 
+      type: 'ops',
+      body: `Order Details:\nType: ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}\nDestination: HQ Storage Yard\nEstimated Arrival: ${new Date(arrivalTime).toLocaleTimeString()}`
+    });
+    toast(`${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType} purchased and en-route!`, 'success');
   });
 }
 

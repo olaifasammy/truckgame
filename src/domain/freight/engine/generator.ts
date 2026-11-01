@@ -6,6 +6,7 @@ import { rnd } from '../../../core/ui';
 import { BiddingEngine } from '../bids/engine';
 import { distKm, getRouteEnv } from '../../../systems/calc';
 import { getCompanyProgression } from '../../company/progression';
+import { SAMPLE_TENDERS } from '../../logistics/network';
 
 export class FreightEngine {
   /**
@@ -13,9 +14,11 @@ export class FreightEngine {
    * - Bidding jobs: Exclusively high-paying contracts, scaling higher with VIP rank.
    * - Normal jobs: Modest, balanced payouts.
    */
-  static generate(S: any, options: { forceRegion?: RegionName, vip?: boolean, isAuction?: boolean, auctionDuration?: number } = {}): FreightJob | any {
+  static generate(S: any, options: { forceRegion?: RegionName, vip?: boolean, isAuction?: boolean, auctionDuration?: number, tenderId?: string } = {}): FreightJob | any {
     const prog = S ? getCompanyProgression(S) : { tier: 0 };
     const vipLevel = prog.tier >= 3 ? (prog.tier - 2) : 0;
+
+    const tender = options.tenderId ? SAMPLE_TENDERS.find(t => t.id === options.tenderId) : null;
 
     // Collect all trailer types the player currently owns (hitched to fleet or stored in HQ yard)
     const ownedTrailers = new Set<string>();
@@ -31,7 +34,17 @@ export class FreightEngine {
     }
 
     let cargo;
-    if (options.isAuction) {
+    if (tender) {
+      // Pick cargo suitable for the tender
+      const industryMap: Record<string, string[]> = {
+        'Automotive & Heavy Industry': ['steel_pipes', 'electronics', 'furniture'],
+        'Energy & ADR Petrochemicals': ['gasoline', 'liquid_oxy', 'toxic_waste'],
+        'Pharmaceuticals & Food Perishables': ['frozen_fish', 'vaccines', 'produce']
+      };
+      const possibleCargos = industryMap[tender.industry] || ['electronics'];
+      const tenderPool = CARGO_TYPES.filter(c => possibleCargos.includes(c.id));
+      cargo = rnd(tenderPool.length ? tenderPool : CARGO_TYPES);
+    } else if (options.isAuction) {
       // Job bidding MUST generate higher paying jobs only
       const ultraTierChance = Math.min(0.92, 0.40 + (vipLevel * 0.015));
       const ultraCargos = CARGO_TYPES.filter(c => c.baseValue >= 35);
@@ -63,7 +76,7 @@ export class FreightEngine {
 
     // Pick a region: either forced or chosen from the 4 global regions
     const regions: RegionName[] = ['Africa', 'Europe', 'America', 'Asia'];
-    const targetRegion = options.forceRegion || rnd(regions);
+    const targetRegion = tender ? 'Europe' : (options.forceRegion || rnd(regions));
 
     // Filter cities within the target region for realistic intra-regional transit
     const regionCities = Object.entries(LOCATIONS)
@@ -97,7 +110,10 @@ export class FreightEngine {
 
     let rate: number;
 
-    if (options.isAuction) {
+    if (tender) {
+      // Tender has a fixed pay per load, but we'll store it as pay
+      // The pay in the job object should be what's rewarded
+    } else if (options.isAuction) {
       // PREMIUM SPOT AUCTION RATES: High-paying contracts only
       // Base rate: $7.50 – $22.00+/km
       rate = 7.50 + (cargo.baseValue * 0.22);
@@ -123,10 +139,10 @@ export class FreightEngine {
       if ((routeEnv.roadGrade || 0) > 5.0) rate *= 1.10;
     }
 
-    const pay = Math.round(baseKm * rate);
+    const pay = tender ? tender.ratePerDelivery : Math.round(baseKm * rate);
 
     const dice = Math.random();
-    let kind: JobKind = 'Spot';
+    let kind: JobKind = tender ? 'Contract' : 'Spot';
     if (options.isAuction) kind = 'Contract';
     else if (dice > 0.8) kind = 'Contract';
     else if (dice > 0.95) kind = 'Emergency';
@@ -140,7 +156,8 @@ export class FreightEngine {
 
     const job = {
       id: S.nextId++,
-      companyId: company.id,
+      companyId: tender ? tender.id : company.id,
+      tenderId: options.tenderId || null,
       cargoId: cargo.id,
       kind,
       weight: parseFloat(weight.toFixed(1)),
@@ -188,6 +205,18 @@ export class FreightEngine {
     // Ensure jobs board has enough contracts
     const prog = S ? getCompanyProgression(S) : { tier: 0 };
     const isVipCarrier = prog.tier >= 3;
+    
+    // Inject corporate tender loads if active
+    if (S.corporateTenders && S.corporateTenders.length > 0) {
+      for (const tender of S.corporateTenders) {
+        // Ensure there is at least one active job on the board for each signed tender
+        const activeLoadsOnBoard = S.jobs.filter((j: any) => j.tenderId === tender.id).length;
+        if (activeLoadsOnBoard < 1 && (tender.loadsRemaining || 0) > 0) {
+          S.jobs.push(this.generate(S, { tenderId: tender.id }));
+        }
+      }
+    }
+
     while (S.jobs.length < count) {
       S.jobs.push(this.generate(S, { vip: isVipCarrier && Math.random() < 0.15 }));
     }

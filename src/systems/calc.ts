@@ -162,7 +162,7 @@ export function syncUsage(t: any, km: number, metrics: any, env?: EnvironmentalC
     const roadsideCost = Math.round(roadsideLiters * roadsideRate);
     if (S) {
       S.money = Math.max(0, (S.money || 0) - roadsideCost);
-      pushNote(S, `ROADSIDE REFUEL: ${t.name} ran low on diesel en-route and bought ${roadsideLiters}L roadside fuel at $${roadsideRate}/L (-$${roadsideCost.toLocaleString()}).`);
+      pushNote(S, `${t.name} ran low on diesel en-route and bought ${roadsideLiters}L roadside fuel at $${roadsideRate}/L (-$${roadsideCost.toLocaleString()}).`, { title: 'ROADSIDE ASSISTANCE', type: 'ops', priority: 1 });
     }
     t.fluids.fuel = Math.max(120, Math.min(800, 800 - Math.round(usage.fuelUsed % 800)));
   } else {

@@ -402,7 +402,7 @@ export default {
         <!-- Top Back Navigation -->
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
           <button class="btn alt" style="padding:6px 12px; font-size:11px; font-weight:800; display:flex; align-items:center; gap:6px;" data-act="close-showroom">
-            ${ic('back')} ALL OEM MANUFACTURERS
+            ${ic('back')} ALL MANUFACTURERS
           </button>
           <div style="font-size:10px; color:var(--mu); font-family:monospace;">
             FLEET BERTHS: <b style="color:var(--tx);">${S.fleet.length} / ${slots(S)}</b>

@@ -8,5 +8,6 @@ import finance from './finance';
 import repair from './repair';
 import drivers from './drivers';
 import storage from './storage';
+import notifications from './notifications';
 
-[home, garage, company, finance, store, rankings, repair, drivers, storage].forEach(register);
+[home, garage, company, finance, store, rankings, repair, drivers, storage, notifications].forEach(register);

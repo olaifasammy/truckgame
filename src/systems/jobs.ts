@@ -18,6 +18,25 @@ export const fuelCost = (j: any, t?: any) => {
 // Bridge to the new engine
 export const replenish = (S: any) => FreightEngine.replenish(S);
 export const makeJob = (S: any, vip = false) => FreightEngine.generate(S, { vip });
+
+export function recallTruck(S: any, truckId: number) {
+  const activeJobIndex = S.active.findIndex((a: any) => a.truck === truckId);
+  if (activeJobIndex === -1) return;
+  
+  const job = S.active[activeJobIndex];
+  const truck = S.fleet.find((t: any) => t.id === truckId);
+  
+  if (truck) {
+    truck.status = 'idle';
+    pushNote(S, `Unit #${truckId} (${truck.name}) has been ordered to abort transit. Consignment for ${job.cargo} cancelled.`, {
+      title: 'FLEET RECALL',
+      type: 'ops',
+      priority: 1
+    });
+  }
+  
+  S.active.splice(activeJobIndex, 1);
+}
 export const placeBid = (auctionId: number, amount: number) => {
   set(S => {
     const success = BiddingEngine.placePlayerBid(S, auctionId, amount);
@@ -213,11 +232,11 @@ export function takeJob(id: number, truckId?: number) {
       }
       t.fluids.fuel = tankCapacity;
       if (fromBunker > 0 && stillNeeded > 0) {
-        pushNote(S, `AUTO-REFUEL: ${t.name} topped up to 100% (${fromBunker}L Depot Bunker, ${stillNeeded}L station top-off: -$${stationCost}).`);
+        pushNote(S, `${t.name} topped up to 100% (${fromBunker}L Depot Bunker, ${stillNeeded}L station top-off: -$${stationCost}).`, { title: 'AUTO-REFUEL', type: 'ops' });
       } else if (fromBunker > 0) {
-        pushNote(S, `AUTO-REFUEL: ${t.name} filled tank (800L) from Depot Fuel Bunker before departure.`);
+        pushNote(S, `${t.name} filled tank (800L) from Depot Fuel Bunker before departure.`, { title: 'AUTO-REFUEL', type: 'ops' });
       } else {
-        pushNote(S, `AUTO-REFUEL: ${t.name} filled tank (800L) at station (-$${stationCost}).`);
+        pushNote(S, `${t.name} filled tank (800L) at station (-$${stationCost}).`, { title: 'AUTO-REFUEL', type: 'ops' });
       }
     }
 
@@ -230,7 +249,7 @@ export function takeJob(id: number, truckId?: number) {
       }
       if (quotaRes.costPaid > 0) {
         quotaNote = ' (Paid 4 Gold Coins)';
-        pushNote(S, `EXPEDITED DISPATCH: 4 Gold Coins paid for bidded consignment #${j.id} (daily limit exceeded).`);
+        pushNote(S, `4 Gold Coins paid for bidded consignment #${j.id} (daily limit exceeded).`, { title: 'EXPEDITED DISPATCH', type: 'finance', priority: 1 });
       } else {
         quotaNote = ` (${quotaRes.message})`;
       }
@@ -249,7 +268,7 @@ export function takeJob(id: number, truckId?: number) {
         if (!S.trailers) S.trailers = [];
         S.trailers.push(t.trailer);
         previousTrailer = t.trailer;
-        pushNote(S, `DEPOT STORAGE: Coupled ${TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer} unhitched to HQ Storage Yard for Shipper Tanker manifest.`);
+        pushNote(S, `Coupled ${TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer} unhitched to HQ Storage Yard for Shipper Tanker manifest.`, { title: 'DEPOT STORAGE', type: 'ops' });
       }
       t.trailer = (cargo?.trailer as any) || 'hazmat';
     }
@@ -259,12 +278,37 @@ export function takeJob(id: number, truckId?: number) {
     S.active.push({ ...j, cargo: cargoName, truck: t.id, dh, start: now, end: now + duration, env: routeEnv, isShipperTanker: isHazmatJob, unhitchedTrailer: previousTrailer });
     t.status = 'busy';
     replenish(S);
-    pushNote(S, `Consignment Dispatched: ${cargo?.name || 'Cargo'} · ${j.from} → ${j.to}${quotaNote}`);
+    pushNote(S, `Consignment Dispatched: ${cargo?.name || 'Cargo'} · ${j.from} → ${j.to}${quotaNote}`, { title: 'DISPATCH CONFIRMATION', type: 'ops' });
     toast('Dispatched: ' + (cargo?.name || 'Load') + (quotaNote ? ` · ${quotaNote}` : ''), 'success');
   });
 }
 
 export function completeJobs(S: any, now: number) {
+  // Process Asset Deliveries (New Trucks & Trailers)
+  const arrivedTrucks = S.fleet.filter((t: any) => t.status === 'delivering' && t.availableAt <= now);
+  for (const t of arrivedTrucks) {
+    t.status = 'idle';
+    delete t.availableAt;
+    pushNote(S, `DELIVERY COMPLETE: Unit #${t.id} (${t.name}) has arrived at the terminal and is ready for service.`, {
+      title: 'EQUIPMENT ARRIVED',
+      type: 'ops',
+      priority: 1
+    });
+  }
+
+  const arrivedTrailers = (S.pendingTrailers || []).filter((p: any) => p.availableAt <= now);
+  if (arrivedTrailers.length > 0) {
+    if (!S.trailers) S.trailers = [];
+    for (const p of arrivedTrailers) {
+      S.trailers.push(p.type);
+      pushNote(S, `LOGISTICS DELIVERY: 1x ${TRAILERS[p.type as keyof typeof TRAILERS] || p.type} trailer has been delivered to HQ Storage Yard.`, {
+        title: 'TRAILER ARRIVED',
+        type: 'ops'
+      });
+    }
+    S.pendingTrailers = S.pendingTrailers.filter((p: any) => p.availableAt > now);
+  }
+
   const auctionChanged = BiddingEngine.tickAuctions(S, now);
   const done: any[] = S.active.filter((a: any) => a.end <= now);
   if (done.length > 0) {
@@ -304,7 +348,7 @@ export function completeJobs(S: any, now: number) {
             const mentor = S.drivers.find((m: any) => m.id === drv.mentorId);
             if (mentor && drv.skill < 3 && Math.random() < 0.25) {
               drv.skill++;
-              pushNote(S, `MENTORSHIP ACADEMY: Under Master Driver ${mentor.name}'s guidance, ${drv.name} advanced to Level ${drv.skill}★ CDL!`);
+              pushNote(S, `Under Master Driver ${mentor.name}'s guidance, ${drv.name} advanced to Level ${drv.skill}★ CDL!`, { title: 'MENTORSHIP ACADEMY', type: 'ops', priority: 1 });
             }
           }
 
@@ -312,10 +356,20 @@ export function completeJobs(S: any, now: number) {
           if (drv.hosHours > 11.0) {
             const fine = 1800;
             if (S.insurance?.liability) {
-              pushNote(S, `HOS ENFORCEMENT: ${drv.name} logged 11h+ continuous drive. $${fine} DOT citation covered under Statutory Liability Policy.`);
+              pushNote(S, `${drv.name} logged 11h+ continuous drive. $${fine} DOT citation covered under Statutory Liability Policy.`, {
+                title: 'HOS ENFORCEMENT',
+                type: 'compliance',
+                priority: 1,
+                body: `Violation: Driving time exceeded 11.0 hours.\nDriver: ${drv.name}\nCitation: $${fine.toLocaleString()}\nOutcome: Fully covered by Carrier Liability Insurance.`
+              });
             } else {
               S.money = Math.max(0, S.money - fine);
-              pushNote(S, `DOT CITATION: ${drv.name} exceeded 11.0h statutory HOS limit without mandatory rest. Fined $${fine.toLocaleString()}.`);
+              pushNote(S, `${drv.name} exceeded 11.0h statutory HOS limit without mandatory rest. Fined $${fine.toLocaleString()}.`, {
+                title: 'DOT CITATION',
+                type: 'compliance',
+                priority: 2,
+                body: `Violation: Driving time exceeded 11.0 hours.\nDriver: ${drv.name}\nCitation: $${fine.toLocaleString()}\nOutcome: Deducted from Operating Capital.`
+              });
             }
           }
         }
@@ -324,22 +378,32 @@ export function completeJobs(S: any, now: number) {
         if (truckModel && (truckModel.baseWeight + (a.weight || 0) > truckModel.maxGVW) && !hasLicense(S, 'heavy_haul')) {
           const fine = 2400;
           if (S.insurance?.liability) {
-            pushNote(S, `WEIGH STATION INSPECTION: Gross mass exceeded chassis rating. $${fine} Overweight citation covered by Liability Insurance.`);
+            pushNote(S, `Gross mass exceeded chassis rating. $${fine} Overweight citation covered by Liability Insurance.`, {
+              title: 'WEIGH STATION INSPECTION',
+              type: 'compliance',
+              priority: 1,
+              body: `Violation: Gross Vehicle Weight exceeded registered GVWR.\nUnit: Unit #${a.truck}\nFine: $${fine.toLocaleString()}\nOutcome: Insurance Claim Filed & Paid.`
+            });
           } else {
             S.money = Math.max(0, S.money - fine);
-            pushNote(S, `WEIGH STATION CITATION: Gross mass exceeded rating without Heavy Permit. Transport Police fine: $${fine.toLocaleString()}.`);
+            pushNote(S, `Gross mass exceeded rating without Heavy Permit. Transport Police fine: $${fine.toLocaleString()}.`, {
+              title: 'WEIGH STATION CITATION',
+              type: 'compliance',
+              priority: 2,
+              body: `Violation: Gross Vehicle Weight exceeded registered GVWR.\nUnit: Unit #${a.truck}\nFine: $${fine.toLocaleString()}\nOutcome: Direct Operating Loss.`
+            });
           }
         }
 
         // Return shipper-supplied tanker if applicable
         if (a.isShipperTanker) {
           t.trailer = null;
-          pushNote(S, `CONSIGNOR RETURN: Shipper's hazardous tanker returned to chemical terminal in ${a.to}. Tractor returns bobtail.`);
+          pushNote(S, `Shipper's hazardous tanker returned to chemical terminal in ${a.to}. Tractor returns bobtail.`, { title: 'CONSIGNOR RETURN', type: 'ops' });
         }
       }
 
       if (a.kind === 'move') {
-        pushNote(S, `${t ? t.name : 'Truck'} arrived in ${a.to}`);
+        pushNote(S, `${t ? t.name : 'Truck'} arrived in ${a.to}`, { title: 'MOVEMENT COMPLETE', type: 'ops' });
         continue;
       }
 
@@ -349,10 +413,15 @@ export function completeJobs(S: any, now: number) {
       if (S.warehouseUpgrades?.cold_vault && (a.trailer === 'reefer' || cargo?.tempControlled)) {
         const coldBonus = Math.round(a.pay * 0.20);
         finalPay += coldBonus;
-        pushNote(S, `COLD STORAGE VAULT: +$${coldBonus.toLocaleString()} premium earned via Cryogenic Warehouse Vault.`);
+        pushNote(S, `+$${coldBonus.toLocaleString()} premium earned via Cryogenic Warehouse Vault.`, { title: 'COLD STORAGE VAULT', type: 'finance' });
       }
 
       S.money += finalPay;
+      pushNote(S, `Payment for ${cargo?.name || 'Freight'} haul: +$${finalPay.toLocaleString()}`, {
+        title: 'PAYMENT REMITTANCE',
+        type: 'finance',
+        body: `Consignment: ${cargo?.name || 'Commercial Freight'}\nRoute: ${a.from} → ${a.to}\nGross Pay: $${finalPay.toLocaleString()}\nTimestamp: ${new Date().toLocaleString()}`
+      });
       S.loads++;
       const repGain = a.isAuctionWon ? 45 : 15;
       S.stats.earned += finalPay;
@@ -369,7 +438,12 @@ export function completeJobs(S: any, now: number) {
           tender.loadsRemaining = Math.max(0, tender.loadsRemaining - 1);
           if (tender.loadsRemaining === 0) {
             S.money += tender.bonusPayout;
-            pushNote(S, `CONTRACT OF AFFREIGHTMENT COMPLETED: ${tender.client} awarded $${tender.bonusPayout.toLocaleString()} SLA performance bonus!`);
+            pushNote(S, `${tender.client} awarded $${tender.bonusPayout.toLocaleString()} SLA performance bonus!`, {
+              title: 'TENDER COMPLETE',
+              type: 'tender',
+              priority: 1,
+              body: `Corporate Tender ID: ${a.tenderId}\nClient: ${tender.client}\nPerformance Bonus: $${tender.bonusPayout.toLocaleString()}\nSLA Met: 100%`
+            });
           }
         }
       }
@@ -384,20 +458,46 @@ export function completeJobs(S: any, now: number) {
     }
   }
 
-  // Passive Warehouse Income & Fleet Sub-contracting Retainer (Ticks every period)
-  if (done.length > 0) {
-    if (S.warehouseUpgrades?.cross_docking) {
-      S.money += 1200;
-    }
-    if (S.warehouseUpgrades?.gantry_crane) {
-      S.money += 600;
-    }
-    const subcontractCount = (S.subcontractedTrucks || []).length;
-    if (subcontractCount > 0) {
-      const retainerIncome = subcontractCount * 1800;
-      S.money += retainerIncome;
-    }
+  return { done, auctionChanged };
+}
+
+/**
+ * Processes passive income and economic ticks based on elapsed time.
+ * Supports offline progression.
+ */
+export function processEconomics(S: any, now: number) {
+  if (!S.lastTick) S.lastTick = now;
+  const elapsedMs = now - S.lastTick;
+  if (elapsedMs <= 0) return;
+
+  // Convert daily rates to per-ms rates
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  
+  let passiveIncome = 0;
+
+  // 1. Warehouse Automation Income
+  if (S.warehouseUpgrades?.cross_docking) {
+    passiveIncome += (1200 / MS_PER_DAY) * elapsedMs;
+  }
+  if (S.warehouseUpgrades?.gantry_crane) {
+    passiveIncome += (600 / MS_PER_DAY) * elapsedMs;
   }
 
-  return { done, auctionChanged };
+  // 2. Sub-contracting Retainer
+  const subcontractCount = (S.subcontractedTrucks || []).length;
+  if (subcontractCount > 0) {
+    passiveIncome += (subcontractCount * 1800 / MS_PER_DAY) * elapsedMs;
+  }
+
+  // Use a hidden accumulator for fractional cents to avoid precision loss
+  if (!S._incomeAccumulator) S._incomeAccumulator = 0;
+  S._incomeAccumulator += passiveIncome;
+
+  if (S._incomeAccumulator >= 1) {
+    const wholeDollars = Math.floor(S._incomeAccumulator);
+    S.money += wholeDollars;
+    S._incomeAccumulator -= wholeDollars;
+  }
+
+  S.lastTick = now;
 }

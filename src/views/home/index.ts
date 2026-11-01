@@ -115,6 +115,12 @@ export default {
       return locFrom?.region === currentRegion || locTo?.region === currentRegion;
     });
 
+    // Sort: Auctions Won > Tenders > VIP > Rest
+    filteredJobs.sort((a, b) => {
+      const score = (j: any) => (j.isAuctionWon ? 100 : j.tenderId ? 50 : j.vip ? 10 : 0);
+      return score(b) - score(a);
+    });
+
     const prog = getCompanyProgression(S);
     const quota = getDailyBidDispatchQuota(S);
     const regions: (RegionName | 'All')[] = ['All', 'Africa', 'Europe', 'America', 'Asia'];

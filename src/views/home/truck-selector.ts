@@ -1,7 +1,8 @@
 import { action, toast, fmt } from '../../core/ui';
 import { refresh, set } from '../../core/store';
 import { CARGO_TYPES } from '../../domain/freight/cargo/registry';
-import { TRUCK_MODELS, TRAILERS } from '../../domain/trucks/trucks.data';
+import { TRUCK_MODELS, TRAILERS, TRAILER_PRICES } from '../../domain/trucks/trucks.data';
+import { TrailerType } from '../../domain/trucks/trucks.types';
 import { why, takeJob } from '../../systems/jobs';
 import { ic } from '../../core/icons';
 import { getDailyBidDispatchQuota } from '../../domain/freight/bids/quota';
@@ -94,14 +95,54 @@ action('batch-refuel', () => {
 action('batch-hitch-trailer', d => {
   const S = (window as any).__getStore?.();
   if (!S) return;
-  const targetType = (d as any).trailer;
+  const targetType = (d as any).trailer as TrailerType;
   if (!targetType) return;
   
   const unhitched = (S.fleet || []).filter((t: any) => t.status === 'idle' && t.trailer !== targetType);
   if (unhitched.length === 0) return toast('No idle bobtail tractors available to hitch', 'info');
   
-  unhitched.forEach((t: any) => { t.trailer = targetType; });
-  toast(`Hitched ${TRAILERS[targetType as keyof typeof TRAILERS] || targetType} to ${unhitched.length} idle tractors!`, 'success');
+  // Count available trailers of this type in storage
+  const availableCount = (S.trailers || []).filter((t: string) => t === targetType).length;
+  
+  if (availableCount === 0) {
+    return toast(`No ${TRAILERS[targetType] || targetType} available in HQ Storage Yard. Buy one in HQ/Storage.`, 'err');
+  }
+
+  let hitchedCount = 0;
+  unhitched.forEach((t: any) => {
+    if (hitchedCount < availableCount) {
+      // Unhitch current trailer if any
+      if (t.trailer) {
+        if (!S.trailers) S.trailers = [];
+        S.trailers.push(t.trailer);
+      }
+      
+      // Remove from storage
+      const idx = S.trailers.indexOf(targetType);
+      if (idx >= 0) S.trailers.splice(idx, 1);
+      
+      t.trailer = targetType;
+      hitchedCount++;
+    }
+  });
+
+  toast(`Successfully hitched ${hitchedCount} ${TRAILERS[targetType] || targetType} trailers from storage!`, 'success');
+  if (activeSelectorJobId !== null) renderSelectorOverlay(S);
+});
+
+action('quick-buy-trailer', d => {
+  const S = (window as any).__getStore?.();
+  if (!S) return;
+  const type = (d as any).trailer as TrailerType;
+  const price = (TRAILER_PRICES as any)[type] || 15000;
+  
+  if (S.money < price) return toast(`Insufficient funds for trailer. Need $${price.toLocaleString()}`, 'err');
+  
+  S.money -= price;
+  if (!S.trailers) S.trailers = [];
+  S.trailers.push(type);
+  
+  toast(`Purchased 1x ${TRAILERS[type] || type} for HQ Storage!`, 'success');
   if (activeSelectorJobId !== null) renderSelectorOverlay(S);
 });
 
@@ -337,12 +378,27 @@ export function renderSelectorOverlay(S: any) {
                   </div>
                 ` : ''}
 
-                ${wrongTrailer.length > 0 ? `
-                  <div style="display:flex; justify-content:space-between; align-items:center; background:#0e1320; padding:8px 10px; border-radius:6px; border:1px solid #1e2638; gap:8px;">
-                    <span style="color:var(--mu);">🔗 <b>${wrongTrailer.length} Tractors</b> need ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}</span>
-                    <button class="btn gold" style="padding:4px 8px; font-size:8px; font-weight:800; flex-shrink:0;" data-act="batch-hitch-trailer" data-trailer="${trailerType}">AUTO-HITCH ALL</button>
-                  </div>
-                ` : ''}
+                ${wrongTrailer.length > 0 ? (() => {
+                  const availableCount = (S.trailers || []).filter((t: string) => t === trailerType).length;
+                  const trailerName = TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType;
+                  const price = (TRAILER_PRICES as any)[trailerType] || 15000;
+
+                  return `
+                    <div style="display:flex; justify-content:space-between; align-items:center; background:#0e1320; padding:8px 10px; border-radius:6px; border:1px solid #1e2638; gap:8px;">
+                      <div style="min-width:0; flex:1;">
+                        <span style="color:var(--mu);">🔗 <b>${wrongTrailer.length} Tractors</b> need ${trailerName}</span>
+                        <div style="font-size:8px; color:${availableCount > 0 ? 'var(--grn)' : '#f87171'}; font-weight:800; margin-top:2px;">
+                          ${availableCount > 0 ? `✓ ${availableCount} available in HQ Storage` : `⚠ None in Storage (Requires $${price.toLocaleString()} purchase)`}
+                        </div>
+                      </div>
+                      ${availableCount > 0 ? `
+                        <button class="btn gold" style="padding:4px 8px; font-size:8px; font-weight:800; flex-shrink:0;" data-act="batch-hitch-trailer" data-trailer="${trailerType}">AUTO-HITCH ALL</button>
+                      ` : `
+                        <button class="btn gold" style="padding:4px 8px; font-size:8px; font-weight:800; flex-shrink:0;" data-act="quick-buy-trailer" data-trailer="${trailerType}" ${S.money < price ? 'disabled' : ''}>BUY 1x ($${(price/1000).toFixed(1)}k)</button>
+                      `}
+                    </div>
+                  `;
+                })() : ''}
 
                 ${needsCert.length > 0 ? `
                   <div style="display:flex; justify-content:space-between; align-items:center; background:#0e1320; padding:8px 10px; border-radius:6px; border:1px solid #1e2638; gap:8px;">

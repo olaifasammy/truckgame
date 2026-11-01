@@ -46,7 +46,7 @@ export class BiddingEngine {
     const initialJobCount = S.jobs.length;
     S.jobs = S.jobs.filter((j: any) => {
       if (j.isAuctionWon && j.wonAt && (now - j.wonAt > FIVE_MINS)) {
-        pushNote(S, `⚠️ Contract Expired: Dispatch for ${j.from} haul missed (5m timeout).`);
+
         return false;
       }
       return true;
@@ -128,7 +128,7 @@ export class BiddingEngine {
       if (auc.bidHistory.length > 12) auc.bidHistory.pop();
 
       if (wasPlayerWinning && S) {
-        pushNote(S, `⚡ Outbid: ${competitor.name} undercut your tender on ${auc.from} → ${auc.to} to $${newBid.toLocaleString()}!`);
+
       }
 
       return true;
@@ -161,7 +161,7 @@ export class BiddingEngine {
       time: Date.now()
     });
 
-    pushNote(S, `Tender Submitted: $${bidAmount.toLocaleString()} on ${auc.from} → ${auc.to} freight`);
+
     return true;
   }
 
@@ -194,9 +194,11 @@ export class BiddingEngine {
       if (!S.jobs.some((j: any) => j.id === wonJob.id)) {
         S.jobs.unshift(wonJob);
       }
-      pushNote(S, `🏆 Tender Won: Secured ${cargo?.name || 'Cargo'} haul for $${auc.currentBid.toLocaleString()}! Dispatch within 5 mins.`);
-    } else {
-      pushNote(S, `Contract Awarded: ${auc.currentWinnerName} won the ${auc.from} → ${auc.to} freight contract at $${auc.currentBid.toLocaleString()}`);
+      pushNote(S, `🏆 Tender Won: Secured ${cargo?.name || 'Cargo'} haul for $${auc.currentBid.toLocaleString()}! Dispatch within 5 mins.`, {
+        title: 'CONTRACT AWARDED',
+        type: 'tender',
+        priority: 2
+      });
     }
   }
 }

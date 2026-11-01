@@ -58,7 +58,8 @@ export interface Truck {
   name: string;
   odometer: number; // Total km
   loc: string;
-  status: 'idle' | 'busy' | 'maintenance' | 'repair';
+  status: 'idle' | 'busy' | 'maintenance' | 'repair' | 'delivering';
+  availableAt?: number;
   driverId: number | null;
   trailer: TrailerType | null;
   fluids: TruckFluids;
