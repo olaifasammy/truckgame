@@ -363,11 +363,224 @@ function renderCoupledTrailerSvg(type: string, startX: number, accentColor: stri
 }
 
 /**
+ * Render light commercial Sprinter / Cargo Van silhouette with integrated cargo box.
+ */
+function getSprinterVanSvg(model: any, accentColor = 'var(--gold)'): string {
+  return `
+    <svg viewBox="0 0 160 70" class="truck-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Ground line -->
+      <line x1="2" y1="62" x2="158" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2 2" />
+
+      <!-- Underbody Chassis Frame -->
+      <path d="M12 53 L148 53 L148 56 L12 56 Z" fill="#1e293b" stroke="#475569" stroke-width="0.8"/>
+
+      <!-- Van Cab Nose (Aerodynamic sloped bonnet) -->
+      <path d="M10 52 L10 44 L20 38 L36 26 L52 24 L56 24 L56 52 Z" fill="rgba(193,154,91,0.18)" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
+      
+      <!-- Windshield & Sky Glare -->
+      <path d="M22 37 L35 27 L48 27 L46 37 Z" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="0.8"/>
+      <path d="M26 35 L33 28 L38 28 L31 35 Z" fill="#ffffff" fill-opacity="0.2"/>
+
+      <!-- Driver Cab Door & Side Window -->
+      <path d="M48 27 L55 27 L55 37 L47 37 Z" fill="#38bdf8" fill-opacity="0.22" stroke="#38bdf8" stroke-width="0.7"/>
+      <line x1="46" y1="25" x2="46" y2="52" stroke="${accentColor}" stroke-width="0.7" opacity="0.6"/>
+      <!-- Cab Door Handle -->
+      <rect x="48" y="40" width="3.5" height="1.2" rx="0.6" fill="#cbd5e1"/>
+      
+      <!-- Front Grille & Van Badge -->
+      <path d="M10 44 L18 40 L18 50 L10 50 Z" fill="#0f172a" stroke="#64748b" stroke-width="0.8"/>
+      <line x1="12" y1="43" x2="17" y2="42" stroke="#cbd5e1" stroke-width="0.6"/>
+      <line x1="11" y1="46" x2="17" y2="45" stroke="#cbd5e1" stroke-width="0.6"/>
+      <line x1="11" y1="49" x2="17" y2="48" stroke="#cbd5e1" stroke-width="0.6"/>
+
+      <!-- Angled Headlamp Cluster -->
+      <path d="M10 44 L16 41 L16 45 L10 47 Z" fill="#fef3c7" stroke="#fbbf24" stroke-width="0.7"/>
+
+      <!-- Exterior Side Wing Mirror -->
+      <path d="M25 36 L19 34 L18 30" stroke="#94a3b8" stroke-width="0.9" fill="none"/>
+      <rect x="16" y="27" width="3.5" height="5" rx="0.8" fill="#1e293b" stroke="#cbd5e1" stroke-width="0.6"/>
+
+      <!-- Integrated High-Roof Cargo Box / Van Body -->
+      <path d="M56 22 L148 22 L148 52 L56 52 Z" fill="rgba(193,154,91,0.12)" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
+
+      <!-- Roof Wind Deflector Fairing -->
+      <path d="M36 26 L56 22 L56 24 L36 26 Z" fill="${accentColor}" fill-opacity="0.3"/>
+
+      <!-- Side Cargo Box Panel Seams & Rivets -->
+      <line x1="86" y1="23" x2="86" y2="51" stroke="${accentColor}" stroke-width="0.6" stroke-dasharray="4 2" opacity="0.6"/>
+      <line x1="116" y1="23" x2="116" y2="51" stroke="${accentColor}" stroke-width="0.6" stroke-dasharray="4 2" opacity="0.6"/>
+
+      <!-- Rear Double Barn Door Hinge & Latch Lines -->
+      <line x1="144" y1="24" x2="144" y2="50" stroke="#cbd5e1" stroke-width="1"/>
+      <circle cx="144" cy="34" r="1" fill="#eab308"/>
+      <circle cx="144" cy="42" r="1" fill="#eab308"/>
+
+      <!-- Side Protective Skirting -->
+      <line x1="12" y1="51" x2="148" y2="51" stroke="#475569" stroke-width="1"/>
+      <rect x="58" y="52" width="60" height="2" fill="#334155"/>
+
+      <!-- Rear Bumper Step & LED Tail Lamp -->
+      <rect x="148" y="46" width="3" height="6" rx="0.5" fill="#dc2626" stroke="#f87171" stroke-width="0.5"/>
+      <rect x="148" y="52" width="4" height="3" fill="#64748b"/>
+
+      <!-- Wheels (Front steer + Rear drive) -->
+      ${wheelSvg(30, 54, 7)}
+      ${wheelSvg(122, 54, 7)}
+
+      <!-- Wheel Arches / Mudguards -->
+      <path d="M22 53 Q30 45 38 53" stroke="#475569" stroke-width="1.2" fill="none"/>
+      <path d="M114 53 Q122 45 130 53" stroke="#475569" stroke-width="1.2" fill="none"/>
+
+      <!-- Sprinter / Van Identity Badge -->
+      <text x="64" y="32" font-size="5" font-weight="900" fill="${accentColor}" font-family="sans-serif" letter-spacing="1">CITY FREIGHT</text>
+    </svg>
+  `;
+}
+
+/**
+ * Render medium / heavy Rigid Box Truck silhouette with integrated chassis-mounted cargo body.
+ */
+function getRigidTruckSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4'): string {
+  const is6x4 = axle === '6x4' || axle === '6x2' || axle === '8x4';
+  const isAmerican = model?.region === 'America';
+
+  return `
+    <svg viewBox="0 0 160 70" class="truck-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Ground line -->
+      <line x1="2" y1="62" x2="158" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2 2" />
+
+      <!-- Underbody Chassis Frame Rail -->
+      <path d="M10 52 L150 52 L150 56 L10 56 Z" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+
+      <!-- Compact Commercial Day Cab (European Cabover or American Day Cab) -->
+      ${isAmerican ? `
+        <!-- American Medium Duty Hood -->
+        <path d="M10 52 L10 44 L22 36 L40 28 L48 28 L48 52 Z" fill="rgba(193,154,91,0.15)" stroke="${accentColor}" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M24 35 L38 29 L46 29 L44 37 Z" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="0.7"/>
+        <rect x="9" y="44" width="7" height="7" rx="0.8" fill="#0f172a" stroke="#cbd5e1" stroke-width="0.7"/>
+        <rect x="6" y="43" width="4" height="3" rx="0.5" fill="#fef3c7" stroke="#fbbf24" stroke-width="0.5"/>
+      ` : `
+        <!-- European Distribution Day Cab -->
+        <path d="M10 52 L10 36 L14 20 L22 14 L46 12 L50 16 L50 52 Z" fill="rgba(193,154,91,0.15)" stroke="${accentColor}" stroke-width="1.4" stroke-linejoin="round"/>
+        <path d="M14 23 L22 15 L42 14 L40 28 L15 28 Z" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="0.8"/>
+        <rect x="10" y="32" width="7" height="11" rx="0.8" fill="#0f172a" stroke="#cbd5e1" stroke-width="0.7"/>
+        <path d="M10 44 L15 44 L15 49 L10 49 Z" fill="#fef3c7" stroke="#fbbf24" stroke-width="0.6"/>
+      `}
+
+      <!-- Exterior Wing Mirror -->
+      <path d="M14 26 L8 24 L7 19" stroke="#94a3b8" stroke-width="0.9" fill="none"/>
+      <rect x="4" y="17" width="3.5" height="6" rx="0.8" fill="#1e293b" stroke="#cbd5e1" stroke-width="0.6"/>
+
+      <!-- Integrated Heavy Duty Distribution Cargo Box Body -->
+      <rect x="52" y="15" width="98" height="37" rx="1.5" fill="rgba(193,154,91,0.12)" stroke="${accentColor}" stroke-width="1.5"/>
+
+      <!-- Aerodynamic Roof Fairing cap over cab -->
+      <path d="M30 13 L52 15 L52 20 L30 16 Z" fill="${accentColor}" fill-opacity="0.3"/>
+
+      <!-- Box Aluminum Framing & Corner Edge Reinforcements -->
+      <line x1="52" y1="17" x2="150" y2="17" stroke="${accentColor}" stroke-width="0.8" opacity="0.8"/>
+      <line x1="52" y1="50" x2="150" y2="50" stroke="${accentColor}" stroke-width="0.8" opacity="0.8"/>
+
+      <!-- Vertical Panel Corrugation / Seam Lines -->
+      ${[0.25, 0.5, 0.75].map(pct => {
+        const x = Math.round(52 + 98 * pct);
+        return `<line x1="${x}" y1="16" x2="${x}" y2="51" stroke="${accentColor}" stroke-width="0.6" stroke-dasharray="3 2" opacity="0.5"/>`;
+      }).join('')}
+
+      <!-- Rear Door Hardware & Lock Line -->
+      <line x1="147" y1="16" x2="147" y2="51" stroke="#cbd5e1" stroke-width="1.2"/>
+      <circle cx="147" cy="34" r="1.2" fill="#eab308"/>
+
+      <!-- Underrun Guard Rail under the box -->
+      <line x1="48" y1="55" x2="${is6x4 ? 100 : 110}" y2="55" stroke="#64748b" stroke-width="1.2"/>
+      <line x1="48" y1="58" x2="${is6x4 ? 100 : 110}" y2="58" stroke="#475569" stroke-width="0.8"/>
+
+      <!-- Fuel Tank / Battery Box under side frame -->
+      <rect x="54" y="45" width="22" height="7" rx="1.5" fill="#334155" stroke="#64748b" stroke-width="0.7"/>
+
+      <!-- Wheels (Front steer + Single/Dual rear axles) -->
+      ${wheelSvg(28, 54, 7.5)}
+      ${is6x4 ? `
+        ${wheelSvg(114, 54, 7.5)}
+        ${wheelSvg(134, 54, 7.5)}
+        <path d="M105 53 Q114 45 123 53" stroke="#475569" stroke-width="1.2" fill="none"/>
+        <path d="M125 53 Q134 45 143 53" stroke="#475569" stroke-width="1.2" fill="none"/>
+      ` : `
+        ${wheelSvg(126, 54, 7.5)}
+        <path d="M117 53 Q126 45 135 53" stroke="#475569" stroke-width="1.2" fill="none"/>
+      `}
+
+      <!-- Rear Crash Bumper & Reflectors -->
+      <rect x="150" y="51" width="2" height="7" fill="#dc2626"/>
+
+      <!-- Rigid Distribution Text Badge -->
+      <text x="64" y="26" font-size="4.5" font-weight="900" fill="${accentColor}" font-family="sans-serif" letter-spacing="1">RIGID FREIGHT</text>
+    </svg>
+  `;
+}
+
+export function isSprinterModel(model: any): boolean {
+  if (!model) return false;
+  const id = String(model.id || '').toLowerCase();
+  const name = String(model.name || '').toLowerCase();
+  
+  if (id === 'merc_sprinter' || id === 'isuzu_npr' || id === 'fuso_canter' || id === 'hino_dutro' || id === 'iveco_daily' || id === 'isuzu_elf') {
+    return true;
+  }
+  if (name.includes('sprinter') || name.includes('van') || name.includes('box truck') || name.includes('city express')) {
+    return true;
+  }
+  if (model.baseWeight && model.baseWeight <= 3.8 && Array.isArray(model.haul) && model.haul.length === 1 && model.haul[0] === 'rigid_box') {
+    return true;
+  }
+  return false;
+}
+
+export function isRigidModel(model: any, trailerType?: string | null): boolean {
+  if (!model) return false;
+  if (isSprinterModel(model)) return false;
+  
+  const id = String(model.id || '').toLowerCase();
+  const name = String(model.name || '').toLowerCase();
+
+  if (trailerType === 'rigid_box') return true;
+
+  const rigidIds = new Set([
+    'scania_p250', 'scania_l320', 'scania_25p_bev',
+    'merc_atego', 'merc_econic', 'merc_antos',
+    'man_tgl', 'man_tgm',
+    'daf_lf_210', 'daf_xb_electric',
+    'kenworth_t480', 'peterbilt_220', 'peterbilt_536', 'peterbilt_520',
+    'fl_m2', 'fl_econicsd', 'mack_md7', 'mack_terrapro', 'mack_lr_electric',
+    'hino_300', 'hino_l6', 'hino_300_hybrid', 'hino_profia_fw', 'hino_zev', 'hino_ranger', 'hino_500_fg',
+    'isuzu_ftr', 'isuzu_nrr_ev', 'isuzu_forward', 'isuzu_f_series',
+    'iveco_eurocargo', 'ford_f650', 'howo_t5g', 'fuso_ecanter'
+  ]);
+  if (rigidIds.has(id)) return true;
+
+  if (Array.isArray(model.haul) && model.haul.length === 1 && model.haul[0] === 'rigid_box') {
+    return true;
+  }
+  if (name.includes('medium rigid') || name.includes('heavy rigid') || name.includes('distribution box') || name.includes('urban distribution')) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Main Truck Silhouette Renderer.
  * - If trailerType is empty/none: renders standard bobtail tractor (viewBox="0 0 160 70").
  * - If trailerType is provided: renders complete connected tractor + trailer rig (viewBox="0 0 340 70" or 440 for LCV).
  */
 export function getTruckSilhouetteSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4', trailerType?: string | null): string {
+  if (isSprinterModel(model)) {
+    return getSprinterVanSvg(model, accentColor);
+  }
+  if (isRigidModel(model, trailerType)) {
+    return getRigidTruckSvg(model, accentColor, axle || model?.axle);
+  }
+
   const isAmerican = model.region === 'America';
   const is6x4 = axle === '6x4' || axle === '6x2' || axle === '8x4';
   const hasTrailer = !!trailerType && trailerType !== 'none';
@@ -493,6 +706,429 @@ export function getTruckSilhouetteSvg(model: any, accentColor = 'var(--gold)', a
       `}
     `;
   }
+
+
+  // MODEL-SPECIFIC TRUCK PROFILES
+  // Additional SVG details are selected by the existing catalogue ID.
+  const modelId = String(model?.id || '');
+
+  let modelDetails = '';
+
+  switch (modelId) {
+
+    // SCANIA S730 - premium European V8 high-roof cab
+    case 'scania_s730':
+      modelDetails = `
+        <!-- Scania premium roof visor -->
+        <path d="M20 9 L55 7 L65 12 L57 14 L22 13 Z"
+          fill="#64748b" stroke="${accentColor}" stroke-width="0.8"/>
+        <!-- Sculpted V-shaped front grille -->
+        <path d="M10 31 L20 31 L19 45 L11 45 Z"
+          fill="#111827" stroke="#cbd5e1" stroke-width="0.8"/>
+        <path d="M12 33 L18 33 M12 36 L18 36 M12 39 L18 39 M12 42 L18 42"
+          stroke="#cbd5e1" stroke-width="0.8"/>
+        <!-- V8 identity and side styling -->
+        <path d="M25 31 L42 31 L39 35 L24 35"
+          stroke="${accentColor}" stroke-width="0.9" fill="none"/>
+        <text x="28" y="40" font-size="3.5" fill="#e2e8f0"
+          font-weight="bold">V8</text>
+        <path d="M25 15 L43 14 L42 27 L24 27 Z"
+          stroke="#7dd3fc" stroke-width="0.5" fill="none" opacity="0.7"/>
+        <line x1="20" y1="47" x2="28" y2="47"
+          stroke="#cbd5e1" stroke-width="1"/>
+      `;
+      break;
+
+    // VOLVO FH16 - panoramic windshield and strong aerodynamic cab
+    case 'volvo_fh16':
+      modelDetails = `
+        <!-- Extended aerodynamic roof cap -->
+        <path d="M19 10 Q35 4 57 9 L67 14 L58 15 L22 13 Z"
+          fill="#64748b" stroke="${accentColor}" stroke-width="0.8"/>
+        <!-- Panoramic windshield divisions -->
+        <path d="M15 23 Q27 13 43 14 L41 28 L15 28 Z"
+          fill="#38bdf8" fill-opacity="0.13"
+          stroke="#bae6fd" stroke-width="0.8"/>
+        <path d="M28 15 L27 28"
+          stroke="#94a3b8" stroke-width="0.7"/>
+        <!-- Volvo-style wide front grille -->
+        <rect x="10" y="31" width="10" height="13" rx="1"
+          fill="#0f172a" stroke="#cbd5e1" stroke-width="0.9"/>
+        ${[0,1,2,3,4].map(i =>
+          `<line x1="11" y1="${33+i*2}" x2="19" y2="${33+i*2}"
+          stroke="#94a3b8" stroke-width="0.7"/>`
+        ).join('')}
+        <!-- Diagonal grille accent -->
+        <path d="M11 42 L19 33"
+          stroke="#e2e8f0" stroke-width="1"/>
+        <!-- Lower signature lighting -->
+        <path d="M10 45 L17 45 L16 49 L11 49 Z"
+          fill="#fef3c7" stroke="#fbbf24" stroke-width="0.6"/>
+        <path d="M23 30 L40 30"
+          stroke="${accentColor}" stroke-width="0.8"/>
+        <text x="30" y="38" font-size="3.5"
+          fill="#e2e8f0" font-weight="bold">FH16</text>
+      `;
+      break;
+
+    // MERCEDES ACTROS - modern StreamSpace cab
+    case 'merc_actros_1853':
+      modelDetails = `
+        <!-- Actros roof fairing -->
+        <path d="M22 9 L56 8 L65 13 L58 15 L23 13 Z"
+          fill="#94a3b8" fill-opacity="0.4"
+          stroke="${accentColor}" stroke-width="0.8"/>
+        <!-- Distinctive multi-section grille -->
+        <rect x="10" y="31" width="10" height="14" rx="1"
+          fill="#0b1220" stroke="#94a3b8" stroke-width="0.8"/>
+        ${[0,1,2,3,4].map(i =>
+          `<line x1="11" y1="${33+i*2}" x2="19" y2="${33+i*2}"
+          stroke="#cbd5e1" stroke-width="0.75"/>`
+        ).join('')}
+        <!-- Three-point star inspired central badge -->
+        <circle cx="15" cy="37.5" r="2.2"
+          fill="#334155" stroke="#e2e8f0" stroke-width="0.6"/>
+        <path d="M15 35.5 L15 39.5 M13.3 38.5 L16.7 36.5 M13.3 36.5 L16.7 38.5"
+          stroke="#f8fafc" stroke-width="0.55"/>
+        <!-- Modern headlamp signature -->
+        <path d="M10 45 L17 44 L17 49 L11 50 Z"
+          fill="#fef3c7" stroke="#fbbf24" stroke-width="0.7"/>
+        <path d="M23 29 L42 29 L41 31 L23 31 Z"
+          fill="#94a3b8" opacity="0.7"/>
+        <!-- StreamSpace side window -->
+        <path d="M45 15 L56 15 L56 27 L45 27 Z"
+          fill="#38bdf8" fill-opacity="0.2"
+          stroke="#bae6fd" stroke-width="0.7"/>
+      `;
+      break;
+
+    // KENWORTH W900 - long-nose classic American conventional
+    case 'kenworth_w900':
+      modelDetails = `
+        <!-- Long hood centre ridge -->
+        <path d="M17 31 L46 31 L45 33 L20 33 Z"
+          fill="${accentColor}" opacity="0.45"/>
+        <!-- Tall polished radiator grille -->
+        <rect x="9" y="39" width="10" height="13" rx="0.8"
+          fill="#17212b" stroke="#cbd5e1" stroke-width="1"/>
+        ${[0,1,2,3,4,5].map(i =>
+          `<line x1="${11+i*1.3}" y1="40" x2="${11+i*1.3}" y2="51"
+          stroke="#e2e8f0" stroke-width="0.65"/>`
+        ).join('')}
+        <!-- Heavy chrome bumper -->
+        <path d="M5 53 L23 53 L22 57 L5 57 Z"
+          fill="#94a3b8" stroke="#e2e8f0" stroke-width="0.8"/>
+        <!-- Classic hood ornaments -->
+        <path d="M29 29 L32 25 L34 29 Z"
+          fill="#cbd5e1" stroke="#f8fafc" stroke-width="0.5"/>
+        <!-- Twin polished exhaust stacks -->
+        <path d="M78 34 L78 4 L81 3 L81 34"
+          fill="#94a3b8" stroke="#e2e8f0" stroke-width="0.8"/>
+        <path d="M94 30 L94 7 L97 5 L97 31"
+          fill="#94a3b8" stroke="#e2e8f0" stroke-width="0.8"/>
+        <!-- Extended sleeper window -->
+        <rect x="82" y="21" width="13" height="9" rx="1"
+          fill="#38bdf8" fill-opacity="0.22"
+          stroke="#cbd5e1" stroke-width="0.7"/>
+        <!-- Hood side chrome strip -->
+        <path d="M25 37 L44 37"
+          stroke="#cbd5e1" stroke-width="0.8"/>
+      `;
+      break;
+
+    // PETERBILT 389 - traditional long hood and classic sleeper
+    case 'peterbilt_389':
+      modelDetails = `
+        <!-- Signature long hood contours -->
+        <path d="M24 30 L47 30 L47 32 L24 32 Z"
+          fill="${accentColor}" opacity="0.5"/>
+        <path d="M25 35 L44 35"
+          stroke="#cbd5e1" stroke-width="0.8"/>
+        <!-- Traditional vertical grille -->
+        <rect x="9" y="39" width="10" height="13" rx="1"
+          fill="#101820" stroke="#cbd5e1" stroke-width="1"/>
+        ${[0,1,2,3,4].map(i =>
+          `<line x1="${11+i*1.4}" y1="40" x2="${11+i*1.4}" y2="51"
+          stroke="#cbd5e1" stroke-width="0.7"/>`
+        ).join('')}
+        <!-- Dual round headlamps -->
+        <circle cx="7" cy="42" r="2.1"
+          fill="#fef3c7" stroke="#e2e8f0" stroke-width="0.6"/>
+        <circle cx="7" cy="48" r="2.1"
+          fill="#fef3c7" stroke="#e2e8f0" stroke-width="0.6"/>
+        <!-- Heavy polished bumper -->
+        <path d="M4 53 L23 53 L22 57 L5 57 Z"
+          fill="#94a3b8" stroke="#e2e8f0" stroke-width="0.8"/>
+        <!-- Twin vertical exhaust stacks -->
+        <path d="M77 34 L77 5 L80 3 L80 34"
+          fill="#94a3b8" stroke="#e2e8f0" stroke-width="0.8"/>
+        <path d="M96 31 L96 8 L99 6 L99 31"
+          fill="#94a3b8" stroke="#e2e8f0" stroke-width="0.8"/>
+        <!-- Classic sleeper side window -->
+        <rect x="82" y="21" width="12" height="9" rx="1"
+          fill="#38bdf8" fill-opacity="0.2"
+          stroke="#cbd5e1" stroke-width="0.7"/>
+      `;
+      break;
+
+    // FREIGHTLINER CASCADIA - integrated aerodynamic highway tractor
+    case 'freightliner_cascadia':
+      modelDetails = `
+        <!-- Aerodynamic roof deflector -->
+        <path d="M20 10 Q42 4 59 12 L65 17 L56 15 L23 14 Z"
+          fill="#94a3b8" fill-opacity="0.35"
+          stroke="${accentColor}" stroke-width="0.8"/>
+        <!-- Sloped modern front fascia -->
+        <path d="M10 31 L18 31 L19 45 L11 48 Z"
+          fill="#111827" stroke="#94a3b8" stroke-width="0.8"/>
+        <!-- Cascadia dark grille -->
+        <path d="M11 33 L18 33 L18 44 L12 45 Z"
+          fill="#0f172a" stroke="#64748b" stroke-width="0.6"/>
+        ${[0,1,2,3].map(i =>
+          `<line x1="12" y1="${35+i*2}" x2="17" y2="${35+i*2}"
+          stroke="#94a3b8" stroke-width="0.7"/>`
+        ).join('')}
+        <!-- Swept LED headlamp -->
+        <path d="M9 44 L17 42 L18 47 L10 50 Z"
+          fill="#fef3c7" stroke="#fbbf24" stroke-width="0.7"/>
+        <path d="M11 47 L16 45"
+          stroke="#fff" stroke-width="0.7"/>
+        <!-- Integrated sleeper side glass -->
+        <path d="M44 14 L57 15 L57 27 L44 27 Z"
+          fill="#38bdf8" fill-opacity="0.2"
+          stroke="#bae6fd" stroke-width="0.7"/>
+        <!-- Aerodynamic side fairing -->
+        <path d="M57 40 L88 42 L88 51 L57 51 Z"
+          fill="#64748b" fill-opacity="0.25"
+          stroke="#94a3b8" stroke-width="0.5"/>
+        <!-- Roof marker lights -->
+        ${[27,35,43,51].map(x =>
+          `<circle cx="${x}" cy="9" r="0.8" fill="#fbbf24"/>`
+        ).join('')}
+      `;
+      break;
+  }
+
+
+  // MODEL-SPECIFIC CAB GEOMETRY
+  // Layered cab art: base body, shading, glass + glare, seams, mirrors, lamps.
+  const cabLamp = (x: number, y: number, w: number, h: number) =>
+    `<rect x="${x - 1.5}" y="${y - 1.5}" width="${w + 3}" height="${h + 3}" rx="2" fill="#fde68a" fill-opacity="0.18"/>` +
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1" fill="#fef3c7" stroke="#fbbf24" stroke-width="0.6"/>`;
+  const cabGrille = (x: number, y: number, w: number, rows: number, gap: number) =>
+    Array.from({ length: rows }, (_, i) =>
+      `<rect x="${x}" y="${y + i * gap}" width="${w}" height="0.9" fill="#94a3b8" fill-opacity="0.85"/>`
+    ).join('');
+  const cabMirror = (x: number, y: number) =>
+    `<path d="M${x} ${y + 2} L${x + 3} ${y} L${x + 3} ${y + 9} L${x} ${y + 8} Z" fill="#0f172a" stroke="#94a3b8" stroke-width="0.6"/>` +
+    `<path d="M${x + 1.5} ${y + 8} L${x + 1.5} ${y + 12}" stroke="#64748b" stroke-width="0.7"/>`;
+  const cabHandle = (x: number, y: number) =>
+    `<rect x="${x}" y="${y}" width="4" height="1.2" rx="0.6" fill="#e2e8f0"/>`;
+  const cabSeam = (d: string) =>
+    `<path d="${d}" stroke="#0f172a" stroke-opacity="0.55" stroke-width="0.7" fill="none"/>`;
+  const cabShade = (d: string) => `<path d="${d}" fill="#000" fill-opacity="0.2"/>`;
+  const cabLight = (d: string) => `<path d="${d}" fill="#fff" fill-opacity="0.14"/>`;
+  const cabGlare = (d: string) => `<path d="${d}" fill="#fff" fill-opacity="0.2"/>`;
+  const cabStack = (x: number, y: number, h: number) =>
+    `<rect x="${x}" y="${y}" width="3.2" height="${h}" fill="#e2e8f0" stroke="#94a3b8" stroke-width="0.6"/>` +
+    `<rect x="${x - 0.6}" y="${y - 1.4}" width="4.4" height="2" rx="1" fill="#f8fafc" stroke="#94a3b8" stroke-width="0.5"/>` +
+    `<rect x="${x + 0.5}" y="${y}" width="0.8" height="${h}" fill="#fff" fill-opacity="0.6"/>`;
+  let modelCabGeometry = '';
+
+  switch (modelId) {
+
+    case 'scania_s730':
+      // Tall, upright cab, panoramic glass, LED signature.
+      modelCabGeometry = `
+        <path d="M10 52 L10 37 L14 19 L25 8 Q42 5 59 9 L66 15 L66 43
+                 L52 43 L52 36 L23 36 L23 43 Z"
+          fill="#263445" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
+        ${cabLight('M25 9 Q42 6 59 10 L63 14 L24 13 Z')}
+        ${cabShade('M10 43 L23 43 L23 51 L10 52 Z M52 38 L66 38 L66 43 L52 43 Z')}
+        <path d="M15 23 L24 13 L45 12 L43 29 L14 29 Z"
+          fill="#38bdf8" fill-opacity="0.34" stroke="#bae6fd" stroke-width="0.8"/>
+        ${cabGlare('M20 17 L26 13 L31 13 L22 29 L16 29 Z')}
+        <path d="M46 13 L58 15 L61 29 L45 29 Z"
+          fill="#38bdf8" fill-opacity="0.26" stroke="#bae6fd" stroke-width="0.7"/>
+        <path d="M21 8 Q42 3 61 9 L72 13 L66 18 L24 14 Z"
+          fill="#334155" stroke="${accentColor}" stroke-width="1"/>
+        <rect x="30" y="4.5" width="22" height="1.6" rx="0.8" fill="${accentColor}" fill-opacity="0.9"/>
+        ${cabSeam('M45 13 L46 36')}
+        ${cabHandle(48, 31)}
+        ${cabMirror(10, 20)}
+        <path d="M10 31 L20 31 L19 43 L11 43 Z" fill="#0b121a" stroke="#cbd5e1" stroke-width="0.8"/>
+        ${cabGrille(12, 33, 6, 4, 2.2)}
+        ${cabLamp(11, 44, 6, 5)}
+        <path d="M11 42 L18 42" stroke="#38bdf8" stroke-width="0.7"/>
+        <path d="M24 31 L42 31 L40 34 L24 34" stroke="${accentColor}" stroke-width="1" fill="none"/>
+        <path d="M20 43 L28 43 L28 51 L20 51 Z" fill="#334155" stroke="#64748b" stroke-width="0.6"/>
+        <path d="M21 46 L27 46 M21 48.5 L27 48.5" stroke="#94a3b8" stroke-width="0.6"/>
+      `;
+      break;
+
+    case 'volvo_fh16':
+      // Curved roofline, broad glass, signature light bar.
+      modelCabGeometry = `
+        <path d="M10 52 L10 37 Q13 19 27 10 Q43 5 59 11 L67 18 L64 43
+                 L51 43 L49 34 L22 34 L21 43 Z"
+          fill="#263445" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
+        ${cabLight('M27 11 Q43 6 58 12 L62 16 L26 14 Z')}
+        ${cabShade('M10 43 L21 43 L21 51 L10 52 Z M51 38 L64 38 L64 43 L51 43 Z')}
+        <path d="M14 24 Q25 12 44 12 L42 31 L14 31 Z"
+          fill="#38bdf8" fill-opacity="0.32" stroke="#bae6fd" stroke-width="0.8"/>
+        ${cabGlare('M19 22 Q24 15 32 13 L26 31 L16 31 Z')}
+        <path d="M27 14 L26 31" stroke="#94a3b8" stroke-width="0.8"/>
+        <path d="M46 13 L58 16 L61 31 L45 31 Z"
+          fill="#38bdf8" fill-opacity="0.24" stroke="#bae6fd" stroke-width="0.7"/>
+        <path d="M20 9 Q43 3 61 10 L70 16 L63 19 L23 14 Z"
+          fill="#475569" stroke="${accentColor}" stroke-width="1"/>
+        <path d="M30 6 Q44 3 56 7" stroke="${accentColor}" stroke-width="1.3" fill="none"/>
+        ${cabSeam('M45 13 L47 34')}
+        ${cabHandle(48, 29)}
+        ${cabMirror(10, 19)}
+        <path d="M10 32 L20 32 L19 44 L11 45 Z" fill="#0b121a" stroke="#cbd5e1" stroke-width="0.8"/>
+        <path d="M11 35 L19 35 M11 38.5 L19 38.5 M11 42 L19 42" stroke="#94a3b8" stroke-width="0.7"/>
+        <path d="M11 45 L18 44 L17 49 L11 50 Z" fill="#fef3c7" stroke="#fbbf24" stroke-width="0.7"/>
+        <path d="M11 44.5 L17 43.7" stroke="#38bdf8" stroke-width="0.7"/>
+        <path d="M23 33 L41 33" stroke="${accentColor}" stroke-width="1"/>
+      `;
+      break;
+
+    case 'merc_actros_1853':
+      // Squared cab, flat roof, big star grille, stepped glazing.
+      modelCabGeometry = `
+        <path d="M10 52 L10 37 L15 19 L24 11 L57 10 L65 16 L65 43
+                 L51 43 L49 35 L22 35 L21 43 Z"
+          fill="#293747" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
+        ${cabLight('M24 11 L57 10 L63 15 L23 15 Z')}
+        ${cabShade('M10 43 L21 43 L21 51 L10 52 Z M51 38 L65 38 L65 43 L51 43 Z')}
+        <path d="M15 23 L23 14 L43 14 L42 31 L14 31 Z"
+          fill="#38bdf8" fill-opacity="0.3" stroke="#bae6fd" stroke-width="0.8"/>
+        ${cabGlare('M19 22 L24 15 L29 15 L22 31 L15 31 Z')}
+        <path d="M45 15 L57 15 L60 30 L45 30 Z"
+          fill="#38bdf8" fill-opacity="0.24" stroke="#bae6fd" stroke-width="0.7"/>
+        <path d="M23 10 L57 9 L68 15 L62 19 L24 15 Z"
+          fill="#475569" stroke="${accentColor}" stroke-width="1"/>
+        <rect x="28" y="5.6" width="3" height="3" rx="0.6" fill="${accentColor}"/>
+        <rect x="34" y="5.6" width="3" height="3" rx="0.6" fill="${accentColor}"/>
+        <rect x="40" y="5.6" width="3" height="3" rx="0.6" fill="${accentColor}"/>
+        ${cabSeam('M44 15 L45 35')}
+        ${cabHandle(47, 31)}
+        ${cabMirror(10, 18)}
+        <path d="M10 32 L20 32 L19 44 L11 44 Z" fill="#111827" stroke="#cbd5e1" stroke-width="0.8"/>
+        ${cabGrille(11.5, 34, 6.5, 4, 2.2)}
+        ${cabLamp(10.5, 45, 7, 5)}
+        <rect x="23" y="37" width="18" height="2" fill="#64748b" opacity="0.7"/>
+        <circle cx="15" cy="37" r="2.1" fill="#334155" stroke="#e2e8f0" stroke-width="0.6"/>
+        <path d="M15 35 L15 39 M13.3 38 L16.7 36 M13.3 36 L16.7 38"
+          stroke="#f8fafc" stroke-width="0.55"/>
+      `;
+      break;
+
+    case 'kenworth_w900':
+      // Long conventional hood, tall sleeper, twin chrome stacks.
+      modelCabGeometry = `
+        <path d="M6 53 L6 42 L22 42 L27 30 L48 30 L48 43 L76 43 L76 14
+                 L103 12 L105 18 L105 43 L117 43 L117 52 Z"
+          fill="#293747" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
+        ${cabShade('M6 47 L117 47 L117 52 L6 53 Z')}
+        ${cabLight('M27 30 L48 30 L48 32 L26 32 Z M77 14 L103 12 L104 15 L77 17 Z')}
+        <path d="M27 31 L47 31 L47 38 L25 38 Z" fill="#334155" stroke="${accentColor}" stroke-width="0.7"/>
+        <path d="M30 32 L30 37 M34 32 L34 37 M38 32 L38 37 M42 32 L42 37" stroke="#0f172a" stroke-opacity="0.5" stroke-width="0.8"/>
+        <path d="M49 30 L56 19 L75 19 L75 42 L49 42 Z" fill="#263445" stroke="${accentColor}" stroke-width="1"/>
+        <path d="M52 30 L58 21 L69 21 L68 30 Z" fill="#38bdf8" fill-opacity="0.3" stroke="#bae6fd" stroke-width="0.7"/>
+        ${cabGlare('M55 28 L59 22 L63 22 L58 30 Z')}
+        ${cabSeam('M62 30 L62 42')}
+        ${cabHandle(64, 34)}
+        <path d="M78 16 L101 15 L101 42 L78 42 Z" fill="#263445" stroke="${accentColor}" stroke-width="1"/>
+        <rect x="82" y="21" width="14" height="9" rx="1" fill="#38bdf8" fill-opacity="0.26" stroke="#bae6fd" stroke-width="0.7"/>
+        <path d="M78 36 L101 36" stroke="${accentColor}" stroke-width="1.2" stroke-opacity="0.8"/>
+        ${cabSeam('M89 30 L89 42')}
+        ${cabMirror(49, 20)}
+        <path d="M9 40 L19 40 L19 51 L9 51 Z" fill="#0b121a" stroke="#cbd5e1" stroke-width="0.8"/>
+        ${cabGrille(10.5, 42, 7, 4, 2.2)}
+        <path d="M5 53 L23 53 L22 57 L5 57 Z" fill="#94a3b8" stroke="#e2e8f0" stroke-width="0.8"/>
+        ${cabLamp(3, 44, 3, 6)}
+        <path d="M76 34 L76 6 L79 4 L79 34" fill="#cbd5e1" stroke="#94a3b8" stroke-width="0.8"/>
+        <path d="M96 31 L96 7 L99 5 L99 31" fill="#cbd5e1" stroke="#94a3b8" stroke-width="0.8"/>
+        <path d="M76.8 33 L76.8 7 M96.8 30 L96.8 8" stroke="#fff" stroke-opacity="0.6" stroke-width="0.6"/>
+        <rect x="106" y="46" width="10" height="4" rx="1" fill="#475569" stroke="#94a3b8" stroke-width="0.6"/>
+      `;
+      break;
+
+    case 'peterbilt_389':
+      // Extended hood, rounded sleeper, classic chrome front end.
+      modelCabGeometry = `
+        <path d="M5 53 L5 42 L22 42 L27 30 L49 30 L49 42 L77 42 L77 16
+                 Q89 11 102 16 L104 22 L104 43 L117 43 L117 52 Z"
+          fill="#293747" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
+        ${cabShade('M5 47 L117 47 L117 52 L5 53 Z')}
+        ${cabLight('M27 30 L49 30 L49 32 L26 32 Z M79 17 Q91 13 101 18 L101 20 Q91 16 79 19 Z')}
+        <path d="M27 31 L48 31 L48 37 L25 37 Z" fill="#334155" stroke="${accentColor}" stroke-width="0.7"/>
+        <path d="M31 32 L31 36 M35 32 L35 36 M39 32 L39 36 M43 32 L43 36" stroke="#0f172a" stroke-opacity="0.5" stroke-width="0.8"/>
+        <path d="M50 30 L57 19 L76 19 L76 42 L50 42 Z" fill="#263445" stroke="${accentColor}" stroke-width="1"/>
+        <path d="M53 30 L59 21 L70 21 L69 30 Z" fill="#38bdf8" fill-opacity="0.28" stroke="#bae6fd" stroke-width="0.7"/>
+        ${cabGlare('M56 28 L60 22 L64 22 L59 30 Z')}
+        ${cabSeam('M63 30 L63 42')}
+        ${cabHandle(65, 34)}
+        <path d="M79 17 Q91 13 101 18 L101 42 L79 42 Z" fill="#263445" stroke="${accentColor}" stroke-width="1"/>
+        <rect x="83" y="21" width="12" height="9" rx="1" fill="#38bdf8" fill-opacity="0.26" stroke="#bae6fd" stroke-width="0.7"/>
+        <path d="M79 36 L101 36" stroke="${accentColor}" stroke-width="1.2" stroke-opacity="0.8"/>
+        ${cabSeam('M90 30 L90 42')}
+        ${cabMirror(50, 20)}
+        <rect x="9" y="39" width="10" height="13" rx="1" fill="#0b121a" stroke="#cbd5e1" stroke-width="0.9"/>
+        <path d="M11 40 L11 51 M13.5 40 L13.5 51 M16 40 L16 51" stroke="#cbd5e1" stroke-width="0.7"/>
+        <path d="M5 53 L23 53 L22 57 L5 57 Z" fill="#94a3b8" stroke="#e2e8f0" stroke-width="0.8"/>
+        <circle cx="7" cy="42" r="3.2" fill="#fde68a" fill-opacity="0.2"/>
+        <circle cx="7" cy="48" r="3.2" fill="#fde68a" fill-opacity="0.2"/>
+        <circle cx="7" cy="42" r="2" fill="#fef3c7" stroke="#e2e8f0" stroke-width="0.6"/>
+        <circle cx="7" cy="48" r="2" fill="#fef3c7" stroke="#e2e8f0" stroke-width="0.6"/>
+        <path d="M77 34 L77 5 L80 3 L80 34" fill="#cbd5e1" stroke="#94a3b8" stroke-width="0.8"/>
+        <path d="M96 31 L96 8 L99 6 L99 31" fill="#cbd5e1" stroke="#94a3b8" stroke-width="0.8"/>
+        <path d="M77.8 33 L77.8 6 M96.8 30 L96.8 9" stroke="#fff" stroke-opacity="0.6" stroke-width="0.6"/>
+        <rect x="106" y="46" width="10" height="4" rx="1" fill="#475569" stroke="#94a3b8" stroke-width="0.6"/>
+      `;
+      break;
+
+    case 'freightliner_cascadia':
+      // Sloped aero nose, integrated sleeper fairing, roof marker lights.
+      modelCabGeometry = `
+        <path d="M10 52 L10 38 L15 20 Q27 9 46 10 L61 13 L68 20 L65 43
+                 L52 43 L50 35 L23 35 L20 43 Z"
+          fill="#293747" stroke="${accentColor}" stroke-width="1.5" stroke-linejoin="round"/>
+        ${cabLight('M20 12 Q30 8 46 10 L60 13 L64 17 L24 15 Z')}
+        ${cabShade('M10 43 L20 43 L20 51 L10 52 Z M52 38 L65 38 L65 43 L52 43 Z')}
+        <path d="M15 24 Q27 13 45 14 L43 31 L14 31 Z"
+          fill="#38bdf8" fill-opacity="0.32" stroke="#bae6fd" stroke-width="0.8"/>
+        ${cabGlare('M19 22 Q25 16 33 15 L26 31 L16 31 Z')}
+        <path d="M47 15 L59 18 L62 31 L45 31 Z"
+          fill="#38bdf8" fill-opacity="0.24" stroke="#bae6fd" stroke-width="0.7"/>
+        <path d="M20 10 Q42 5 61 13 L70 19 L63 21 L23 15 Z"
+          fill="#475569" stroke="${accentColor}" stroke-width="1"/>
+        <path d="M24 17 Q40 13 58 20" stroke="${accentColor}" stroke-width="1" fill="none" stroke-opacity="0.8"/>
+        ${cabSeam('M45 15 L47 35')}
+        ${cabHandle(49, 31)}
+        ${cabMirror(10, 20)}
+        <path d="M10 32 L19 32 L19 44 L11 47 Z" fill="#0b121a" stroke="#94a3b8" stroke-width="0.8"/>
+        ${cabGrille(11.5, 34, 6, 4, 2.2)}
+        <path d="M10 45 L18 43 L18 48 L11 50 Z" fill="#fef3c7" stroke="#fbbf24" stroke-width="0.7"/>
+        <path d="M11 44.5 L18 42.6" stroke="#38bdf8" stroke-width="0.7"/>
+        <path d="M57 39 L88 42 L88 51 L57 51 Z" fill="#475569" stroke="#94a3b8" stroke-width="0.6" opacity="0.85"/>
+        <path d="M60 43 L86 45 M60 46 L86 48" stroke="#94a3b8" stroke-width="0.6" stroke-opacity="0.8"/>
+        ${[27,35,43,51].map(x =>
+          `<circle cx="${x}" cy="10" r="1.6" fill="#fbbf24" fill-opacity="0.25"/>` +
+          `<circle cx="${x}" cy="10" r="0.8" fill="#fbbf24"/>`
+        ).join('')}
+      `;
+      break;
+  }
+
+  // Draw the model-specific body over the generic cab surfaces.
+  tractorSvg += modelCabGeometry;
+
+  // Append model-specific details without changing the shared chassis,
+  // wheel, axle, or trailer rendering.
+  tractorSvg += modelDetails;
 
   return `
     <svg viewBox="0 0 ${viewBoxWidth} 70" class="truck-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
