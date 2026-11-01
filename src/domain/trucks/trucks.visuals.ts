@@ -2,24 +2,59 @@
  * Authentic commercial heavy vehicle SVG silhouettes, combination rigs, and trailer schematics.
  */
 
-// Helper to render high-definition dual/steer wheels
-const wheelSvg = (cx: number, cy: number = 54, r: number = 8) => `
-  <!-- Commercial tyre and reinforced sidewall -->
-  <circle cx="${cx}" cy="${cy}" r="${r}" fill="#101820" stroke="#64748b" stroke-width="1"/>
-  <circle cx="${cx}" cy="${cy}" r="${r * 0.82}" fill="#17212b" stroke="#334155" stroke-width="0.7"/>
+// Helper to render high-definition dual/steer wheels with optional rotation animation
+const wheelSvg = (cx: number, cy: number = 54, r: number = 8, isMoving = false) => `
+  <g class="${isMoving ? 'moving-wheel' : ''}" style="${isMoving ? `transform-origin: ${cx}px ${cy}px; animation: spinWheel 0.4s linear infinite;` : ''}">
+    <!-- Commercial tyre and reinforced sidewall -->
+    <circle cx="${cx}" cy="${cy}" r="${r}" fill="#101820" stroke="#64748b" stroke-width="1"/>
+    <circle cx="${cx}" cy="${cy}" r="${r * 0.82}" fill="#17212b" stroke="#334155" stroke-width="0.7"/>
 
-  <!-- Alloy wheel rim -->
-  <circle cx="${cx}" cy="${cy}" r="${r * 0.55}" fill="#64748b" stroke="#cbd5e1" stroke-width="0.8"/>
-  <circle cx="${cx}" cy="${cy}" r="${r * 0.39}" fill="#334155" stroke="#94a3b8" stroke-width="0.6"/>
+    <!-- Alloy wheel rim -->
+    <circle cx="${cx}" cy="${cy}" r="${r * 0.55}" fill="#64748b" stroke="#cbd5e1" stroke-width="0.8"/>
+    <circle cx="${cx}" cy="${cy}" r="${r * 0.39}" fill="#334155" stroke="#94a3b8" stroke-width="0.6"/>
 
-  <!-- Hub and wheel fasteners -->
-  ${Array.from({ length: 6 }).map((_, i) => {
-    const a = (Math.PI * 2 * i) / 6;
-    const bx = cx + Math.cos(a) * r * 0.43;
-    const by = cy + Math.sin(a) * r * 0.43;
-    return `<circle cx="${bx.toFixed(2)}" cy="${by.toFixed(2)}" r="${Math.max(0.65, r * 0.075)}" fill="#cbd5e1"/>`;
-  }).join('')}
-  <circle cx="${cx}" cy="${cy}" r="${r * 0.19}" fill="#cbd5e1" stroke="#e2e8f0" stroke-width="0.5"/>
+    <!-- Hub and wheel fasteners -->
+    ${Array.from({ length: 6 }).map((_, i) => {
+      const a = (Math.PI * 2 * i) / 6;
+      const bx = cx + Math.cos(a) * r * 0.43;
+      const by = cy + Math.sin(a) * r * 0.43;
+      return `<circle cx="${bx.toFixed(2)}" cy="${by.toFixed(2)}" r="${Math.max(0.65, r * 0.075)}" fill="#cbd5e1"/>`;
+    }).join('')}
+    <!-- Wheel spoke crosshairs for rotational motion -->
+    <line x1="${cx - r * 0.5}" y1="${cy}" x2="${cx + r * 0.5}" y2="${cy}" stroke="#e2e8f0" stroke-width="0.6"/>
+    <line x1="${cx}" y1="${cy - r * 0.5}" x2="${cx}" y2="${cy + r * 0.5}" stroke="#e2e8f0" stroke-width="0.6"/>
+    <circle cx="${cx}" cy="${cy}" r="${r * 0.19}" fill="#cbd5e1" stroke="#e2e8f0" stroke-width="0.5"/>
+  </g>
+`;
+
+const getAnimationStyles = () => `
+  <style>
+    @keyframes spinWheel {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    @keyframes exhaustSmokePuff1 {
+      0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+      30% { opacity: 0.7; transform: translate(-8px, -6px) scale(1.4); }
+      100% { opacity: 0; transform: translate(-26px, -18px) scale(2.8); }
+    }
+    @keyframes exhaustSmokePuff2 {
+      0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+      40% { opacity: 0.8; transform: translate(-12px, -8px) scale(1.6); }
+      100% { opacity: 0; transform: translate(-34px, -24px) scale(3.2); }
+    }
+    @keyframes roadDash {
+      from { stroke-dashoffset: 0; }
+      to { stroke-dashoffset: -20; }
+    }
+  </style>
+`;
+
+const getExhaustSmokeSvg = (stackX: number, stackY: number) => `
+  <g class="exhaust-smoke">
+    <circle cx="${stackX}" cy="${stackY}" r="3.5" fill="#94a3b8" style="animation: exhaustSmokePuff1 1.2s ease-out infinite; transform-origin: ${stackX}px ${stackY}px;"/>
+    <circle cx="${stackX}" cy="${stackY}" r="4.5" fill="#cbd5e1" style="animation: exhaustSmokePuff2 1.2s ease-out infinite 0.5s; transform-origin: ${stackX}px ${stackY}px;"/>
+  </g>
 `;
 
 /**
@@ -365,11 +400,13 @@ function renderCoupledTrailerSvg(type: string, startX: number, accentColor: stri
 /**
  * Render light commercial Sprinter / Cargo Van silhouette with integrated cargo box.
  */
-function getSprinterVanSvg(model: any, accentColor = 'var(--gold)'): string {
+function getSprinterVanSvg(model: any, accentColor = 'var(--gold)', options?: { isMoving?: boolean }): string {
+  const isMoving = !!options?.isMoving;
   return `
     <svg viewBox="0 0 160 70" class="truck-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
+      ${isMoving ? getAnimationStyles() : ''}
       <!-- Ground line -->
-      <line x1="2" y1="62" x2="158" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2 2" />
+      <line x1="2" y1="62" x2="158" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 4" style="${isMoving ? 'animation: roadDash 0.3s linear infinite;' : ''}" />
 
       <!-- Underbody Chassis Frame -->
       <path d="M12 53 L148 53 L148 56 L12 56 Z" fill="#1e293b" stroke="#475569" stroke-width="0.8"/>
@@ -423,9 +460,11 @@ function getSprinterVanSvg(model: any, accentColor = 'var(--gold)'): string {
       <rect x="148" y="46" width="3" height="6" rx="0.5" fill="#dc2626" stroke="#f87171" stroke-width="0.5"/>
       <rect x="148" y="52" width="4" height="3" fill="#64748b"/>
 
+      ${isMoving ? getExhaustSmokeSvg(46, 23) : ''}
+
       <!-- Wheels (Front steer + Rear drive) -->
-      ${wheelSvg(30, 54, 7)}
-      ${wheelSvg(122, 54, 7)}
+      ${wheelSvg(30, 54, 7, isMoving)}
+      ${wheelSvg(122, 54, 7, isMoving)}
 
       <!-- Wheel Arches / Mudguards -->
       <path d="M22 53 Q30 45 38 53" stroke="#475569" stroke-width="1.2" fill="none"/>
@@ -438,16 +477,201 @@ function getSprinterVanSvg(model: any, accentColor = 'var(--gold)'): string {
 }
 
 /**
- * Render medium / heavy Rigid Box Truck silhouette with integrated chassis-mounted cargo body.
+ * Render Heavy Vocational Mining Tipper / Dump Bed Truck silhouette.
  */
-function getRigidTruckSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4'): string {
-  const is6x4 = axle === '6x4' || axle === '6x2' || axle === '8x4';
-  const isAmerican = model?.region === 'America';
+function getRigidTipperSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4', options?: { isMoving?: boolean }): string {
+  const isMoving = !!options?.isMoving;
+  const is8x4 = axle === '8x4';
 
   return `
     <svg viewBox="0 0 160 70" class="truck-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
+      ${isMoving ? getAnimationStyles() : ''}
+      <line x1="2" y1="62" x2="158" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 4" style="${isMoving ? 'animation: roadDash 0.3s linear infinite;' : ''}" />
+
+      <!-- Underbody Reinforced Heavy Chassis -->
+      <path d="M8 52 L150 52 L150 56 L8 56 Z" fill="#1e293b" stroke="#cbd5e1" stroke-width="1"/>
+
+      <!-- Severe-Duty Day Cab -->
+      <path d="M10 52 L10 36 L14 20 L22 14 L46 12 L50 16 L50 52 Z" fill="rgba(234,88,12,0.15)" stroke="#f97316" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="M14 23 L22 15 L42 14 L40 28 L15 28 Z" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="0.8"/>
+      <rect x="10" y="32" width="8" height="11" rx="0.8" fill="#0f172a" stroke="#cbd5e1" stroke-width="0.8"/>
+
+      <!-- Heavy Steel Tipper Dump Bed Body -->
+      <path d="M52 20 L150 20 L148 52 L52 52 Z" fill="rgba(234,88,12,0.14)" stroke="#f97316" stroke-width="1.5"/>
+
+      <!-- Overhead Steel Cab Protector Canopy Shield -->
+      <path d="M34 14 L54 14 L52 20 L32 18 Z" fill="#ea580c" fill-opacity="0.5" stroke="#f97316" stroke-width="1"/>
+
+      <!-- Heavy Side Structural Rib Stanchions -->
+      ${[0.2, 0.4, 0.6, 0.8].map(pct => {
+        const x = Math.round(52 + 96 * pct);
+        return `<line x1="${x}" y1="20" x2="${x}" y2="52" stroke="#ea580c" stroke-width="1.2"/>`;
+      }).join('')}
+
+      <!-- Underbody Hydraulic Piston Arm -->
+      <line x1="65" y1="44" x2="80" y2="52" stroke="#cbd5e1" stroke-width="2"/>
+
+      <!-- Rear Hinged Tailgate & Heavy Lock Pins -->
+      <line x1="148" y1="20" x2="148" y2="52" stroke="#f97316" stroke-width="1.5"/>
+      <circle cx="148" cy="22" r="1.5" fill="#facc15"/>
+
+      ${isMoving ? getExhaustSmokeSvg(46, 12) : ''}
+
+      <!-- Wheels (Steer + Bogie Drive) -->
+      ${wheelSvg(24, 54, 7.5, isMoving)}
+      ${is8x4 ? wheelSvg(40, 54, 7.5, isMoving) : ''}
+      ${wheelSvg(114, 54, 7.5, isMoving)}
+      ${wheelSvg(134, 54, 7.5, isMoving)}
+
+      <!-- Mining Dump Badge -->
+      <text x="64" y="32" font-size="4.5" font-weight="900" fill="#f97316" font-family="sans-serif" letter-spacing="1">MINING DUMP</text>
+    </svg>
+  `;
+}
+
+/**
+ * Render Vocational Waste Refuse Compactor Truck silhouette.
+ */
+function getRigidRefuseSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4', options?: { isMoving?: boolean }): string {
+  const isMoving = !!options?.isMoving;
+
+  return `
+    <svg viewBox="0 0 160 70" class="truck-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
+      ${isMoving ? getAnimationStyles() : ''}
+      <line x1="2" y1="62" x2="158" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 4" style="${isMoving ? 'animation: roadDash 0.3s linear infinite;' : ''}" />
+
+      <!-- Low-Entry Urban Refuse Day Cab (e.g. Econic, TerraPro, PB 520) -->
+      <path d="M10 52 L10 30 L16 16 L48 14 L50 20 L50 52 Z" fill="rgba(16,185,129,0.15)" stroke="#10b981" stroke-width="1.5"/>
+      <rect x="12" y="18" width="32" height="12" rx="1" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="0.8"/>
+      <!-- Low Entry Panoramic Glass Door -->
+      <rect x="14" y="32" width="10" height="18" rx="0.5" fill="#38bdf8" fill-opacity="0.2" stroke="#38bdf8" stroke-width="0.6"/>
+
+      <!-- Waste Compactor Curved Body -->
+      <path d="M50 16 Q100 10 144 18 L144 52 L50 52 Z" fill="rgba(16,185,129,0.14)" stroke="#10b981" stroke-width="1.5"/>
+
+      <!-- Side Hydraulic Bin Lifter Arm & Track -->
+      <line x1="65" y1="20" x2="65" y2="48" stroke="#10b981" stroke-width="1.5"/>
+      <rect x="62" y="28" width="6" height="10" rx="1" fill="#34d399" stroke="#059669" stroke-width="0.6"/>
+
+      <!-- Rear Hopper Loading Step & Packer Panel Assembly -->
+      <path d="M144 18 L154 26 L154 52 L144 52 Z" fill="#047857" stroke="#10b981" stroke-width="1"/>
+      <rect x="146" y="52" width="6" height="3" fill="#cbd5e1"/>
+
+      ${isMoving ? getExhaustSmokeSvg(46, 14) : ''}
+
+      <!-- Wheels -->
+      ${wheelSvg(28, 54, 7.5, isMoving)}
+      ${wheelSvg(114, 54, 7.5, isMoving)}
+      ${wheelSvg(134, 54, 7.5, isMoving)}
+
+      <!-- Refuse Badge -->
+      <text x="64" y="32" font-size="4.5" font-weight="900" fill="#10b981" font-family="sans-serif" letter-spacing="1">REFUSE COMPACTOR</text>
+    </svg>
+  `;
+}
+
+/**
+ * Render Vocational Rigid Tanker Truck silhouette.
+ */
+function getRigidTankerSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4', options?: { isMoving?: boolean }): string {
+  const isMoving = !!options?.isMoving;
+
+  return `
+    <svg viewBox="0 0 160 70" class="truck-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
+      ${isMoving ? getAnimationStyles() : ''}
+      <line x1="2" y1="62" x2="158" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 4" style="${isMoving ? 'animation: roadDash 0.3s linear infinite;' : ''}" />
+
+      <!-- Day Cab -->
+      <path d="M10 52 L10 36 L14 20 L22 14 L46 12 L50 16 L50 52 Z" fill="rgba(193,154,91,0.15)" stroke="${accentColor}" stroke-width="1.4"/>
+      <path d="M14 23 L22 15 L42 14 L40 28 L15 28 Z" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="0.8"/>
+
+      <!-- Integrated Stainless Steel Tank -->
+      <path d="M52 20 L146 20 Q152 36 146 50 L52 50 Q46 36 52 20 Z" fill="rgba(203,213,225,0.15)" stroke="#cbd5e1" stroke-width="1.5"/>
+
+      <!-- Stainless Tank Reinforcement Rings -->
+      ${[0.25, 0.5, 0.75].map(pct => {
+        const x = Math.round(52 + 94 * pct);
+        return `<path d="M${x} 20 Q${x + 3} 36 ${x} 50" stroke="#94a3b8" stroke-width="1" fill="none"/>`;
+      }).join('')}
+
+      <!-- Top Manholes & Catwalk -->
+      <line x1="60" y1="18" x2="135" y2="18" stroke="#cbd5e1" stroke-width="1"/>
+      <ellipse cx="75" cy="18" rx="3.5" ry="1.5" fill="#64748b"/>
+      <ellipse cx="120" cy="18" rx="3.5" ry="1.5" fill="#64748b"/>
+
+      <!-- Rear Access Ladder -->
+      <line x1="142" y1="21" x2="142" y2="48" stroke="#cbd5e1" stroke-width="1"/>
+
+      ${isMoving ? getExhaustSmokeSvg(46, 12) : ''}
+
+      <!-- Wheels -->
+      ${wheelSvg(28, 54, 7.5, isMoving)}
+      ${wheelSvg(118, 54, 7.5, isMoving)}
+      ${wheelSvg(136, 54, 7.5, isMoving)}
+
+      <!-- Tanker Badge -->
+      <text x="64" y="32" font-size="4.5" font-weight="900" fill="#cbd5e1" font-family="sans-serif" letter-spacing="1">RIGID TANKER</text>
+    </svg>
+  `;
+}
+
+/**
+ * Render Vocational Rigid Dropside Flatbed Truck silhouette with payload.
+ */
+function getRigidFlatbedSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4', options?: { isMoving?: boolean }): string {
+  const isMoving = !!options?.isMoving;
+
+  return `
+    <svg viewBox="0 0 160 70" class="truck-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
+      ${isMoving ? getAnimationStyles() : ''}
+      <line x1="2" y1="62" x2="158" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 4" style="${isMoving ? 'animation: roadDash 0.3s linear infinite;' : ''}" />
+
+      <!-- Day Cab -->
+      <path d="M10 52 L10 36 L14 20 L22 14 L46 12 L50 16 L50 52 Z" fill="rgba(193,154,91,0.15)" stroke="${accentColor}" stroke-width="1.4"/>
+      <path d="M14 23 L22 15 L42 14 L40 28 L15 28 Z" fill="#38bdf8" fill-opacity="0.3" stroke="#38bdf8" stroke-width="0.8"/>
+
+      <!-- Headboard Bulkhead -->
+      <path d="M50 52 L50 28 L54 28 L54 52 Z" fill="#475569" stroke="#cbd5e1" stroke-width="0.8"/>
+
+      <!-- Flatbed Deck Platform -->
+      <rect x="52" y="48" width="98" height="4" fill="#334155" stroke="#cbd5e1" stroke-width="1"/>
+
+      <!-- Payload: Bundled Heavy Industrial Pipes -->
+      <rect x="58" y="34" width="85" height="14" rx="1" fill="#1e293b" stroke="#94a3b8" stroke-width="1"/>
+      <line x1="58" y1="41" x2="143" y2="41" stroke="#475569" stroke-width="0.8"/>
+
+      <!-- Ratchet Tie-Down Straps -->
+      ${[0.2, 0.5, 0.8].map(pct => {
+        const x = Math.round(58 + 85 * pct);
+        return `<line x1="${x}" y1="34" x2="${x}" y2="49" stroke="#eab308" stroke-width="1.5"/>`;
+      }).join('')}
+
+      ${isMoving ? getExhaustSmokeSvg(46, 12) : ''}
+
+      <!-- Wheels -->
+      ${wheelSvg(28, 54, 7.5, isMoving)}
+      ${wheelSvg(118, 54, 7.5, isMoving)}
+      ${wheelSvg(136, 54, 7.5, isMoving)}
+
+      <!-- Flatbed Badge -->
+      <text x="64" y="26" font-size="4.5" font-weight="900" fill="${accentColor}" font-family="sans-serif" letter-spacing="1">DROPSIDE FLATBED</text>
+    </svg>
+  `;
+}
+
+/**
+ * Render medium / heavy Rigid Box Truck silhouette with integrated chassis-mounted cargo body.
+ */
+function getRigidTruckSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4', options?: { isMoving?: boolean }): string {
+  const is6x4 = axle === '6x4' || axle === '6x2' || axle === '8x4';
+  const isAmerican = model?.region === 'America';
+  const isMoving = !!options?.isMoving;
+
+  return `
+    <svg viewBox="0 0 160 70" class="truck-blueprint" style="width:100%; height:100%; max-height:85px;" fill="none" xmlns="http://www.w3.org/2000/svg">
+      ${isMoving ? getAnimationStyles() : ''}
       <!-- Ground line -->
-      <line x1="2" y1="62" x2="158" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="2 2" />
+      <line x1="2" y1="62" x2="158" y2="62" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 4" style="${isMoving ? 'animation: roadDash 0.3s linear infinite;' : ''}" />
 
       <!-- Underbody Chassis Frame Rail -->
       <path d="M10 52 L150 52 L150 56 L10 56 Z" fill="#1e293b" stroke="#475569" stroke-width="1"/>
@@ -498,15 +722,17 @@ function getRigidTruckSvg(model: any, accentColor = 'var(--gold)', axle: string 
       <!-- Fuel Tank / Battery Box under side frame -->
       <rect x="54" y="45" width="22" height="7" rx="1.5" fill="#334155" stroke="#64748b" stroke-width="0.7"/>
 
+      ${isMoving ? getExhaustSmokeSvg(46, 12) : ''}
+
       <!-- Wheels (Front steer + Single/Dual rear axles) -->
-      ${wheelSvg(28, 54, 7.5)}
+      ${wheelSvg(28, 54, 7.5, isMoving)}
       ${is6x4 ? `
-        ${wheelSvg(114, 54, 7.5)}
-        ${wheelSvg(134, 54, 7.5)}
+        ${wheelSvg(114, 54, 7.5, isMoving)}
+        ${wheelSvg(134, 54, 7.5, isMoving)}
         <path d="M105 53 Q114 45 123 53" stroke="#475569" stroke-width="1.2" fill="none"/>
         <path d="M125 53 Q134 45 143 53" stroke="#475569" stroke-width="1.2" fill="none"/>
       ` : `
-        ${wheelSvg(126, 54, 7.5)}
+        ${wheelSvg(126, 54, 7.5, isMoving)}
         <path d="M117 53 Q126 45 135 53" stroke="#475569" stroke-width="1.2" fill="none"/>
       `}
 
