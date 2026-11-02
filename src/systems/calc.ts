@@ -108,7 +108,7 @@ export function getRouteEnv(from: string, to: string): EnvironmentalConditions {
 }
 
 export function stats(S: any, t: any, payloadTonnes = 0, env?: EnvironmentalConditions) {
-  const d = S.drivers?.find((x: any) => x.id === t.driverId);
+  const d = S?.drivers?.find((x: any) => x.id === t?.driverId);
   return calculatePerformance(t, payloadTonnes, d, env);
 }
 

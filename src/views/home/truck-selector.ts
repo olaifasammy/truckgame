@@ -49,13 +49,30 @@ action('quick-refuel', d => {
   if (!S) return;
   const t = S.fleet.find((x: any) => x.id === +(d as any).truckId);
   if (!t) return;
-  const cost = 150;
-  if (S.money < cost) {
-    return toast(`Insufficient funds for fuel refill. Need $${cost}`, 'err');
+  const model = TRUCK_MODELS[t.modelId] || { tankSize: 800 };
+  const needed = Math.max(0, model.tankSize - (t.fluids?.fuel || 0));
+  if (needed <= 0) return toast('Tank is already full', 'info');
+
+  let fromBunker = 0;
+  if (S.fuelBunker && S.fuelBunker.currentLiters > 0) {
+    fromBunker = Math.min(S.fuelBunker.currentLiters, needed);
+    S.fuelBunker.currentLiters -= fromBunker;
   }
-  S.money -= cost;
-  t.fluids.fuel = 800; // Refueled
-  toast(`Refueled ${t.name} to 100% tank!`, 'success');
+  const remaining = needed - fromBunker;
+  let stationCost = 0;
+  if (remaining > 0) {
+    stationCost = Math.round(remaining * 2.5);
+    if (S.money < stationCost) {
+      if (S.fuelBunker) S.fuelBunker.currentLiters += fromBunker;
+      return toast(`Insufficient funds for station fuel top-off ($${stationCost})`, 'err');
+    }
+    S.money -= stationCost;
+  }
+  t.fluids.fuel = model.tankSize;
+  const msg = fromBunker > 0 
+    ? (remaining > 0 ? `Refueled: ${Math.round(fromBunker)}L Bunker + ${Math.round(remaining)}L Station ($${stationCost})` : `Refueled ${Math.round(fromBunker)}L from HQ Bunker!`)
+    : `Refueled ${Math.round(needed)}L at Commercial Station ($${stationCost})`;
+  toast(msg, 'success');
   if (activeSelectorJobId !== null) renderSelectorOverlay(S);
 });
 
@@ -81,14 +98,44 @@ action('quick-certify-driver', d => {
 action('batch-refuel', () => {
   const S = (window as any).__getStore?.();
   if (!S) return;
-  const lowFuelTractors = (S.fleet || []).filter((t: any) => t.fluids.fuel < 100);
-  if (lowFuelTractors.length === 0) return toast('All fleet vehicles already fully fueled!', 'info');
-  const totalCost = lowFuelTractors.length * 150;
-  if (S.money < totalCost) return toast(`Insufficient funds for fleet refuel ($${totalCost})`, 'err');
-  
-  S.money -= totalCost;
-  lowFuelTractors.forEach((t: any) => { t.fluids.fuel = 800; });
-  toast(`Refueled ${lowFuelTractors.length} fleet tractors!`, 'success');
+  const lowFuelTractors = (S.fleet || []).filter((t: any) => (t.fluids?.fuel || 0) < 150);
+  if (lowFuelTractors.length === 0) return toast('All fleet vehicles already have sufficient fuel!', 'info');
+
+  let totalFromBunker = 0;
+  let totalStationLiters = 0;
+  let totalCost = 0;
+
+  for (const t of lowFuelTractors) {
+    const model = TRUCK_MODELS[t.modelId] || { tankSize: 800 };
+    const needed = Math.max(0, model.tankSize - (t.fluids?.fuel || 0));
+    let fromBunker = 0;
+    if (S.fuelBunker && S.fuelBunker.currentLiters > 0) {
+      fromBunker = Math.min(S.fuelBunker.currentLiters, needed);
+      S.fuelBunker.currentLiters -= fromBunker;
+      totalFromBunker += fromBunker;
+    }
+    const remaining = needed - fromBunker;
+    if (remaining > 0) {
+      totalStationLiters += remaining;
+      totalCost += Math.round(remaining * 2.5);
+    }
+  }
+
+  if (totalCost > 0 && S.money < totalCost) {
+    if (S.fuelBunker) S.fuelBunker.currentLiters += totalFromBunker;
+    return toast(`Insufficient funds for station fuel ($${totalCost})`, 'err');
+  }
+
+  if (totalCost > 0) S.money -= totalCost;
+  lowFuelTractors.forEach((t: any) => { 
+    const model = TRUCK_MODELS[t.modelId] || { tankSize: 800 };
+    t.fluids.fuel = model.tankSize; 
+  });
+
+  const msg = totalFromBunker > 0
+    ? `Refueled ${lowFuelTractors.length} tractors (${Math.round(totalFromBunker)}L Bunker, ${Math.round(totalStationLiters)}L Station -$${totalCost})`
+    : `Refueled ${lowFuelTractors.length} fleet tractors (-$${totalCost})!`;
+  toast(msg, 'success');
   if (activeSelectorJobId !== null) renderSelectorOverlay(S);
 });
 

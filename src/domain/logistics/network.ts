@@ -1,8 +1,10 @@
+export type RegionName = 'Europe' | 'America' | 'Africa' | 'Asia';
+
 export interface RegionalHub {
   id: string;
   name: string;
   city: string;
-  region: 'Europe' | 'America' | 'Africa' | 'Asia';
+  region: RegionName;
   cost: number;
   berths: number;
   deadheadDiscount: number; // percentage
@@ -10,29 +12,57 @@ export interface RegionalHub {
   icon: string;
 }
 
+export interface RegionAuthority {
+  id: RegionName;
+  name: string;
+  code: string;
+  cost: number;
+  minTier: number;
+  description: string;
+  flag: string;
+}
+
+export const REGION_AUTHORITIES: Record<RegionName, RegionAuthority> = {
+  Africa: {
+    id: 'Africa',
+    name: 'ECOWAS Trans-Sahel Commercial Authority',
+    code: 'AF-DOT-01',
+    cost: 0,
+    minTier: 0,
+    description: 'Commercial interstate trucking rights throughout West Africa and the Lake Chad Basin corridor.',
+    flag: '🌍'
+  },
+  Europe: {
+    id: 'Europe',
+    name: 'EU Community International Haulage License (Cabotage)',
+    code: 'EU-COMM-92',
+    cost: 85000,
+    minTier: 1,
+    description: 'Full international bilateral road freight authorization across Schengen Alpine and Atlantic corridors.',
+    flag: '🇪🇺'
+  },
+  America: {
+    id: 'America',
+    name: 'US-DOT / FMCSA Interstate Operating Authority (MC Permit)',
+    code: 'US-FMCSA-49',
+    cost: 110000,
+    minTier: 2,
+    description: 'Federal motor carrier cross-border and nationwide interstate freight linehaul operating authority.',
+    flag: '🇺🇸'
+  },
+  Asia: {
+    id: 'Asia',
+    name: 'Trans-Asian TIR & Pacific Bilateral Logistics Authority',
+    code: 'ASIA-TIR-08',
+    cost: 140000,
+    minTier: 2,
+    description: 'United Nations TIR convention customs transit Carnet across East Asia and Eurasian Silk Road trade lanes.',
+    flag: '🌏'
+  }
+};
+
 export const REGIONAL_HUBS: RegionalHub[] = [
-  {
-    id: 'hub_rotterdam',
-    name: 'Rotterdam Europort Intermodal Hub',
-    city: 'ROTTERDAM',
-    region: 'Europe',
-    cost: 160000,
-    berths: 4,
-    deadheadDiscount: 0.85,
-    desc: 'Europe’s premier maritime freight gateway. Connects deep-sea container corridors to Munich, Lyon, and Gothenburg.',
-    icon: '🚢'
-  },
-  {
-    id: 'hub_chicago',
-    name: 'Chicago Midwest Rail & Road Terminal',
-    city: 'CHICAGO',
-    region: 'America',
-    cost: 195000,
-    berths: 5,
-    deadheadDiscount: 0.85,
-    desc: 'North American crossroads connecting I-80 and I-55 interstate freight corridors to Denver, Dallas, and Los Angeles.',
-    icon: '🚂'
-  },
+  // ================= AFRICA =================
   {
     id: 'hub_lagos',
     name: 'Lagos Deep Sea Logistics Terminal',
@@ -45,6 +75,41 @@ export const REGIONAL_HUBS: RegionalHub[] = [
     icon: '⚓'
   },
   {
+    id: 'hub_abuja',
+    name: 'Abuja Federal Freight Depot',
+    city: 'ABUJA',
+    region: 'Africa',
+    cost: 110000,
+    berths: 4,
+    deadheadDiscount: 0.85,
+    desc: 'Central dry port logistics depot serving FCT industrial zones, government contracts, and northbound freight.',
+    icon: '🏛️'
+  },
+  {
+    id: 'hub_kano',
+    name: 'Kano Trans-Sahel Commercial Terminal',
+    city: 'KANO',
+    region: 'Africa',
+    cost: 135000,
+    berths: 4,
+    deadheadDiscount: 0.85,
+    desc: 'Northern rail-road terminus linking commercial agriculture, livestock, and cross-border trade to Maiduguri.',
+    icon: '🏜️'
+  },
+
+  // ================= EUROPE =================
+  {
+    id: 'hub_rotterdam',
+    name: 'Rotterdam Europort Intermodal Hub',
+    city: 'ROTTERDAM',
+    region: 'Europe',
+    cost: 160000,
+    berths: 4,
+    deadheadDiscount: 0.85,
+    desc: 'Europe’s premier maritime freight gateway. Connects deep-sea container corridors to Munich, Lyon, and Gothenburg.',
+    icon: '🚢'
+  },
+  {
     id: 'hub_munich',
     name: 'Munich Alpine Cross-Border Depot',
     city: 'MUNICH',
@@ -54,8 +119,113 @@ export const REGIONAL_HUBS: RegionalHub[] = [
     deadheadDiscount: 0.85,
     desc: 'High-altitude European central transit node optimized for Alpine passes, specialized machinery, and chemical tankers.',
     icon: '⛰️'
+  },
+  {
+    id: 'hub_lyon',
+    name: 'Lyon Rhône-Alps Distribution Terminal',
+    city: 'LYON',
+    region: 'Europe',
+    cost: 150000,
+    berths: 4,
+    deadheadDiscount: 0.85,
+    desc: 'Southern European logistics crossroads linking Atlantic sea freight to the Mediterranean basin.',
+    icon: '📦'
+  },
+
+  // ================= AMERICA =================
+  {
+    id: 'hub_chicago',
+    name: 'Chicago Midwest Rail & Road Terminal',
+    city: 'CHICAGO',
+    region: 'America',
+    cost: 195000,
+    berths: 5,
+    deadheadDiscount: 0.85,
+    desc: 'North American crossroads connecting I-80 and I-55 interstate freight corridors to Denver, Dallas, and Los Angeles.',
+    icon: '🚂'
+  },
+  {
+    id: 'hub_dallas',
+    name: 'Dallas Southwestern Cross-Docking Terminal',
+    city: 'DALLAS',
+    region: 'America',
+    cost: 180000,
+    berths: 5,
+    deadheadDiscount: 0.85,
+    desc: 'Major logistics interchange linking Gulf Coast energy corridors, Mexico cross-border trade, and Midwest retail.',
+    icon: '🤠'
+  },
+  {
+    id: 'hub_los_angeles',
+    name: 'Los Angeles Long Beach Maritime Gateway',
+    city: 'LOS_ANGELES',
+    region: 'America',
+    cost: 220000,
+    berths: 5,
+    deadheadDiscount: 0.85,
+    desc: 'Pacific container gateway handling import transshipments, cold storage drayage, and transcontinental haulage.',
+    icon: '🌴'
+  },
+
+  // ================= ASIA =================
+  {
+    id: 'hub_tokyo',
+    name: 'Tokyo Kanto Pacific Freight Hub',
+    city: 'TOKYO',
+    region: 'Asia',
+    cost: 210000,
+    berths: 5,
+    deadheadDiscount: 0.85,
+    desc: 'Automated high-density terminal handling high-tech electronics, express parcel linehaul, and refrigerated foods.',
+    icon: '🗼'
+  },
+  {
+    id: 'hub_shanghai',
+    name: 'Shanghai Yangtze Deepwater Logistics Center',
+    city: 'SHANGHAI',
+    region: 'Asia',
+    cost: 230000,
+    berths: 5,
+    deadheadDiscount: 0.85,
+    desc: 'World’s highest volume maritime freight terminal with automated container stackers and heavy equipment bays.',
+    icon: '🏙️'
+  },
+  {
+    id: 'hub_almaty',
+    name: 'Almaty Trans-Eurasian Silk Road Dry Port',
+    city: 'ALMATY',
+    region: 'Asia',
+    cost: 170000,
+    berths: 4,
+    deadheadDiscount: 0.85,
+    desc: 'Central Asian overland rail-to-truck gateway powering trans-Eurasian mineral, chemical, and bulk cargo linehauls.',
+    icon: '🏔️'
   }
 ];
+
+export function isRegionUnlocked(S: any, region: RegionName): boolean {
+  if (!S) return region === 'Africa';
+  const unlocked: RegionName[] = S.unlockedRegions || ['Africa'];
+  return unlocked.includes(region);
+}
+
+export function getOwnedHubs(S: any): RegionalHub[] {
+  if (!S || !S.depots) return [REGIONAL_HUBS[0]];
+  return REGIONAL_HUBS.filter(h => S.depots.includes(h.id));
+}
+
+export function getHubByCity(city: string): RegionalHub | undefined {
+  return REGIONAL_HUBS.find(h => h.city === city);
+}
+
+export function getHubById(id: string): RegionalHub | undefined {
+  return REGIONAL_HUBS.find(h => h.id === id);
+}
+
+export function hasHubInRegion(S: any, region: RegionName): boolean {
+  if (!S || !S.depots) return region === 'Africa';
+  return REGIONAL_HUBS.some(h => h.region === region && S.depots.includes(h.id));
+}
 
 export interface WarehouseUpgrade {
   id: string;

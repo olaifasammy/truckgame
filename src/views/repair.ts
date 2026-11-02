@@ -3,7 +3,7 @@ import { action, fmt, dur, toast } from '../core/ui';
 import { refresh } from '../core/store';
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { PART_LABELS } from '../systems/calc';
-import { getPartRepairCost, calculateRepairDurationMs, startRepair, PART_BASE_PRICES } from '../systems/maintenance';
+import { getPartRepairCost, calculateRepairDurationMs, startRepair, PART_BASE_PRICES, getPartEffectiveCost } from '../systems/maintenance';
 
 let selectedPartsSet = new Set<string>();
 
@@ -66,16 +66,15 @@ export default {
     const repairsQueue = S.repairs || [];
     const now = Date.now();
 
-    // Calculate total cost and duration for selected parts
+    // Calculate total cost and duration for selected parts factoring in warehouse stock
     let totalCost = 0;
+    let totalSavings = 0;
     const selectedPartsList = Array.from(selectedPartsSet) as string[];
     if (truck) {
       selectedPartsList.forEach(part => {
-        if (['oil', 'coolant', 'adBlue'].includes(part)) {
-          totalCost += PART_BASE_PRICES[part] || 150;
-        } else if (truck.components[part]) {
-          totalCost += getPartRepairCost(part, truck.components[part].health);
-        }
+        const eff = getPartEffectiveCost(S, truck, part);
+        totalCost += eff.cost;
+        totalSavings += Math.max(0, eff.retailCost - eff.cost);
       });
     }
     const durationMs = truck ? calculateRepairDurationMs(truck, selectedPartsList) : 0;
@@ -126,18 +125,22 @@ export default {
               <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px;">
                 ${Object.entries(truck.components).map(([key, comp]: [string, any]) => {
                   const health = Math.round(comp.health);
-                  const cost = getPartRepairCost(key, health);
                   const isSelected = selectedPartsSet.has(key);
                   const isMint = health >= 100;
+                  const eff = getPartEffectiveCost(S, truck, key);
+                  const stock = (S.partsInventory && S.partsInventory[key]) || 0;
                   
                   return `
                     <div class="card" style="padding:10px; border:1px solid ${isSelected ? 'var(--gold)' : 'var(--line)'}; background:${isSelected ? 'rgba(193,154,91,0.08)' : 'var(--bg)'}; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-act="toggle-repair-part" data-part="${key}">
                       <div>
                         <div style="font-size:11px; font-weight:800; color:var(--tx);">${PART_LABELS[key] || key}</div>
                         <div style="font-size:10px; color:${health < 50 ? '#ef4444' : 'var(--grn)'}; font-weight:700;">Health: ${health}%</div>
+                        ${stock > 0 ? `<div style="font-size:8px; color:var(--grn); font-family:monospace; margin-top:2px;">📦 In Stock: ${stock}</div>` : ''}
                       </div>
                       <div style="text-align:right;">
-                        <div style="font-size:11px; font-weight:900; color:${isMint ? 'var(--grn)' : 'var(--gold)'};">${isMint ? 'MINT' : '$' + cost.toLocaleString()}</div>
+                        <div style="font-size:11px; font-weight:900; color:${isMint ? 'var(--grn)' : eff.fromInventory ? 'var(--grn)' : 'var(--gold)'};">
+                          ${isMint ? 'MINT' : eff.fromInventory ? '$' + eff.cost + ' (Stock)' : '$' + eff.cost.toLocaleString()}
+                        </div>
                         <div style="font-size:9px; color:var(--accent); font-weight:700; margin-top:2px;">${isSelected ? '☑ SELECTED' : '☐ Select'}</div>
                       </div>
                     </div>
@@ -146,20 +149,26 @@ export default {
 
                 <!-- Fluids -->
                 ${[
-                  { key: 'oil', label: 'Engine Oil Refill', val: Math.round((truck.fluids.oil / (model?.oilCapacity || 40)) * 100), cost: PART_BASE_PRICES.oil },
-                  { key: 'coolant', label: 'Coolant Flush', val: Math.round(truck.fluids.coolant), cost: PART_BASE_PRICES.coolant },
-                  { key: 'adBlue', label: 'AdBlue Refill', val: Math.round(truck.fluids.adBlue), cost: PART_BASE_PRICES.adBlue }
+                  { key: 'oil', label: 'Engine Oil Refill', val: Math.round((truck.fluids.oil / (model?.oilCapacity || 40)) * 100) },
+                  { key: 'coolant', label: 'Coolant Flush', val: Math.round(truck.fluids.coolant) },
+                  { key: 'adBlue', label: 'AdBlue Refill', val: Math.round(truck.fluids.adBlue) }
                 ].map(fluid => {
                   const isSelected = selectedPartsSet.has(fluid.key);
                   const isFull = fluid.val >= 99;
+                  const eff = getPartEffectiveCost(S, truck, fluid.key);
+                  const stock = (S.partsInventory && S.partsInventory[fluid.key]) || 0;
+
                   return `
                     <div class="card" style="padding:10px; border:1px solid ${isSelected ? 'var(--gold)' : 'var(--line)'}; background:${isSelected ? 'rgba(193,154,91,0.08)' : 'var(--bg)'}; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-act="toggle-repair-part" data-part="${fluid.key}">
                       <div>
                         <div style="font-size:11px; font-weight:800; color:var(--tx);">${fluid.label}</div>
                         <div style="font-size:10px; color:var(--grn); font-weight:700;">Level: ${fluid.val}%</div>
+                        ${stock > 0 ? `<div style="font-size:8px; color:var(--grn); font-family:monospace; margin-top:2px;">📦 In Stock: ${stock}</div>` : ''}
                       </div>
                       <div style="text-align:right;">
-                        <div style="font-size:11px; font-weight:900; color:${isFull ? 'var(--grn)' : 'var(--gold)'};">${isFull ? 'FULL' : '$' + fluid.cost}</div>
+                        <div style="font-size:11px; font-weight:900; color:${isFull ? 'var(--grn)' : eff.fromInventory ? 'var(--grn)' : 'var(--gold)'};">
+                          ${isFull ? 'FULL' : eff.fromInventory ? '$' + eff.cost + ' (Stock)' : '$' + eff.cost}
+                        </div>
                         <div style="font-size:9px; color:var(--accent); font-weight:700; margin-top:2px;">${isSelected ? '☑ SELECTED' : '☐ Select'}</div>
                       </div>
                     </div>
@@ -172,9 +181,10 @@ export default {
                 <div>
                   <div style="font-size:10px; color:var(--mu); text-transform:uppercase;">Estimated Repair Cost</div>
                   <div style="font-size:20px; font-weight:900; color:var(--gold);">$${totalCost.toLocaleString()}</div>
+                  ${totalSavings > 0 ? `<div style="font-size:9px; color:var(--grn); font-weight:800;">✓ Saved $${totalSavings.toLocaleString()} using HQ Warehouse stock!</div>` : ''}
                   <div style="font-size:10px; color:var(--accent); font-weight:700; margin-top:2px;">⏱️ Duration: ${Math.round(durationMs / 1000)}s in Repair Bay</div>
                 </div>
-                <button class="btn gold" style="padding:10px 20px; font-size:12px; font-weight:900;" data-act="submit-repair" ${totalCost === 0 || truck.status !== 'idle' ? 'disabled' : ''}>
+                <button class="btn gold" style="padding:10px 20px; font-size:12px; font-weight:900;" data-act="submit-repair" ${totalCost === 0 && selectedPartsSet.size === 0 || truck.status !== 'idle' ? 'disabled' : ''}>
                   PAY & SEND TO BAY
                 </button>
               </div>

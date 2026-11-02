@@ -126,16 +126,19 @@ export function addCompanyXp(S: any, amount: number, source: string = 'Freight O
 
   S.xp += amount;
   
-  let currentTier = S.companyTier;
+  const initialTier = S.companyTier;
+  let currentTier = initialTier;
   let required = getRequiredXpForTier(currentTier);
-  let leveledUp = false;
+  let totalBondsAwarded = 0;
 
   while (S.xp >= required && currentTier < 132) {
     S.xp -= required;
     currentTier++;
     S.companyTier = currentTier;
+    // Reward bonds: Tier 1 (Pro): +5, Tier 2 (Expert): +10, VIP 1+: +15..+50
+    const tierBonds = currentTier === 1 ? 5 : currentTier === 2 ? 10 : Math.min(50, 15 + (currentTier - 3) * 2);
+    totalBondsAwarded += tierBonds;
     required = getRequiredXpForTier(currentTier);
-    leveledUp = true;
   }
 
   // Cap at max level
@@ -147,10 +150,18 @@ export function addCompanyXp(S: any, amount: number, source: string = 'Freight O
   // Keep legacy S.vip in sync for any systems referencing it
   S.vip = Math.max(1, currentTier >= 3 ? currentTier - 2 : 1);
 
-  if (leveledUp) {
+  if (currentTier > initialTier) {
+    if (!S.coins) S.coins = 0;
+    S.coins += totalBondsAwarded;
+
     const newTitle = getRankTitle(currentTier);
-    pushNote(S, `Your carrier has attained the rank of ${newTitle.toUpperCase()}!`, { title: 'COMPANY PROMOTION', type: 'system', priority: 2 });
-    toast(`PROMOTED: ${newTitle}!`, 'success');
+    pushNote(S, `Promotion: Carrier reached ${newTitle.toUpperCase()}! Treasury awarded +${totalBondsAwarded} Fleet Bonds.`, {
+      title: 'COMPANY PROMOTION',
+      type: 'finance',
+      priority: 2,
+      body: `Carrier Rank Attained: ${newTitle}\nFleet Bonds Awarded: +${totalBondsAwarded} Bonds\nNew Treasury Balance: ${S.coins} Bonds`
+    });
+    toast(`PROMOTED: ${newTitle}! (+${totalBondsAwarded} Fleet Bonds)`, 'success');
   }
 }
 

@@ -8,6 +8,9 @@ import { CARGO_TYPES } from '../domain/freight/cargo/registry';
 import { BiddingEngine } from '../domain/freight/bids/engine';
 import { addCompanyXp, getCompanyProgression } from '../domain/company/progression';
 import { consumeBidDispatchQuota } from '../domain/freight/bids/quota';
+import { LOCATIONS } from '../data/world';
+import { isRegionUnlocked } from '../domain/logistics/network';
+import { INSURANCE_POLICIES } from '../domain/finance/banking';
 
 export const fuelCost = (j: any, t?: any) => {
   if (t) return Math.round(fuelCostForTrip(j.km, t, j.weight));
@@ -135,9 +138,22 @@ export function why(S: any, t: any, j: any) {
   }
 
   // 4. Mechanical Condition Verification
-  const healthValues = Object.values(t.components).map((c: any) => c.health);
-  const avgHealth = healthValues.reduce((a, b) => a + b, 0) / healthValues.length;
+  const comp = t.components || {};
+  const healthValues = Object.values(comp).map((c: any) => typeof c === 'number' ? c : c?.health ?? 100);
+  const avgHealth = healthValues.length > 0 ? (healthValues.reduce((a, b) => a + b, 0) / healthValues.length) : 100;
   if (avgHealth < 20) return 'Major repair needed';
+
+  // 5. Fuel & Range Verification
+  const currentFuel = t.fluids?.fuel ?? 800;
+  if (currentFuel < 30) {
+    const bunkerLiters = S.fuelBunker?.currentLiters || 0;
+    const model = TRUCK_MODELS[t.modelId] || { tankSize: 800 };
+    const needed = model.tankSize - currentFuel;
+    const cashNeeded = Math.max(0, needed - bunkerLiters) * 2.5;
+    if (bunkerLiters < 40 && S.money < cashNeeded) {
+      return `Critically low fuel (${Math.round(currentFuel)}L) and insufficient funds/bunker for top-up`;
+    }
+  }
 
   return null;
 }
@@ -151,6 +167,16 @@ const ok = (S: any, j: any) => {
 export const findTruck = (S: any, j: any) => S.fleet.filter((t: any) => !why(S, t, j)).sort((a: any, b: any) => distKm(a.loc, j.from) - distKm(b.loc, j.from))[0];
 
 export function blocker(S: any, j: any) {
+  // Check region unlock
+  const locFrom = LOCATIONS[j.from];
+  const locTo = LOCATIONS[j.to];
+  if (locFrom && !isRegionUnlocked(S, locFrom.region)) {
+    return `Origin region (${locFrom.region}) locked. Obtain authority in Hubs first.`;
+  }
+  if (locTo && !isRegionUnlocked(S, locTo.region)) {
+    return `Destination region (${locTo.region}) locked. Obtain authority in Hubs first.`;
+  }
+
   const cargo = CARGO_TYPES.find(c => c.id === j.cargoId);
   const trailerType = cargo?.trailer || j.trailer || 'curtain';
 
@@ -470,33 +496,97 @@ export function processEconomics(S: any, now: number) {
   const elapsedMs = now - S.lastTick;
   if (elapsedMs <= 0) return;
 
-  // Convert daily rates to per-ms rates
   const MS_PER_DAY = 24 * 60 * 60 * 1000;
   
-  let passiveIncome = 0;
+  let dailyInflow = 0;
+  let dailyOutflow = 0;
 
-  // 1. Warehouse Automation Income
+  // 1. Warehouse Automation Passive Income
   if (S.warehouseUpgrades?.cross_docking) {
-    passiveIncome += (1200 / MS_PER_DAY) * elapsedMs;
+    dailyInflow += 1200;
   }
   if (S.warehouseUpgrades?.gantry_crane) {
-    passiveIncome += (600 / MS_PER_DAY) * elapsedMs;
+    dailyInflow += 600;
   }
 
-  // 2. Sub-contracting Retainer
+  // 2. Sub-contracting Passive Retainer
   const subcontractCount = (S.subcontractedTrucks || []).length;
   if (subcontractCount > 0) {
-    passiveIncome += (subcontractCount * 1800 / MS_PER_DAY) * elapsedMs;
+    dailyInflow += subcontractCount * 1800;
   }
 
-  // Use a hidden accumulator for fractional cents to avoid precision loss
-  if (!S._incomeAccumulator) S._incomeAccumulator = 0;
-  S._incomeAccumulator += passiveIncome;
+  // 3. Driver Payroll Daily Salaries
+  const totalSalaries = (S.drivers || []).reduce((acc: number, d: any) => acc + (d.salary || 250), 0);
+  dailyOutflow += totalSalaries;
 
-  if (S._incomeAccumulator >= 1) {
-    const wholeDollars = Math.floor(S._incomeAccumulator);
+  // 4. Commercial Insurance Premiums
+  if (S.insurance) {
+    if (S.insurance.liability) dailyOutflow += (INSURANCE_POLICIES.liability?.dailyCost || 85);
+    if (S.insurance.collision) dailyOutflow += (INSURANCE_POLICIES.collision?.dailyCost || 220);
+    if (S.insurance.cargo) dailyOutflow += (INSURANCE_POLICIES.cargo?.dailyCost || 310);
+  }
+
+  // 5. Debt Service & Equipment Leases
+  if (S.loans && S.loans.length > 0) {
+    for (const loan of S.loans) {
+      dailyOutflow += (loan.dailyRate || 0);
+    }
+  }
+  if (S.leases && S.leases.length > 0) {
+    for (const lease of S.leases) {
+      dailyOutflow += (lease.dailyRate || 0);
+    }
+  }
+
+  // Subcontracted truck mechanical wear (0.05% wear per day on chartered rigs)
+  if (subcontractCount > 0) {
+    const dailyWearRatio = elapsedMs / MS_PER_DAY;
+    for (const truckId of S.subcontractedTrucks) {
+      const trk = (S.fleet || []).find((t: any) => t.id === truckId);
+      if (trk && trk.components) {
+        Object.values(trk.components).forEach((comp: any) => {
+          if (typeof comp === 'object' && comp.health !== undefined) {
+            comp.health = Math.max(15, parseFloat((comp.health - (0.05 * dailyWearRatio)).toFixed(2)));
+          }
+        });
+      }
+    }
+  }
+
+  // Net Operating Cashflow Delta
+  const netDaily = dailyInflow - dailyOutflow;
+  const netDelta = (netDaily / MS_PER_DAY) * elapsedMs;
+
+  if (!S._incomeAccumulator) S._incomeAccumulator = 0;
+  S._incomeAccumulator += netDelta;
+
+  if (Math.abs(S._incomeAccumulator) >= 1) {
+    const wholeDollars = Math.trunc(S._incomeAccumulator);
     S.money += wholeDollars;
     S._incomeAccumulator -= wholeDollars;
+  }
+
+  // Smoothly amortize active commercial bank facilities
+  if (S.loans && S.loans.length > 0) {
+    for (const loan of S.loans) {
+      const loanPayment = (loan.dailyRate / MS_PER_DAY) * elapsedMs;
+      loan.balance = Math.max(0, loan.balance - loanPayment);
+      loan.daysRemaining = Math.max(0, loan.daysRemaining - (elapsedMs / MS_PER_DAY));
+    }
+    const settled = S.loans.filter((l: any) => l.balance <= 0);
+    if (settled.length > 0) {
+      S.loans = S.loans.filter((l: any) => l.balance > 0);
+      for (const l of settled) {
+        pushNote(S, `Commercial Facility Paid in Full: ${l.name}`, { title: 'LOAN SETTLED', type: 'finance', priority: 1 });
+      }
+    }
+  }
+
+  // Amortize equipment leases
+  if (S.leases && S.leases.length > 0) {
+    for (const lease of S.leases) {
+      lease.daysRemaining = Math.max(0, lease.daysRemaining - (elapsedMs / MS_PER_DAY));
+    }
   }
 
   S.lastTick = now;

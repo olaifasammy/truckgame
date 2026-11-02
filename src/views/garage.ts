@@ -11,9 +11,31 @@ import { openJobSelector, renderJobSelectorOverlay, activeJobSelectorTruckId } f
 import { getTruckSilhouetteSvg } from '../domain/trucks/trucks.visuals';
 import { getManufacturerLogoSvg } from '../domain/trucks/trucks.logos';
 import { renderTelematicsOverlay } from './telematics-modal';
+import { getTruckTelematics, getDrivingStateBadge } from '../domain/trucks/trucks.telematics';
 
 let openId: number | null = null, panel: string | null = null;
 let hitchModalTruckId: number | null = null;
+let garagePage = 1;
+const TRUCKS_PER_PAGE = 3;
+let garageFilter: 'all' | 'parked' | 'transit' = 'all';
+
+action('garage-page-prev', () => {
+  if (garagePage > 1) {
+    garagePage--;
+    refresh();
+  }
+});
+
+action('garage-page-next', () => {
+  garagePage++;
+  refresh();
+});
+
+action('garage-filter', d => {
+  garageFilter = (d as any).filter || 'all';
+  garagePage = 1;
+  refresh();
+});
 
 action('truck-toggle', d => { openId = openId === +(d as any).id ? null : +(d as any).id; panel = null; refresh(); });
 action('panel', d => { panel = panel === (d as any).kind ? null : (d as any).kind; refresh(); });
@@ -237,8 +259,9 @@ function body(S: any, t: any, m: any, a: any, now: number) {
 
   const st = stats(S, t);
   const busy = !!a;
-  const drv = S.drivers.find((x: any) => x.id === t.driverId);
+  const drv = (S?.drivers || []).find((x: any) => x.id === t?.driverId);
   const pct = a ? Math.min(100, (now - a.start) / (a.end - a.start) * 100) : 0;
+  const telem = getTruckTelematics(t, a, drv, now);
   
   const healthValues = Object.values(t.components).map((c: any) => c.health);
   const avgCond = Math.round(healthValues.reduce((sum: number, b: any) => sum + b, 0) / healthValues.length);
@@ -252,20 +275,23 @@ function body(S: any, t: any, m: any, a: any, now: number) {
     <div style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);">
       <!-- Real-time Active Consignment Bar -->
       ${a ? `
-        <div style="background:#0f172a; border:1px solid var(--blu); border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+        <div style="background:#0f172a; border:1px solid ${telem.stateBadgeColor}80; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
             <div>
-              <div style="font-size:9px; color:var(--blu); font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">
-                ACTIVE LOGISTICS TRANSIT · CONSIGNMENT
+              <div style="display:flex; align-items:center; gap:6px;">
+                <div style="font-size:9px; color:var(--blu); font-weight:800; letter-spacing:0.5px; text-transform:uppercase;">
+                  ACTIVE TRANSIT · ${telem.phase.toUpperCase()}
+                </div>
+                ${getDrivingStateBadge(telem.state, true)}
               </div>
               <div style="font-size:12px; font-weight:800; color:var(--tx); margin-top:2px;">
                 ${a.cargo} · ${a.from} → ${a.to}
               </div>
             </div>
             <div style="text-align:right;">
-              <div style="font-size:9px; color:var(--mu);">ESTIMATED ARRIVAL</div>
+              <div style="font-size:9px; color:var(--mu);">SPEED · ETA</div>
               <div style="font-size:12px; font-weight:800; color:var(--gold); font-family:monospace;" data-eta="${a.end}">
-                ${dur(Math.max(0, a.end - now))}
+                ${telem.speedKmh > 0 ? `<span style="color:#34d399; margin-right:4px;">${telem.speedKmh} km/h</span>` : ''}${dur(Math.max(0, a.end - now))}
               </div>
             </div>
           </div>
@@ -274,7 +300,7 @@ function body(S: any, t: any, m: any, a: any, now: number) {
           </div>
           <div style="display:flex; gap:6px; margin-top:8px;">
             <button class="btn alt" style="flex:1; padding:6px 10px; font-size:10px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.4); display:flex; align-items:center; justify-content:center; gap:6px;" data-act="open-telematics" data-id="${t.id}">
-              <span>🛰️</span> LIVE TELEMATICS
+              <span>🛰️</span> LIVE TELEMATICS · ${telem.stateLabel} (${telem.speedKmh} KM/H)
             </button>
             <button class="btn" style="padding:6px 10px; font-size:9px; font-weight:900; background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.2); letter-spacing:0.5px;" data-act="recall-truck" data-id="${t.id}">
               RECALL
@@ -283,7 +309,7 @@ function body(S: any, t: any, m: any, a: any, now: number) {
         </div>
       ` : `
         <button class="btn alt" style="width:100%; margin-bottom:12px; padding:6px 10px; font-size:10px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.3); display:flex; align-items:center; justify-content:center; gap:6px;" data-act="open-telematics" data-id="${t.id}">
-          <span>🛰️</span> OPEN VEHICLE TELEMETRICS & DASHCAM DIAGNOSTICS
+          <span>🛰️</span> OPEN TELEMETRICS & DASHCAM DIAGNOSTICS · ${telem.stateLabel}
         </button>
       `}
 
@@ -464,9 +490,26 @@ function truck(S: any, t: any) {
   const o = openId === t.id;
   const drv = S.drivers.find((x: any) => x.id === t.driverId);
 
-  const status = a ? { txt: a.kind === 'move' ? 'REPOSITIONING' : 'ON HIGHWAY', color: 'var(--blu)' }
-    : drv ? { txt: 'STAGED · READY', color: 'var(--grn)' }
-    : { txt: 'STANDBY (NO CDL)', color: 'var(--mu)' };
+  const isBusy = !!a || t.status === 'busy';
+  const berthNum = (t.id % 6) + 1;
+  const locInfo = LOCATIONS[t.loc];
+  const cityName = locInfo?.name || t.loc;
+
+  let parkingLocationText = '';
+  if (isBusy && a) {
+    parkingLocationText = `🛣️ En-Route: ${a.from} → ${a.to} (ETA: ${dur(Math.max(0, (a.arrivesAt || now) - now))})`;
+  } else {
+    const isOwnedHub = (S.depots || []).some((depotId: string) => depotId.toLowerCase().includes(t.loc.toLowerCase()));
+    if (isOwnedHub) {
+      parkingLocationText = `🏢 Parked at ${cityName} Logistics Terminal · Berth #${berthNum}`;
+    } else {
+      parkingLocationText = `📍 Staged at ${cityName} Freight Depot · Bay #${berthNum}`;
+    }
+  }
+
+  const status = isBusy ? { txt: a?.kind === 'move' ? 'REPOSITIONING' : 'ON HIGHWAY', color: 'var(--blu)' }
+    : drv ? { txt: 'PARKED · READY', color: 'var(--grn)' }
+    : { txt: 'PARKED (NO CDL)', color: 'var(--mu)' };
 
   const fuelPctVal = Math.round((t.fluids.fuel / m.tankSize) * 100);
   const healthValues = Object.values(t.components).map((c: any) => c.health);
@@ -485,12 +528,15 @@ function truck(S: any, t: any) {
             <div style="display:flex; align-items:center; gap:6px; font-size:9px; color:var(--mu); font-family:monospace;">
               <span style="color:var(--gold); font-weight:800;">UNIT #${t.id}</span>
               <span>·</span>
-              <span>${t.loc} TERMINAL</span>
+              <span style="color:${isBusy ? '#38bdf8' : 'var(--grn)'}; font-weight:700;">${isBusy ? 'ACTIVE IN TRANSIT' : `PARKED: ${t.loc}`}</span>
               <span>·</span>
               <span>${drv ? drv.name : 'NO DRIVER'}</span>
             </div>
             <div style="font-size:15px; font-weight:900; color:var(--tx); margin-top:2px;">
               ${t.name}
+            </div>
+            <div style="font-size:10px; font-weight:800; color:${isBusy ? '#38bdf8' : 'var(--gold)'}; font-family:monospace; margin-top:2px;">
+              ${parkingLocationText}
             </div>
             <div style="display:flex; align-items:center; gap:6px; margin-top:3px; flex-wrap:wrap;">
               <span style="font-size:10px; color:var(--mu); font-family:monospace;">
@@ -647,33 +693,93 @@ export default {
     const canUp = S.money >= upCost;
     const readiness = S.fleet.length > 0 ? Math.round(((S.fleet.length - busy) / S.fleet.length) * 100) : 100;
 
+    // Filter fleet based on selected tab
+    let filteredFleet = S.fleet;
+    if (garageFilter === 'parked') {
+      filteredFleet = S.fleet.filter((t: any) => t.status !== 'busy');
+    } else if (garageFilter === 'transit') {
+      filteredFleet = S.fleet.filter((t: any) => t.status === 'busy');
+    }
+
+    const totalPages = Math.max(1, Math.ceil(filteredFleet.length / TRUCKS_PER_PAGE));
+    if (garagePage > totalPages) garagePage = totalPages;
+    if (garagePage < 1) garagePage = 1;
+    const startIndex = (garagePage - 1) * TRUCKS_PER_PAGE;
+    const currentTrucks = filteredFleet.slice(startIndex, startIndex + TRUCKS_PER_PAGE);
+
     return `
-      <!-- Terminal Fleet Operations Bar -->
-      <div style="background:#111827; border:1px solid #1f293d; border-radius:10px; padding:14px; margin-bottom:14px; display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-        <div>
-          <div style="font-size:9px; font-weight:800; color:var(--mu); text-transform:uppercase; letter-spacing:0.5px;">TERMINAL BERTH CAPACITY</div>
-          <div style="display:flex; align-items:center; gap:8px; margin-top:2px;">
-            <span style="font-size:18px; font-weight:900; color:var(--tx); font-family:monospace;">${S.fleet.length} <span style="font-size:12px; color:var(--mu);">/ ${slots(S)}</span></span>
-            <button class="btn alt" style="padding:3px 8px; font-size:8px; font-weight:800; border-radius:4px;" data-act="upgrade-garage" ${canUp ? '' : 'disabled'}>
-              + BERTH LVL ${S.garageLevel + 1} (${fmt(upCost)})
-            </button>
+      <!-- Modern FMS Command Console Header -->
+      <div style="background:#0e1320; border:1px solid #1f293d; border-radius:12px; padding:14px; margin-bottom:12px; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+        <!-- Top Title & Expansion Action -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px;">
+          <div>
+            <div style="font-size:9px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase; font-family:monospace;">FLEET LOGISTICS COMMAND</div>
+            <h2 style="margin:2px 0 0; font-size:16px; font-weight:900; color:var(--tx);">Commercial Fleet Depot</h2>
           </div>
+          <button class="btn alt" style="padding:5px 10px; font-size:9px; font-weight:800; border-radius:6px; display:flex; align-items:center; gap:4px;" data-act="upgrade-garage" ${canUp ? '' : 'disabled'}>
+            <span>+ EXPAND BERTHS (${fmt(upCost)})</span>
+          </button>
         </div>
-        <div style="text-align:right;">
-          <div style="font-size:9px; font-weight:800; color:var(--mu); text-transform:uppercase; letter-spacing:0.5px;">DEPOT READINESS</div>
-          <div style="font-size:18px; font-weight:900; color:var(--grn); font-family:monospace; margin-top:2px;">
-            ${readiness}% <span style="font-size:10px; color:var(--mu); font-family:sans-serif; font-weight:700;">(${S.fleet.length - busy} Ready / ${busy} On Road)</span>
+
+        <!-- 4 Clean Metric Tiles -->
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;">
+          <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
+            <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">TOTAL UNITS</div>
+            <div style="font-size:13px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;">
+              ${S.fleet.length} <span style="font-size:9px; color:var(--mu);">/ ${slots(S)}</span>
+            </div>
+          </div>
+          <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
+            <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">PARKED AT HUB</div>
+            <div style="font-size:13px; font-weight:900; color:var(--grn); font-family:monospace; margin-top:2px;">
+              ${S.fleet.length - busy} <span style="font-size:9px; color:var(--mu);">Ready</span>
+            </div>
+          </div>
+          <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
+            <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">IN TRANSIT</div>
+            <div style="font-size:13px; font-weight:900; color:#38bdf8; font-family:monospace; margin-top:2px;">
+              ${busy} <span style="font-size:9px; color:var(--mu);">Active</span>
+            </div>
+          </div>
+          <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
+            <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">READINESS</div>
+            <div style="font-size:13px; font-weight:900; color:${readiness >= 70 ? 'var(--grn)' : 'var(--gold)'}; font-family:monospace; margin-top:2px;">
+              ${readiness}%
+            </div>
           </div>
         </div>
       </div>
 
-      <!-- Fleet Unit Roster Header -->
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding:0 2px;">
-        <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">REGISTERED FLEET ASSETS (${S.fleet.length})</span>
-        <span style="font-size:9px; color:var(--mu); font-family:monospace;">SAE J1939 TELEMATICS LIVE</span>
+      <!-- Fleet Status Filter Tabs Bar -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px; flex-wrap:wrap;">
+        <div style="display:flex; gap:6px;">
+          <button class="btn ${garageFilter === 'all' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="all">
+            ALL (${S.fleet.length})
+          </button>
+          <button class="btn ${garageFilter === 'parked' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="parked">
+            PARKED (${S.fleet.length - busy})
+          </button>
+          <button class="btn ${garageFilter === 'transit' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="transit">
+            EN-ROUTE (${busy})
+          </button>
+        </div>
       </div>
 
-      ${S.fleet.map((t: any) => truck(S, t)).join('')}
+      <!-- Paginated Trucks List -->
+      ${currentTrucks.length > 0 
+        ? currentTrucks.map((t: any) => truck(S, t)).join('')
+        : `<div style="padding:24px; text-align:center; background:#0b101d; border:1px dashed #1e2638; border-radius:10px; color:var(--mu); font-family:monospace; font-size:11px;">No vehicles found in this filter category.</div>`}
+
+      <!-- Bottom Center Pagination Bar -->
+      <div style="display:flex; justify-content:center; align-items:center; margin:16px 0; gap:12px; font-family:monospace; font-size:10px;">
+        <button class="btn alt" style="padding:6px 12px; font-size:10px; font-weight:800;" data-act="garage-page-prev" ${garagePage <= 1 ? 'disabled style="opacity:0.35;"' : ''}>
+          ← PREV
+        </button>
+        <span style="color:var(--mu); font-weight:700;">PAGE <b style="color:var(--tx);">${garagePage}</b> OF ${totalPages}</span>
+        <button class="btn alt" style="padding:6px 12px; font-size:10px; font-weight:800;" data-act="garage-page-next" ${garagePage >= totalPages ? 'disabled style="opacity:0.35;"' : ''}>
+          NEXT →
+        </button>
+      </div>
       ${activeJobSelectorTruckId !== null ? renderJobSelectorOverlay(S) : ''}
       ${renderHitchModal(S)}
       ${renderTelematicsOverlay(S)}

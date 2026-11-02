@@ -25,14 +25,16 @@ export const dur = (ms: number): string => {
 const actions = new Map<string, (dataset: DOMStringMap) => void>();
 export const action = (name: string, fn: (dataset: DOMStringMap) => void) => actions.set(name, fn);
 
-document.addEventListener('click', e => {
-  const target = e.target as HTMLElement;
-  const el = target?.closest('[data-act]') as HTMLElement;
-  if (!el) return;
-  const act = el.dataset.act;
-  const fn = act && actions.get(act);
-  if (fn) fn(el.dataset);
-});
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', e => {
+    const target = e.target as HTMLElement;
+    const el = target?.closest('[data-act]') as HTMLElement;
+    if (!el) return;
+    const act = el.dataset.act;
+    const fn = act && actions.get(act);
+    if (fn) fn(el.dataset);
+  });
+}
 
 export function toast(msg: string, type: 'info' | 'success' | 'err' = 'info') {
   const t = $('toast');

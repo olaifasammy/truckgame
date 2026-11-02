@@ -131,6 +131,24 @@ export default {
     const bunker = S.fuelBunker || { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
     const ins = S.insurance || { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 };
 
+    const dailyWarehouseInflow = (S.warehouseUpgrades?.cross_docking ? 1200 : 0) + (S.warehouseUpgrades?.gantry_crane ? 600 : 0);
+    const subcontractCount = (S.subcontractedTrucks || []).length;
+    const dailySubcontractInflow = subcontractCount * 1800;
+    const totalDailyInflow = dailyWarehouseInflow + dailySubcontractInflow;
+
+    const dailyPayroll = (S.drivers || []).reduce((acc: number, d: any) => acc + (d.salary || 250), 0);
+    let dailyInsurance = 0;
+    if (S.insurance) {
+      if (S.insurance.liability) dailyInsurance += INSURANCE_POLICIES.liability?.dailyCost || 85;
+      if (S.insurance.collision) dailyInsurance += INSURANCE_POLICIES.collision?.dailyCost || 220;
+      if (S.insurance.cargo) dailyInsurance += INSURANCE_POLICIES.cargo?.dailyCost || 310;
+    }
+    const dailyDebtService = (S.loans || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0);
+    const dailyLeases = (S.leases || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0);
+    const totalDailyOutflow = dailyPayroll + dailyInsurance + dailyDebtService + dailyLeases;
+    const netDailyCashflow = totalDailyInflow - totalDailyOutflow;
+    const runwayDays = netDailyCashflow < 0 ? Math.floor(S.money / Math.abs(netDailyCashflow)) : null;
+
     return `
       <div style="padding: 16px; padding-bottom: 90px;">
         <!-- Header Banner -->
@@ -177,6 +195,46 @@ export default {
             <div class="stat-box" style="background:#111827; border:1px solid #1f293d; border-radius:10px; padding:12px;">
               <span class="stat-lab" style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">LIQUID WORKING CAPITAL</span>
               <span class="stat-val" style="font-size:20px; font-weight:900; color:var(--tx); font-family:monospace;">${fmt(S.money)}</span>
+            </div>
+          </div>
+
+          <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+            <span style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase;">Daily Recurring Cashflow & P&L</span>
+            <span style="font-size:9px; color:${netDailyCashflow >= 0 ? 'var(--grn)' : '#ef4444'}; font-weight:800; font-family:monospace;">
+              ${netDailyCashflow >= 0 ? `+${fmt(netDailyCashflow)}/DAY NET PROFIT` : `-${fmt(Math.abs(netDailyCashflow))}/DAY NET BURN`}
+            </span>
+          </div>
+
+          <div class="card" style="padding: 14px; background:#0f172a; border:1px solid #1e293b; border-radius:10px; margin-bottom:16px;">
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:12px;">
+              <div>
+                <div style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">RECURRING INFLOWS</div>
+                <div style="font-size:16px; font-weight:900; color:var(--grn); font-family:monospace; margin-top:2px;">+${fmt(totalDailyInflow)}<span style="font-size:10px; color:var(--mu);">/day</span></div>
+                <div style="font-size:10px; color:var(--mu); margin-top:4px;">
+                  Depot Automation: +$${dailyWarehouseInflow.toLocaleString()}/d<br/>
+                  Charter Subcontracts: +$${dailySubcontractInflow.toLocaleString()}/d
+                </div>
+              </div>
+              <div>
+                <div style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">FIXED COMMITMENTS</div>
+                <div style="font-size:16px; font-weight:900; color:#ef4444; font-family:monospace; margin-top:2px;">-${fmt(totalDailyOutflow)}<span style="font-size:10px; color:var(--mu);">/day</span></div>
+                <div style="font-size:10px; color:var(--mu); margin-top:4px;">
+                  Payroll (${S.drivers?.length || 1} Drivers): -$${dailyPayroll.toLocaleString()}/d<br/>
+                  Insurance & Facilities: -$${(dailyInsurance + dailyDebtService + dailyLeases).toLocaleString()}/d
+                </div>
+              </div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
+              <div>
+                <span style="color:var(--mu);">Liquidity Runway Buffer:</span>
+                <span style="font-weight:800; color:${runwayDays === null ? 'var(--grn)' : runwayDays > 14 ? 'var(--gold)' : '#ef4444'}; margin-left:4px;">
+                  ${runwayDays === null ? 'Self-Sustaining Surplus (Positive Cashflow)' : `${runwayDays} Operating Days Remaining`}
+                </span>
+              </div>
+              <div style="font-size:9px; color:var(--mu);">
+                Processed live per engine tick
+              </div>
             </div>
           </div>
 

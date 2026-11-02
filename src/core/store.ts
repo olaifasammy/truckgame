@@ -1,10 +1,11 @@
 import { createTruck } from '../domain/trucks/trucks.physics';
+import { LOCATIONS } from '../data/world';
 
 const KEY = 'sam.v3';
 
 const DEF = () => ({
   company: 'NexHaul Logistics',
-  isAuthenticated: false,
+  isAuthenticated: true,
   money: 165000, 
   coins: 10,
   companyTier: 0, // 0 = Newbie, 1 = Professional, 2 = Expert, 3..132 = VIP 1..130
@@ -48,6 +49,7 @@ const DEF = () => ({
   insurance: { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 },
   fuelBunker: { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 },
   depots: ['hub_lagos'] as string[],
+  unlockedRegions: ['Africa'] as ('Africa' | 'Europe' | 'America' | 'Asia')[],
   warehouseUpgrades: { cross_docking: false, cold_vault: false, gantry_crane: false } as Record<string, boolean>,
   corporateTenders: [] as any[],
   subcontractedTrucks: [] as number[],
@@ -58,7 +60,9 @@ let S: any;
 const subs = new Set<(state: any) => void>();
 
 function fix(state: any) {
-  if (state.isAuthenticated === undefined) state.isAuthenticated = false;
+  if (state.isAuthenticated === undefined || state.isAuthenticated === false) {
+    state.isAuthenticated = true;
+  }
   if (!state.licenses) state.licenses = ['standard'];
   if (!state.trailers) state.trailers = ['curtain', 'flatbed', 'reefer'];
   if (!state.loans) state.loans = [];
@@ -66,6 +70,19 @@ function fix(state: any) {
   if (!state.insurance) state.insurance = { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 };
   if (!state.fuelBunker) state.fuelBunker = { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
   if (!state.depots) state.depots = ['hub_lagos'];
+  if (!state.unlockedRegions || state.unlockedRegions.length === 0) {
+    state.unlockedRegions = ['Africa'];
+  }
+  // Auto-sync unlocked regions if user already owns depots in those continents
+  if (state.depots.some((d: string) => d.includes('rotterdam') || d.includes('munich') || d.includes('lyon')) && !state.unlockedRegions.includes('Europe')) {
+    state.unlockedRegions.push('Europe');
+  }
+  if (state.depots.some((d: string) => d.includes('chicago') || d.includes('dallas') || d.includes('los_angeles')) && !state.unlockedRegions.includes('America')) {
+    state.unlockedRegions.push('America');
+  }
+  if (state.depots.some((d: string) => d.includes('tokyo') || d.includes('shanghai') || d.includes('almaty')) && !state.unlockedRegions.includes('Asia')) {
+    state.unlockedRegions.push('Asia');
+  }
   if (!state.warehouseUpgrades) state.warehouseUpgrades = { cross_docking: false, cold_vault: false, gantry_crane: false };
   if (!state.pendingTrailers) state.pendingTrailers = [];
   if (!state.notes) state.notes = [];
@@ -142,6 +159,28 @@ function fix(state: any) {
       if (!t.upgrades.axleRatio) t.upgrades.axleRatio = 'highway_eco';
       if (!t.upgrades.tireCompound) t.upgrades.tireCompound = 'highway_eco';
     }
+    if (!t.components) {
+      t.components = {
+        engine: { health: 100, wearRate: 1 },
+        transmission: { health: 100, wearRate: 1 },
+        brakes: { health: 100, wearRate: 1 },
+        tires: { health: 100, wearRate: 1 },
+        windshield: { health: 100, wearRate: 1 },
+        oilFilter: { health: 100, wearRate: 1 },
+        fuelFilter: { health: 100, wearRate: 1 },
+        airFilter: { health: 100, wearRate: 1 },
+        suspension: { health: 100, wearRate: 1 }
+      };
+    } else {
+      ['engine', 'transmission', 'brakes', 'tires', 'windshield', 'oilFilter', 'fuelFilter', 'airFilter', 'suspension'].forEach((k: string) => {
+        const val = t.components[k];
+        if (typeof val === 'number') {
+          t.components[k] = { health: val, wearRate: 1 };
+        } else if (!val || typeof val.health !== 'number') {
+          t.components[k] = { health: 100, wearRate: 1 };
+        }
+      });
+    }
   });
   if (!state.perks) state.perks = {};
   if (!state.offices) state.offices = [];
@@ -163,12 +202,22 @@ function fix(state: any) {
     state.auctions = [];
   } else {
     const now = Date.now();
-    state.auctions = state.auctions.filter((a: any) => a && a.expiresAt && a.expiresAt > now);
+    state.auctions = state.auctions.filter((a: any) => {
+      if (!a || !a.expiresAt || a.expiresAt <= now) return false;
+      const locA = LOCATIONS[a.from];
+      const locB = LOCATIONS[a.to];
+      return locA && locB && locA.region === locB.region;
+    });
   }
   if (state.jobs && state.jobs.length > 0) {
     if (!state.jobs[0].cargoId) {
       state.jobs = [];
     } else {
+      state.jobs = state.jobs.filter((j: any) => {
+        const locA = LOCATIONS[j.from];
+        const locB = LOCATIONS[j.to];
+        return locA && locB && locA.region === locB.region;
+      });
       state.jobs.forEach((j: any) => {
         if (j.isAuctionWon) j.vip = false;
       });

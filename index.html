@@ -14,48 +14,95 @@
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="manifest" href="/manifest.json">
   <title>NexHaul Logistics</title>
+  <style>
+    :root {
+      --bg: #0a0f1d;
+      --s1: #141b2d;
+      --s2: #1e293b;
+      --gold: #c19a5b;
+      --tx: #f1f5f9;
+      --mu: #94a3b8;
+    }
+    html, body {
+      background-color: #0a0f1d !important;
+      color: #f1f5f9 !important;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      overflow-x: hidden;
+    }
+    #app {
+      background-color: #0a0f1d;
+      min-height: 100vh;
+      max-width: 480px;
+      margin: auto;
+      position: relative;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+
+  <script>
+    // 1. Immediately wipe any stale service workers and CacheStorage to prevent blank page intercepts
+    if ('caches' in window) {
+      caches.keys().then(function(names) {
+        names.forEach(function(name) { caches.delete(name); });
+      }).catch(function() {});
+    }
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function(regs) {
+        for (var i = 0; i < regs.length; i++) {
+          regs[i].unregister();
+        }
+      }).catch(function() {});
+    }
+
+    // 2. Capture-phase error handler catches script element load errors and evaluation exceptions
+    window.addEventListener('error', function(event) {
+      var view = document.getElementById('view');
+      if (view) {
+        var msg = event.message || (event.target && event.target.src ? 'Failed to load script: ' + event.target.src : 'Script evaluation failed');
+        view.innerHTML = '<div style="padding:24px;color:#ef4444;background:#0a0f1d;min-height:100vh;font-family:monospace;font-size:12px;overflow:auto;box-sizing:border-box;">' +
+          '<h3 style="margin:0 0 10px 0;color:#ef4444;font-size:15px;">SYSTEM BOOT NOTICE</h3>' +
+          '<p style="margin:4px 0;"><b>Error:</b> ' + msg + '</p>' +
+          '<p style="margin:4px 0;color:#94a3b8;"><b>Source:</b> ' + (event.filename || 'module') + ':' + (event.lineno || 0) + '</p>' +
+          '<pre style="white-space:pre-wrap;background:#141b2d;padding:10px;border-radius:6px;border:1px solid #2d3e50;color:#f1f5f9;margin-top:10px;">' + (event.error ? event.error.stack : 'No detailed stack trace') + '</pre>' +
+          '<button onclick="localStorage.clear();location.reload();" style="margin-top:16px;padding:10px 20px;background:#c19a5b;color:#0a0f1d;border:none;border-radius:6px;font-weight:900;cursor:pointer;font-family:monospace;font-size:12px;">Clear Storage & Force Reboot</button>' +
+          '</div>';
+      }
+    }, true);
+
+    window.addEventListener('unhandledrejection', function(event) {
+      var view = document.getElementById('view');
+      if (view) {
+        view.innerHTML = '<div style="padding:24px;color:#ef4444;background:#0a0f1d;min-height:100vh;font-family:monospace;font-size:12px;overflow:auto;box-sizing:border-box;">' +
+          '<h3 style="margin:0 0 10px 0;color:#ef4444;font-size:15px;">ASYNC INITIALIZATION NOTICE</h3>' +
+          '<pre style="white-space:pre-wrap;background:#141b2d;padding:10px;border-radius:6px;border:1px solid #2d3e50;color:#f1f5f9;margin-top:10px;">' + (event.reason ? (event.reason.stack || event.reason) : 'Unknown rejection') + '</pre>' +
+          '<button onclick="localStorage.clear();location.reload();" style="margin-top:16px;padding:10px 20px;background:#c19a5b;color:#0a0f1d;border:none;border-radius:6px;font-weight:900;cursor:pointer;font-family:monospace;font-size:12px;">Clear Storage & Force Reboot</button>' +
+          '</div>';
+      }
+    });
+  </script>
 </head>
-<body>
+<body style="background-color: #0a0f1d; color: #f1f5f9; margin: 0; min-height: 100vh;">
   <div id="app">
     <header id="header" class="top" style="display:none"></header>
-    <main id="view"></main>
+    <main id="view">
+      <div id="boot-status" style="min-height:75vh; display:flex; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; box-sizing:border-box;">
+        <div style="width:40px; height:40px; border:3px solid rgba(193,154,91,0.2); border-top-color:#c19a5b; border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:16px;"></div>
+        <div style="font-size:15px; font-weight:900; color:#c19a5b; letter-spacing:1px; text-transform:uppercase;">NEXHAUL LOGISTICS</div>
+        <div style="font-size:11px; color:#94a3b8; font-family:monospace; margin-top:4px;">Connecting Carrier Telematics Network...</div>
+        <button onclick="localStorage.clear();location.reload();" style="margin-top:24px; padding:8px 16px; background:#141b2d; border:1px solid #c19a5b; color:#c19a5b; font-family:monospace; font-size:10px; font-weight:800; border-radius:6px; cursor:pointer;">
+          Force Reload & Reset Data
+        </button>
+      </div>
+    </main>
     <nav id="nav" class="tabs" style="display:none"></nav>
     <div id="toast" class="toast"></div>
   </div>
 
-  <script>
-    window.addEventListener('error', function(event) {
-      var view = document.getElementById('view');
-      if (view) {
-        view.innerHTML = '<div style="padding:20px;color:#ef4444;background:#111;min-height:100vh;font-family:monospace;font-size:12px;overflow:auto;">' +
-          '<h3 style="margin:0 0 10px 0;color:#ef4444;">CRASH ERROR BOUNDARY</h3>' +
-          '<p><b>Message:</b> ' + event.message + '</p>' +
-          '<p><b>File:</b> ' + event.filename + ':' + event.lineno + '</p>' +
-          '<pre style="white-space:pre-wrap;background:#222;padding:10px;border-radius:4px;">' + (event.error ? event.error.stack : 'No stack trace') + '</pre>' +
-          '<button onclick="localStorage.clear();location.reload();" style="margin-top:10px;padding:8px 16px;background:#c19a5b;color:#0a0f1d;border:none;border-radius:4px;font-weight:bold;cursor:pointer;">Clear Storage & Reboot</button>' +
-          '</div>';
-      }
-    });
-    window.addEventListener('unhandledrejection', function(event) {
-      var view = document.getElementById('view');
-      if (view) {
-        view.innerHTML = '<div style="padding:20px;color:#ef4444;background:#111;min-height:100vh;font-family:monospace;font-size:12px;overflow:auto;">' +
-          '<h3 style="margin:0 0 10px 0;color:#ef4444;">UNHANDLED PROMISE REJECTION</h3>' +
-          '<pre style="white-space:pre-wrap;background:#222;padding:10px;border-radius:4px;">' + (event.reason ? (event.reason.stack || event.reason) : 'Unknown rejection') + '</pre>' +
-          '<button onclick="localStorage.clear();location.reload();" style="margin-top:10px;padding:8px 16px;background:#c19a5b;color:#0a0f1d;border:none;border-radius:4px;font-weight:bold;cursor:pointer;">Clear Storage & Reboot</button>' +
-          '</div>';
-      }
-    });
-  </script>
   <script type="module" src="/src/main.ts"></script>
-  <script>
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/sw.js').catch(function(err) {
-          console.log('ServiceWorker registration failed: ', err);
-        });
-      });
-    }
-  </script>
 </body>
 </html>

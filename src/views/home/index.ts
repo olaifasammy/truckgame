@@ -1,6 +1,6 @@
 import { refresh, set } from '../../core/store';
 import { action, toast, fmt, dur } from '../../core/ui';
-import { takeJob } from '../../systems/jobs';
+import { takeJob, replenish } from '../../systems/jobs';
 import { renderMap } from './map';
 import { renderJobCard } from './job-card';
 import { renderAuctionCard } from './auction-card';
@@ -10,7 +10,7 @@ import { homeState } from './state';
 import { LOCATIONS, RegionName } from '../../data/world';
 import { getCompanyProgression } from '../../domain/company/progression';
 import { getDailyBidDispatchQuota } from '../../domain/freight/bids/quota';
-import { SAMPLE_TENDERS, SUBCONTRACT_DAILY_RATE } from '../../domain/logistics/network';
+import { SAMPLE_TENDERS, SUBCONTRACT_DAILY_RATE, isRegionUnlocked, REGION_AUTHORITIES } from '../../domain/logistics/network';
 import { renderTelematicsOverlay } from '../telematics-modal';
 import { TRUCK_MODELS } from '../../domain/trucks/trucks.data';
 
@@ -39,6 +39,17 @@ action('locked-vip-bid', () => {
   const S = (window as any).__getStore?.();
   const prog = S ? getCompanyProgression(S) : { title: 'Newbie', tier: 0 };
   toast(`Job Bidding unlocks at VIP Rank (Tier 3+). Current: ${prog.title} (Tier ${prog.tier}/3)`, 'err');
+});
+
+action('refresh-freight-board', () => {
+  set(S => {
+    const cost = 250;
+    if (S.money < cost) return toast(`Insufficient funds to refresh freight board. Need $${cost}`, 'err');
+    S.money -= cost;
+    S.jobs = [];
+    replenish(S);
+    toast('Freight exchange board refreshed ($250 fee paid)!', 'success');
+  });
 });
 
 action('home-region', d => {
@@ -116,7 +127,7 @@ export default {
     });
 
     // Sort: Auctions Won > Tenders > VIP > Rest
-    filteredJobs.sort((a, b) => {
+    filteredJobs.sort((a: any, b: any) => {
       const score = (j: any) => (j.isAuctionWon ? 100 : j.tenderId ? 50 : j.vip ? 10 : 0);
       return score(b) - score(a);
     });
@@ -130,12 +141,32 @@ export default {
 
       <!-- Global Region Selector Filter -->
       <div style="display:flex; gap:6px; margin-bottom:12px; overflow-x:auto; padding-bottom:4px;">
-        ${regions.map(r => `
-          <button class="btn ${currentRegion === r ? 'gold' : 'alt'}" style="padding:6px 12px; font-size:10px; font-weight:800; white-space:nowrap; border-radius:6px;" data-act="home-region" data-region="${r}">
-            ${r === 'All' ? 'Global Grid (All)' : r}
-          </button>
-        `).join('')}
+        ${regions.map(r => {
+          const isUnlocked = r === 'All' || isRegionUnlocked(S, r as RegionName);
+          const label = r === 'All' ? 'Global Grid (All)' : isUnlocked ? r : `🔒 ${r}`;
+          return `
+            <button class="btn ${currentRegion === r ? 'gold' : 'alt'}" style="padding:6px 12px; font-size:10px; font-weight:800; white-space:nowrap; border-radius:6px;" data-act="home-region" data-region="${r}">
+              ${label}
+            </button>
+          `;
+        }).join('')}
       </div>
+
+      <!-- Locked Region Prompt (if user filtered by an unlocked continental region) -->
+      ${currentRegion !== 'All' && !isRegionUnlocked(S, currentRegion as RegionName) ? `
+        <div style="background:#0e1320; border:1px solid rgba(193,154,91,0.3); border-radius:10px; padding:18px; text-align:center; margin-bottom:14px; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+          <div style="font-size:28px; margin-bottom:6px;">🔒</div>
+          <div style="font-size:13px; font-weight:900; color:var(--tx); text-transform:uppercase;">
+            ${currentRegion} Regional Corridors Locked
+          </div>
+          <div style="font-size:10px; color:var(--mu); max-width:360px; margin:6px auto 14px; line-height:1.4;">
+            To receive freight contracts or purchase terminal hubs in ${currentRegion}, your carrier must obtain the <b>${REGION_AUTHORITIES[currentRegion as RegionName]?.name || currentRegion}</b> (${REGION_AUTHORITIES[currentRegion as RegionName]?.code || ''}).
+          </div>
+          <button class="btn gold" style="padding:8px 18px; font-size:10px; font-weight:900;" data-act="unlock-region" data-region="${currentRegion}" ${S.money < (REGION_AUTHORITIES[currentRegion as RegionName]?.cost || 0) ? 'disabled style="opacity:0.5;"' : ''}>
+            OBTAIN OPERATING AUTHORITY ($${((REGION_AUTHORITIES[currentRegion as RegionName]?.cost || 0)/1000).toFixed(0)}k)
+          </button>
+        </div>
+      ` : ''}
 
       <!-- Freight Board Mode Switcher -->
       <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:14px;">
@@ -185,6 +216,13 @@ export default {
             NO AVAILABLE CONTRACTS IN THIS REGIONAL SECTOR. CHECK OTHER REGIONS OR WAIT FOR DISPATCH REPLENISHMENT.
           </div>
         `}
+
+        <!-- Freight Board Refresh Button ($250 fee) -->
+        <div style="margin-top:16px; margin-bottom:14px; text-align:center;">
+          <button class="btn alt" style="width:100%; padding:10px; font-size:11px; font-weight:800; border-color:var(--gold); color:var(--gold);" data-act="refresh-freight-board">
+            🔄 Refresh Freight Board ($250 Fee)
+          </button>
+        </div>
       ` : ''}
 
       <!-- Mode 2: 30-Day Long-Term Corporate Tenders -->

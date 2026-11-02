@@ -1,4 +1,4 @@
-import { set } from '../core/store';
+import { set, refresh } from '../core/store';
 import { $, toast, action } from '../core/ui';
 import { ic } from '../core/icons';
 import { authService } from '../domain/auth/auth.service';
@@ -49,6 +49,10 @@ function render(S: any) {
           <button class="btn gold ${state.loading ? 'loading' : ''}" data-act="authSubmit">
             ${state.loading ? '<div class="spinner"></div>' : (isSignup ? 'Establish Empire' : 'Access Terminal')}
           </button>
+
+          <button class="btn alt" style="font-size:11px; padding:10px; border-color:rgba(193,154,91,0.4);" data-act="authQuickPlay">
+            Direct Access: ${S.company || 'NexHaul Logistics'}
+          </button>
         </div>
       </div>
 
@@ -58,6 +62,14 @@ function render(S: any) {
     </div>
   `;
 }
+
+action('authQuickPlay', () => {
+  set(s => {
+    s.isAuthenticated = true;
+  });
+  toast('Access Granted: Director Terminal Online', 'success');
+  refresh();
+});
 
 action('authMode', (d) => {
   state.mode = d.mode as any;

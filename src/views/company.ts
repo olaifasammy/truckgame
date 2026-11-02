@@ -6,13 +6,37 @@ import { getCompanyProgression, renderProgressLogoRing } from '../domain/company
 import { CARGO_TYPES } from '../domain/freight/cargo/registry';
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { renderTelematicsOverlay } from './telematics-modal';
+import { getTruckTelematics, getDrivingStateBadge } from '../domain/trucks/trucks.telematics';
+import { REGIONAL_HUBS, REGION_AUTHORITIES, RegionName, isRegionUnlocked, getOwnedHubs } from '../domain/logistics/network';
+import { LOCATIONS } from '../data/world';
 
 let transitPage = 1;
 const TRANSIT_PER_PAGE = 3;
+let hubTab: 'regions' | 'hubs' | 'routes' = 'regions';
 
 action('transit-page', d => {
   transitPage = +(d as any).page;
   refresh();
+});
+
+action('set-hub-tab', d => {
+  hubTab = (d as any).tab;
+  refresh();
+});
+
+action('unlock-region', d => {
+  const region = (d as any).region as RegionName;
+  const auth = REGION_AUTHORITIES[region];
+  if (!auth) return;
+  set(S => {
+    if (!S.unlockedRegions) S.unlockedRegions = ['Africa'];
+    if (S.unlockedRegions.includes(region)) return toast(`${auth.name} already active!`, 'info');
+    if (S.money < auth.cost) return toast(`Insufficient capital ($${auth.cost.toLocaleString()}) for ${auth.name}`, 'err');
+    
+    S.money -= auth.cost;
+    S.unlockedRegions.push(region);
+    toast(`Operating Authority Granted! ${auth.name} (${auth.code}) active. Regional freight unlocked!`, 'success');
+  });
 });
 
 action('logout', () => {
@@ -25,13 +49,18 @@ action('logout', () => {
 
 action('buy-regional-hub', d => {
   const hubId = (d as any).id;
-  const cost = +(d as any).cost;
+  const hub = REGIONAL_HUBS.find(h => h.id === hubId);
+  if (!hub) return;
   set(S => {
-    if (S.money < cost) return toast(`Insufficient capital ($${cost.toLocaleString()}) to acquire regional hub`, 'err');
-    S.money -= cost;
+    if (!S.unlockedRegions) S.unlockedRegions = ['Africa'];
+    if (!S.unlockedRegions.includes(hub.region)) {
+      return toast(`Region Locked: Must obtain ${REGION_AUTHORITIES[hub.region].name} before purchasing hubs in ${hub.region}`, 'err');
+    }
+    if (S.money < hub.cost) return toast(`Insufficient capital ($${hub.cost.toLocaleString()}) to acquire ${hub.name}`, 'err');
+    S.money -= hub.cost;
     if (!S.depots) S.depots = [];
-    S.depots.push(hubId);
-    toast(`Regional Logistics Hub acquired! Depot berths expanded.`, 'success');
+    if (!S.depots.includes(hubId)) S.depots.push(hubId);
+    toast(`${hub.name} acquired! Regional berths and cross-docking active in ${hub.city}.`, 'success');
   });
 });
 
@@ -166,36 +195,35 @@ export default {
                 const totalDuration = Math.max(1, a.end - a.start);
                 const elapsed = Math.max(0, now - a.start);
                 const pct = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+                const telem = getTruckTelematics(truckObj, a, drv, now);
 
                 return `
-                  <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
+                  <div style="background:#0f172a; border:1px solid ${telem.stateBadgeColor}80; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
                       <div style="min-width:0; flex:1;">
                         <div style="display:flex; align-items:center; gap:6px;">
                           <span style="font-size:13px; font-weight:900; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                             ${cargoName}
                           </span>
-                          <span style="font-size:9px; color:var(--mu); font-family:monospace;">
-                            (${a.weight || 0}t)
-                          </span>
+                          ${getDrivingStateBadge(telem.state, true)}
                         </div>
                         <div style="font-size:11px; font-family:monospace; color:var(--gold); font-weight:800; margin-top:2px;">
                           ${a.from} → ${a.to} <span style="color:var(--mu); font-weight:400;">(${a.km} km)</span>
                         </div>
                         <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:2px;">
-                          Unit #${a.truck} (${truckObj?.name || 'Tractor'}) · Driver: <b style="color:var(--tx);">${drv ? drv.name : 'CDL Driver'}</b>
+                          Unit #${a.truck} (${truckObj?.name || 'Tractor'}) · Driver: <b style="color:var(--tx);">${drv ? drv.name : 'CDL Driver'}</b> · Phase: <b style="color:#38bdf8;">${telem.phase}</b>
                         </div>
                       </div>
 
                       <button class="btn alt" style="padding:6px 12px; font-size:9px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.4); display:flex; align-items:center; gap:5px; flex-shrink:0;" data-act="open-telematics" data-id="${a.truck}">
-                        <span>🛰️</span> DASHCAM
+                        <span>🛰️</span> TELEMATICS (${telem.speedKmh} KM/H)
                       </button>
                     </div>
 
                     <!-- Progress Bar & Live Countdown -->
                     <div style="background:#080c16; border:1px solid #141d2e; border-radius:6px; padding:6px 10px;">
                       <div style="display:flex; justify-content:space-between; align-items:center; font-size:9px; font-family:monospace; margin-bottom:4px;">
-                        <span style="color:var(--mu);">Transit Progress: <b style="color:var(--grn);">${pct.toFixed(0)}%</b></span>
+                        <span style="color:var(--mu);">Progress: <b style="color:var(--grn);">${pct.toFixed(0)}%</b> · <b style="color:${telem.stateBadgeColor};">${telem.speedKmh > 0 ? telem.speedKmh + ' km/h' : telem.stateLabel}</b></span>
                         <span style="color:var(--gold); font-weight:800;" data-eta="${a.end}">ETA: ${dur(remainingMs)}</span>
                       </div>
                       <div style="height:5px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
@@ -320,83 +348,21 @@ export default {
         </div>
       </div>
 
-      <!-- Regional Logistics Depots & Cross-Docking Warehouses -->
+      <!-- Global Network & Regional Hubs Gateway Card -->
       <div style="padding:0 14px 14px;">
-        <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">MULTI-CITY REGIONAL DISTRIBUTION CENTERS</span>
-          <span class="mu-tx" style="font-size:9px; font-family:monospace;">${(S.depots || []).length} / 4 HUBS ACTIVE</span>
-        </div>
-
-        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:14px;">
-          ${[
-            { id: 'hub_rotterdam', name: 'Rotterdam Europort Intermodal Hub', city: 'ROTTERDAM', cost: 160000, icon: '🚢', desc: 'Eliminates European deadhead penalties · +4 Berths' },
-            { id: 'hub_chicago', name: 'Chicago Midwest Rail & Road Terminal', city: 'CHICAGO', cost: 195000, icon: '🚂', desc: 'North American crossroads connecting I-80 freight corridors · +5 Berths' },
-            { id: 'hub_lagos', name: 'Lagos Deep Sea Logistics Terminal', city: 'LAGOS', cost: 125000, icon: '⚓', desc: 'Atlantic coastal industrial terminal for West Africa corridors · +4 Berths' },
-            { id: 'hub_munich', name: 'Munich Alpine Cross-Border Depot', city: 'MUNICH', cost: 175000, icon: '⛰️', desc: 'High-altitude European transit node for heavy haul & tankers · +4 Berths' }
-          ].map(hub => {
-            const isOwned = (S.depots || []).includes(hub.id);
-            return `
-              <div style="background:#111827; border:1px solid ${isOwned ? 'rgba(34,197,94,0.3)' : '#1f293d'}; border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                  <span style="font-size:22px;">${hub.icon}</span>
-                  <div>
-                    <div style="font-size:12px; font-weight:800; color:var(--tx);">${hub.name}</div>
-                    <div style="font-size:9px; color:var(--mu);">${hub.desc}</div>
-                  </div>
-                </div>
-                <div>
-                  ${isOwned ? `
-                    <span style="font-size:9px; font-weight:900; color:var(--grn); background:rgba(34,197,94,0.12); border:1px solid var(--grn); padding:4px 8px; border-radius:4px; font-family:monospace;">
-                      ✓ OPERATIONAL
-                    </span>
-                  ` : `
-                    <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="buy-regional-hub" data-id="${hub.id}" data-cost="${hub.cost}">
-                      ACQUIRE ($${hub.cost.toLocaleString()})
-                    </button>
-                  `}
-                </div>
+        <div class="card" style="padding:16px; background:#0f172a; border:1px solid var(--gold); border-radius:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-act="tab" data-id="network">
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div style="width:40px; height:40px; background:var(--gold); color:#0a0f1d; border-radius:8px; display:grid; place-items:center; font-size:20px;">
+              🌐
+            </div>
+            <div>
+              <div style="font-size:13px; font-weight:900; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">Global Network & Regional Hubs</div>
+              <div style="font-size:10px; color:var(--mu); margin-top:2px;">
+                ${(S.unlockedRegions || ['Africa']).length} Operating Regions · ${(S.depots || []).length} Depot Hubs Acquired
               </div>
-            `;
-          }).join('')}
-        </div>
-
-        <!-- Custom Warehouse Infrastructure Upgrades -->
-        <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">WAREHOUSE AUTOMATION & COLD STORAGE</span>
-          <span class="mu-tx" style="font-size:9px; font-family:monospace;">PASSIVE REVENUE</span>
-        </div>
-
-        <div style="display:flex; flex-direction:column; gap:8px;">
-          ${[
-            { id: 'cross_docking', name: 'Automated Cross-Docking Sorting Bays', cost: 45000, icon: '📦', perk: '+$1,200/day automated logistics throughput revenue', desc: 'High-speed automated roller sorters eliminate intermediate storage delays.' },
-            { id: 'cold_vault', name: 'Temperature-Controlled Cold Storage Vaults', cost: 55000, icon: '❄️', perk: '+20% revenue bonus on all Refrigerated Reefer contracts', desc: 'Multi-zone cryogenic chambers safeguard perishable food chains.' },
-            { id: 'gantry_crane', name: 'Heavy Gantry Crane & Industrial Forklift Fleet', cost: 48000, icon: '🏗️', perk: '30% faster turnaround time on Lowboys and 40ft Containers', desc: 'Heavy-duty 45-tonne overhead cranes load oversized machinery.' }
-          ].map(upg => {
-            const hasUpg = !!S.warehouseUpgrades?.[upg.id];
-            return `
-              <div style="background:#111827; border:1px solid ${hasUpg ? 'rgba(193,154,91,0.4)' : '#1f293d'}; border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center;">
-                <div style="display:flex; align-items:center; gap:10px;">
-                  <span style="font-size:22px;">${upg.icon}</span>
-                  <div>
-                    <div style="font-size:12px; font-weight:800; color:var(--tx);">${upg.name}</div>
-                    <div style="font-size:9px; color:var(--gold); font-weight:700;">${upg.perk}</div>
-                    <div style="font-size:8px; color:var(--mu);">${upg.desc}</div>
-                  </div>
-                </div>
-                <div>
-                  ${hasUpg ? `
-                    <span style="font-size:9px; font-weight:900; color:var(--gold); background:rgba(193,154,91,0.15); border:1px solid var(--gold); padding:4px 8px; border-radius:4px; font-family:monospace;">
-                      ✓ INSTALLED
-                    </span>
-                  ` : `
-                    <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="buy-warehouse-upg" data-id="${upg.id}" data-cost="${upg.cost}">
-                      INSTALL ($${upg.cost.toLocaleString()})
-                    </button>
-                  `}
-                </div>
-              </div>
-            `;
-          }).join('')}
+            </div>
+          </div>
+          <div style="color:var(--gold); font-size:14px;">${ic('chev')}</div>
         </div>
       </div>
 

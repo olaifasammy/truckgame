@@ -74,28 +74,57 @@ export class FreightEngine {
 
     const company = rnd(COMPANIES);
 
-    // Pick a region: either forced or chosen from the 4 global regions
-    const regions: RegionName[] = ['Africa', 'Europe', 'America', 'Asia'];
-    const targetRegion = tender ? 'Europe' : (options.forceRegion || rnd(regions));
+    // Filter available regions strictly to those unlocked by company operating authority
+    const unlockedRegions: RegionName[] = (S?.unlockedRegions && S.unlockedRegions.length > 0)
+      ? S.unlockedRegions
+      : ['Africa'];
 
-    // Filter cities within the target region for realistic intra-regional transit
+    let targetRegion: RegionName;
+    if (tender) {
+      targetRegion = unlockedRegions.includes('Europe') ? 'Europe' : unlockedRegions[0];
+    } else if (options.forceRegion && unlockedRegions.includes(options.forceRegion)) {
+      targetRegion = options.forceRegion;
+    } else {
+      targetRegion = rnd(unlockedRegions);
+    }
+
+    // Filter cities strictly within the target operating region
     const regionCities = Object.entries(LOCATIONS)
       .filter(([_, loc]) => loc.region === targetRegion)
       .map(([key]) => key);
 
-    // 85% of jobs are within the same region, 15% are high-value trans-continental
+    // Carrier hubs owned in this region
+    const ownedHubsInRegion = (S?.depots || []).map((depotId: string) => {
+      if (depotId.includes('lagos')) return 'LAGOS';
+      if (depotId.includes('abuja')) return 'ABUJA';
+      if (depotId.includes('kano')) return 'KANO';
+      if (depotId.includes('rotterdam')) return 'ROTTERDAM';
+      if (depotId.includes('munich')) return 'MUNICH';
+      if (depotId.includes('lyon')) return 'LYON';
+      if (depotId.includes('chicago')) return 'CHICAGO';
+      if (depotId.includes('dallas')) return 'DALLAS';
+      if (depotId.includes('los_angeles')) return 'LOS_ANGELES';
+      if (depotId.includes('tokyo')) return 'TOKYO';
+      if (depotId.includes('shanghai')) return 'SHANGHAI';
+      if (depotId.includes('almaty')) return 'ALMATY';
+      return null;
+    }).filter((c: string | null) => c && LOCATIONS[c]?.region === targetRegion) as string[];
+
     let from: string;
     let to: string;
 
-    if (Math.random() < 0.85 && regionCities.length >= 2) {
+    // Freight contracts run between realistic regional cities (prioritizing owned terminal depots)
+    if (ownedHubsInRegion.length > 0 && Math.random() < 0.65) {
+      from = rnd(ownedHubsInRegion);
+      const possibleDestinations = regionCities.filter(c => c !== from);
+      to = rnd(possibleDestinations.length ? possibleDestinations : regionCities);
+    } else if (regionCities.length >= 2) {
       from = rnd(regionCities);
-      to = rnd(regionCities);
-      while (to === from) to = rnd(regionCities);
+      const possibleDestinations = regionCities.filter(c => c !== from);
+      to = rnd(possibleDestinations.length ? possibleDestinations : regionCities);
     } else {
-      const allCities = Object.keys(LOCATIONS);
-      from = rnd(allCities);
-      to = rnd(allCities);
-      while (to === from) to = rnd(allCities);
+      from = 'LAGOS';
+      to = 'IBADAN';
     }
 
     // Authentic highway distance calculation
@@ -108,7 +137,7 @@ export class FreightEngine {
     else if (cargo.trailer === 'tipper') weight = 18 + Math.random() * 24;
     else if (cargo.trailer === 'tanker' || cargo.trailer === 'hazmat') weight = 20 + Math.random() * 26;
 
-    let rate: number;
+    let rate = 2.0;
 
     if (tender) {
       // Tender has a fixed pay per load, but we'll store it as pay

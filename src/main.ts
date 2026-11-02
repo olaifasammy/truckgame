@@ -49,8 +49,12 @@ function renderApp(st: any) {
     const navEl = $('nav');
     if (headerEl) { headerEl.style.display = 'flex'; header.render(st); }
     if (navEl) { navEl.style.display = 'flex'; nav.render(st); }
-    
-    const view = find(st.tab);
+
+    const targetTab = st.tab && find(st.tab) ? st.tab : 'home';
+    if (st.tab !== targetTab) {
+      st.tab = targetTab;
+    }
+    const view = find(targetTab);
     viewEl.innerHTML = view ? view.render(st) : 'View not found';
   } catch (e: any) {
     console.error('Main: Render crash', e);

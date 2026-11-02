@@ -11,10 +11,13 @@ import { createTruck } from '../domain/trucks/trucks.physics';
 export const FUEL_PRICE = 2.5;
 export const inspectCost = () => Math.round(500 * disc('scanner'));
 
-export const refuelCost = (t: any) => {
-  const model = TRUCK_MODELS[t.modelId];
-  const needed = model.tankSize - t.fluids.fuel;
-  return Math.round(needed * FUEL_PRICE * disc('fuelcard'));
+export const refuelCost = (t: any, S?: any) => {
+  const model = TRUCK_MODELS[t.modelId] || { tankSize: 800 };
+  const needed = Math.max(0, model.tankSize - (t.fluids?.fuel || 0));
+  if (needed <= 0) return 0;
+  const bunkerLiters = S?.fuelBunker?.currentLiters || 0;
+  const cashNeeded = Math.max(0, needed - bunkerLiters);
+  return Math.round(cashNeeded * FUEL_PRICE * disc('fuelcard'));
 };
 
 export const repairCost = (t: any) => {
@@ -51,11 +54,35 @@ const pay = (S: any, c: number, purpose: string) => {
 export const refuel = (id: number) => set(S => {
   const t = idle(S, id);
   if (!t) return;
-  const model = TRUCK_MODELS[t.modelId];
-  const c = refuelCost(t);
-  if (c <= 0) return;
-  if (!pay(S, c, `Refuel Unit #${id} (${t.name})`)) return;
+  const model = TRUCK_MODELS[t.modelId] || { tankSize: 800 };
+  const needed = Math.max(0, model.tankSize - (t.fluids?.fuel || 0));
+  if (needed <= 0) return toast('Fuel tank is already at 100% capacity', 'info');
+
+  const bunker = S.fuelBunker;
+  let fromBunker = 0;
+  if (bunker && bunker.currentLiters > 0) {
+    fromBunker = Math.min(bunker.currentLiters, needed);
+    bunker.currentLiters -= fromBunker;
+  }
+
+  const remaining = needed - fromBunker;
+  let cashCost = 0;
+  if (remaining > 0) {
+    cashCost = Math.round(remaining * FUEL_PRICE * disc('fuelcard'));
+    if (!pay(S, cashCost, `Commercial Station Refuel Unit #${id} (${t.name})`)) {
+      if (bunker) bunker.currentLiters += fromBunker;
+      return;
+    }
+  }
+
   t.fluids.fuel = model.tankSize;
+  if (fromBunker > 0 && remaining > 0) {
+    toast(`Refueled: ${Math.round(fromBunker)}L HQ Bunker + ${Math.round(remaining)}L Station ($${cashCost.toLocaleString()})`, 'success');
+  } else if (fromBunker > 0) {
+    toast(`Refueled ${Math.round(fromBunker)}L from HQ Fuel Bunker! ($0 cash)`, 'success');
+  } else {
+    toast(`Refueled ${Math.round(needed)}L at Commercial Station (-$${cashCost.toLocaleString()})`, 'success');
+  }
 });
 
 export const repair = (id: number) => set(S => {

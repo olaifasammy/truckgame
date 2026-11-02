@@ -9,5 +9,7 @@ import repair from './repair';
 import drivers from './drivers';
 import storage from './storage';
 import notifications from './notifications';
+import network from './network';
 
-[home, garage, company, finance, store, rankings, repair, drivers, storage, notifications].forEach(register);
+[home, garage, company, network, finance, store, rankings, repair, drivers, storage, notifications].forEach(register);
+

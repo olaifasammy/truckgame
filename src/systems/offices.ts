@@ -2,8 +2,16 @@ import { set } from '../core/store';
 import { toast } from '../core/ui';
 import { OFFICES, BASE_SLOTS } from '../data/shop';
 import { pushNote } from './notify';
+import { REGIONAL_HUBS } from '../domain/logistics/network';
 
-export const slots = (S: any) => BASE_SLOTS + (S.garageLevel * 2) + S.offices.reduce((a: number, id: string) => a + OFFICES[id].slots, 0);
+export const slots = (S: any) => {
+  const officeSlots = (S.offices || []).reduce((a: number, id: string) => a + (OFFICES[id]?.slots || 0), 0);
+  const depotSlots = (S.depots || []).reduce((a: number, id: string) => {
+    const hub = REGIONAL_HUBS.find(h => h.id === id);
+    return a + (hub?.berths || 4);
+  }, 0);
+  return BASE_SLOTS + (S.garageLevel * 2) + officeSlots + depotSlots;
+};
 
 export const upgradeGarageCost = (level: number) => 15000 + (level * 25000);
 
