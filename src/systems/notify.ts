@@ -72,14 +72,16 @@ export function markAllRead(S: any) {
   }
 }
 
-export function deleteSelected(S: any, ids: Set<string>) {
+export function deleteSelected(S: any, ids: Set<string> | string[]) {
   if (!S.notes) return;
-  S.notes = S.notes.filter((n: any) => !ids.has(n.id));
+  const idSet = ids instanceof Set ? ids : new Set(ids);
+  S.notes = S.notes.filter((n: any) => !idSet.has(n.id));
 }
 
-export function markSelectedRead(S: any, ids: Set<string>) {
+export function markSelectedRead(S: any, ids: Set<string> | string[]) {
   if (!S.notes) return;
+  const idSet = ids instanceof Set ? ids : new Set(ids);
   for (const n of S.notes) {
-    if (ids.has(n.id)) n.read = true;
+    if (idSet.has(n.id)) n.read = true;
   }
 }
