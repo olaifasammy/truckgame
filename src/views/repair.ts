@@ -176,18 +176,25 @@ export default {
                 }).join('')}
               </div>
 
-              <!-- Summary & Action Bar -->
-              <div style="background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:14px; display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                  <div style="font-size:10px; color:var(--mu); text-transform:uppercase;">Estimated Repair Cost</div>
-                  <div style="font-size:20px; font-weight:900; color:var(--gold);">$${totalCost.toLocaleString()}</div>
-                  ${totalSavings > 0 ? `<div style="font-size:9px; color:var(--grn); font-weight:800;">✓ Saved $${totalSavings.toLocaleString()} using HQ Warehouse stock!</div>` : ''}
-                  <div style="font-size:10px; color:var(--accent); font-weight:700; margin-top:2px;">⏱️ Duration: ${Math.round(durationMs / 1000)}s in Repair Bay</div>
-                </div>
-                <button class="btn gold" style="padding:10px 20px; font-size:12px; font-weight:900;" data-act="submit-repair" ${totalCost === 0 && selectedPartsSet.size === 0 || truck.status !== 'idle' ? 'disabled' : ''}>
-                  PAY & SEND TO BAY
-                </button>
-              </div>
+              ${(() => {
+                const isEnRoute = truck.status === 'busy';
+                const isRepairing = truck.status === 'repair';
+                
+                return `
+                  <div style="background:var(--bg); border:1px solid var(--line); border-radius:10px; padding:14px; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                      <div style="font-size:10px; color:var(--mu); text-transform:uppercase;">${isEnRoute ? 'Scheduled' : 'Estimated'} Repair Cost</div>
+                      <div style="font-size:20px; font-weight:900; color:var(--gold);">$${totalCost.toLocaleString()}</div>
+                      ${totalSavings > 0 ? `<div style="font-size:9px; color:var(--grn); font-weight:800;">✓ Saved $${totalSavings.toLocaleString()} using HQ Warehouse stock!</div>` : ''}
+                      <div style="font-size:10px; color:var(--accent); font-weight:700; margin-top:2px;">⏱️ Duration: ${Math.round(durationMs / 1000)}s in Repair Bay</div>
+                      ${isEnRoute ? `<div style="font-size:10px; color:var(--blu); font-weight:700; margin-top:2px;">🕒 Unit is En-Route. Service will start upon arrival.</div>` : ''}
+                    </div>
+                    <button class="btn gold" style="padding:10px 20px; font-size:12px; font-weight:900;" data-act="submit-repair" ${totalCost === 0 && selectedPartsSet.size === 0 || isRepairing ? 'disabled' : ''}>
+                      ${isEnRoute ? 'PRE-PAY & SCHEDULE' : 'PAY & SEND TO BAY'}
+                    </button>
+                  </div>
+                `;
+              })()}
             `}
           </div>
         `}
@@ -200,18 +207,21 @@ export default {
           </div>
           ${repairsQueue.length === 0 ? '<div style="font-size:11px; color:var(--mu); text-align:center; padding:16px;">Repair bay is currently empty. All trucks operational.</div>' : 
             repairsQueue.map((rep: any) => {
+              const isWaiting = rep.scheduled;
               const timeLeft = Math.max(0, rep.end - now);
               const totalDuration = rep.end - rep.start;
-              const pct = Math.min(100, Math.max(0, ((now - rep.start) / totalDuration) * 100));
+              const pct = isWaiting ? 0 : Math.min(100, Math.max(0, ((now - rep.start) / totalDuration) * 100));
               
               return `
-                <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:8px;">
+                <div style="background:var(--bg); border:1px solid ${isWaiting ? 'var(--blu)' : 'var(--line)'}; border-radius:8px; padding:10px; margin-bottom:8px;">
                   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
                     <div style="font-size:12px; font-weight:700; color:var(--tx);">${rep.truckName}</div>
-                    <div style="font-size:11px; font-weight:800; color:var(--gold);" data-eta="${rep.end}">⏱️ ${dur(timeLeft)} remaining</div>
+                    <div style="font-size:11px; font-weight:800; color:${isWaiting ? 'var(--blu)' : 'var(--gold)'};" ${isWaiting ? '' : `data-eta="${rep.end}"`}>
+                      ${isWaiting ? '🕒 WAITING FOR ARRIVAL' : `⏱️ ${dur(timeLeft)} remaining`}
+                    </div>
                   </div>
                   <div style="font-size:10px; color:var(--mu); margin-bottom:6px;">Services: ${rep.parts.join(', ').toUpperCase()}</div>
-                  <div class="bar"><i style="width:${pct}%; background:var(--gold);"></i></div>
+                  ${isWaiting ? '' : `<div class="bar"><i style="width:${pct}%; background:var(--gold);"></i></div>`}
                 </div>
               `;
             }).join('')}

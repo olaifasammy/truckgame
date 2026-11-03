@@ -604,6 +604,33 @@ export function processEconomics(S: any, now: number) {
   const netDaily = dailyInflow - dailyOutflow;
   const netDelta = (netDaily / MS_PER_DAY) * elapsedMs;
 
+  if (!S._lastDailyNote) S._lastDailyNote = now;
+  if (now - S._lastDailyNote >= MS_PER_DAY) {
+    S._lastDailyNote = now;
+    pushNote(S, `Daily Account Summary: Net Cashflow $${Math.round(netDaily).toLocaleString()} (In: $${Math.round(dailyInflow).toLocaleString()} / Out: $${Math.round(dailyOutflow).toLocaleString()})`, {
+      title: 'DAILY FINANCIAL SUMMARY',
+      type: 'finance'
+    });
+
+    if (!S._daysCounter) S._daysCounter = 0;
+    S._daysCounter++;
+
+    if (S._daysCounter % 7 === 0) {
+      pushNote(S, `Weekly Account Summary: Performance report for the past 7 days is now available.`, {
+        title: 'WEEKLY FINANCIAL SUMMARY',
+        type: 'finance',
+        priority: 1
+      });
+    }
+    if (S._daysCounter % 30 === 0) {
+      pushNote(S, `Monthly Account Summary: Full enterprise audit and profit/loss statement for the month.`, {
+        title: 'MONTHLY FINANCIAL SUMMARY',
+        type: 'finance',
+        priority: 2
+      });
+    }
+  }
+
   if (!S._incomeAccumulator) S._incomeAccumulator = 0;
   S._incomeAccumulator += netDelta;
 

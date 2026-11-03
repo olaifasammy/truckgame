@@ -4,6 +4,7 @@ import { TRUCK_MODELS, TRAILERS, TRAILER_PRICES } from '../domain/trucks/trucks.
 import { TrailerType } from '../domain/trucks/trucks.types';
 import { stats, distKm, fuelCostForTrip, tripMs, applyWear, syncUsage } from './calc';
 import { pushNote } from './notify';
+import { processScheduledRepair } from './maintenance';
 import { disc } from './perks';
 import { slots } from './offices';
 import { createTruck } from '../domain/trucks/trucks.physics';
@@ -142,6 +143,13 @@ export const transport = (id: number, city: string) => set(S => {
   t.status = 'busy';
   toast('Moving to ' + city);
 });
+
+export const onTruckArrival = (S: any, truckId: number) => {
+  const t = S.fleet.find((x: any) => x.id === truckId);
+  if (!t) return;
+  t.status = 'idle';
+  processScheduledRepair(S, truckId);
+};
 
 export const buyTruckBatch = (modelId: string, trailerType: TrailerType | null, quantity: number, destinationCity: string) => {
   set(S => {

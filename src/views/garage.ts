@@ -515,9 +515,17 @@ function truck(S: any, t: any) {
     }
   }
 
-  const status = isBusy ? { txt: a?.kind === 'move' ? 'REPOSITIONING' : 'ON HIGHWAY', color: 'var(--blu)' }
+  const status = t.status === 'repair' ? { txt: 'IN REPAIR BAY', color: '#ef4444' }
+    : isBusy ? { txt: a?.kind === 'move' ? 'REPOSITIONING' : 'ON HIGHWAY', color: 'var(--blu)' }
     : drv ? { txt: 'PARKED · READY', color: 'var(--grn)' }
     : { txt: 'PARKED (NO CDL)', color: 'var(--mu)' };
+
+  if (t.status === 'repair') {
+    const rep = S.repairs?.find((r: any) => r.truckId === t.id && !r.scheduled);
+    if (rep) {
+      parkingLocationText = `🛠️ Undergoing Maintenance: ${rep.parts.join(', ').toUpperCase()}`;
+    }
+  }
 
   const fuelPctVal = Math.round((t.fluids.fuel / m.tankSize) * 100);
   const healthValues = Object.values(t.components).map((c: any) => c.health);
@@ -704,7 +712,7 @@ export default {
     // Filter fleet based on selected tab
     let filteredFleet = S.fleet;
     if (garageFilter === 'parked') {
-      filteredFleet = S.fleet.filter((t: any) => t.status !== 'busy');
+      filteredFleet = S.fleet.filter((t: any) => t.status !== 'busy' && t.status !== 'repair');
     } else if (garageFilter === 'transit') {
       filteredFleet = S.fleet.filter((t: any) => t.status === 'busy');
     }
@@ -770,6 +778,9 @@ export default {
           <button class="btn ${garageFilter === 'transit' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="transit">
             EN-ROUTE (${busy})
           </button>
+          <button class="btn ${garageFilter === 'repair' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="repair">
+            REPAIR (${S.fleet.filter((t: any) => t.status === 'repair').length})
+          </button>
         </div>
       </div>
 
@@ -792,15 +803,15 @@ export default {
       ${renderHitchModal(S)}
       ${renderTelematicsOverlay(S)}
 
-      <!-- OEM Dealership Gateway Card -->
-      <div class="card" style="margin-top:14px; padding:14px; background:#0f172a; border:1px solid var(--gold); border-radius:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-act="store-open" data-id="dealership">
+      <!-- Fleet Maintenance & Repair Gateway -->
+      <div class="card" style="margin-top:14px; padding:14px; background:#0f172a; border:1px solid var(--gold); border-radius:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-act="tab" data-id="repair">
         <div style="display:flex; align-items:center; gap:12px;">
           <div style="width:38px; height:38px; background:var(--gold); color:#0a0f1d; border-radius:6px; display:grid; place-items:center; font-size:18px;">
-            ${ic('truck')}
+            ${ic('wrench')}
           </div>
           <div>
-            <div style="font-size:13px; font-weight:900; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">Acquire New Fleet Assets</div>
-            <div style="font-size:10px; color:var(--mu); margin-top:1px;">Factory Order Class 8 Heavy Commercial Tractors & Trailers</div>
+            <div style="font-size:13px; font-weight:900; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">Fleet Maintenance & Repair</div>
+            <div style="font-size:10px; color:var(--mu); margin-top:1px;">Schedule service, repairs and component replacements</div>
           </div>
         </div>
         <div style="color:var(--gold); font-size:14px;">${ic('chev')}</div>

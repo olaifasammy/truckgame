@@ -10,6 +10,7 @@ import './views/index';
 import * as header from './ui/header';
 import * as nav from './ui/nav';
 import { replenish, completeJobs, processEconomics } from './systems/jobs';
+import { onTruckArrival } from './systems/fleet';
 import { fillPool } from './systems/drivers';
 import { syncProgressionAudit } from './domain/company/progression';
 import { completeRepairs } from './systems/maintenance';
@@ -127,6 +128,9 @@ try {
     // 1. Silent Simulation Processing (No intrusive view teardown or reload)
     processEconomics(st, now);
     const { done = [], auctionChanged = false } = completeJobs(st, now) || {};
+    if (done.length > 0) {
+      done.forEach((id: number) => onTruckArrival(st, id));
+    }
     const repCount = completeRepairs(st, now) || 0;
 
     // Periodic freight replenishment (every 45s) or if contracts dry up

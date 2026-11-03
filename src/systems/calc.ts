@@ -184,5 +184,18 @@ export function syncUsage(t: any, km: number, metrics: any, env?: EnvironmentalC
   const transLoss = parseFloat(((km / 1000) * 0.8).toFixed(1));
   t.fluids.transmissionOil = Math.max(0, Math.round((t.fluids.transmissionOil !== undefined ? t.fluids.transmissionOil : 100) - transLoss));
 
+  // Serious Road Accident Simulation (Rare event)
+  if (S && Math.random() < 0.0001) {
+    const damage = 40 + Math.random() * 30;
+    Object.values(t.components).forEach((c: any) => {
+      c.health = Math.max(0, parseFloat((c.health - damage).toFixed(2)));
+    });
+    pushNote(S, `SERIOUS ROAD ACCIDENT: Unit #${t.id} (${t.name}) was involved in a major collision. Critical damage sustained to all components.`, {
+      title: 'MAJOR COLLISION',
+      type: 'alert',
+      priority: 2
+    });
+  }
+
   t.odometer += km;
 }

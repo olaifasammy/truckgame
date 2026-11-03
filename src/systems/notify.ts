@@ -35,16 +35,34 @@ export function pushNote(S: any, msg: string, options?: { title?: string, type?:
   S.logs.unshift(note);
   if (S.logs.length > 250) S.logs.pop();
 
-  // 2. Strict Inbox Filtering: Only track allowed event categories
+  // 2. Strict Inbox Filtering: Only track allowed event categories per Engineering Constitution v2.0
   const lowerMsg = (msg + ' ' + note.title).toLowerCase();
   
-  const isFxCrypto = lowerMsg.includes('exchange') || lowerMsg.includes('fleet bond') || lowerMsg.includes('crypto') || lowerMsg.includes('bitcoin') || lowerMsg.includes('mining') || lowerMsg.includes('flb');
-  const isMajorPurchase = lowerMsg.includes('purchase') || lowerMsg.includes('acquired') || lowerMsg.includes('depot') || lowerMsg.includes('leased') || lowerMsg.includes('investment');
-  const isTruckBreakdown = lowerMsg.includes('breakdown') || lowerMsg.includes('failure') || lowerMsg.includes('damage') || lowerMsg.includes('citation') || lowerMsg.includes('accident');
-  const isAssetIncrease = lowerMsg.includes('asset') || lowerMsg.includes('delivery complete') || lowerMsg.includes('expanded') || lowerMsg.includes('terminal');
-  const isRankPromotion = lowerMsg.includes('rank') || lowerMsg.includes('vip') || lowerMsg.includes('promotion') || lowerMsg.includes('attained');
+  // New truck payment & Arrival
+  const isTruckArrival = lowerMsg.includes('purchase') || lowerMsg.includes('delivery complete') || lowerMsg.includes('equipment in transit') || lowerMsg.includes('acquired');
+  
+  // Vehicle transfer
+  const isTransfer = lowerMsg.includes('movement complete') || lowerMsg.includes('repositioning') || lowerMsg.includes('transferred to');
+  
+  // Crypto & Bonds activities
+  const isCryptoBonds = lowerMsg.includes('crypto') || lowerMsg.includes('bitcoin') || lowerMsg.includes('mining') || lowerMsg.includes('fleet bond') || lowerMsg.includes('flb');
+  
+  // Bid winnings
+  const isBidWinning = lowerMsg.includes('tender won') || lowerMsg.includes('secured') || lowerMsg.includes('bid won');
+  
+  // New accounts creations
+  const isAccountCreation = lowerMsg.includes('registration') || lowerMsg.includes('officially registered') || lowerMsg.includes('empire established');
+  
+  // Serious Road Accidents
+  const isSeriousAccident = lowerMsg.includes('serious road accident') || lowerMsg.includes('major collision');
+  
+  // Receipt of large fuel quantities bought
+  const isLargeFuel = lowerMsg.includes('wholesale fuel') || (lowerMsg.includes('refilled') && lowerMsg.includes('bunker'));
+  
+  // Daily, weekly & monthly accounts
+  const isFinancialSummary = lowerMsg.includes('daily account') || lowerMsg.includes('weekly account') || lowerMsg.includes('monthly account') || lowerMsg.includes('financial summary');
 
-  const shouldInbox = isFxCrypto || isMajorPurchase || isTruckBreakdown || isAssetIncrease || isRankPromotion;
+  const shouldInbox = isTruckArrival || isTransfer || isCryptoBonds || isBidWinning || isAccountCreation || isSeriousAccident || isLargeFuel || isFinancialSummary;
 
   if (shouldInbox) {
     S.notes.unshift(note);

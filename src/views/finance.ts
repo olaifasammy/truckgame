@@ -1,6 +1,7 @@
 import { ic } from '../core/icons';
 import { fmt, action, toast } from '../core/ui';
 import { refresh, set } from '../core/store';
+import { pushNote } from '../systems/notify';
 import { AVAILABLE_LOANS, calculateCreditRating, INSURANCE_POLICIES, REGIONAL_FUEL_SPOT, getGoldMarketData } from '../domain/finance/banking';
 import { createTruck } from '../domain/trucks/trucks.physics';
 
@@ -89,6 +90,10 @@ action('buy-wholesale-fuel', d => {
     const prevC = bunker.avgCostPerLiter || spotPrice;
     bunker.currentLiters += toBuy;
     bunker.avgCostPerLiter = parseFloat(((prevL * prevC + cost) / bunker.currentLiters).toFixed(2));
+    pushNote(S, `Wholesale Fuel Receipt: ${toBuy.toLocaleString()}L of diesel delivered to HQ Bunker at $${spotPrice}/L.`, {
+      title: 'WHOLESALE FUEL',
+      type: 'ops'
+    });
     toast(`Refilled ${toBuy}L`, 'success');
   });
 });

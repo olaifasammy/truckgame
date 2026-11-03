@@ -144,6 +144,10 @@ export function startRepair(S: any, truckId: number, selectedParts: string[]): b
 
   // Add to repair queue
   S.repairs = S.repairs || [];
+  
+  // If truck is busy, it's a scheduled repair for when it returns
+  const isScheduled = truck.status === 'busy';
+  
   S.repairs.push({
     id: S.nextId++,
     truckId: truck.id,
@@ -151,13 +155,36 @@ export function startRepair(S: any, truckId: number, selectedParts: string[]): b
     parts: selectedParts,
     cost: totalCost,
     saved: savedAmount,
-    start: now,
-    end: endsAt
+    start: isScheduled ? 0 : now, // Start 0 means waiting for arrival
+    end: isScheduled ? 0 : endsAt,
+    scheduled: isScheduled,
+    durationMs
   });
 
+  if (!isScheduled) {
+    truck.status = 'repair';
+  }
+
   const savingsMsg = savedAmount > 0 ? ` (Saved $${savedAmount.toLocaleString()} using inventory!)` : '';
-  toast(`Truck sent to Repair Bay. Estimated time: ${Math.round(durationMs / 1000)}s${savingsMsg}`, 'success');
+  const statusMsg = isScheduled ? 'Repair scheduled for unit return.' : `Truck sent to Repair Bay. Estimated time: ${Math.round(durationMs / 1000)}s`;
+  toast(`${statusMsg}${savingsMsg}`, 'success');
   return true;
+}
+
+/**
+ * Checks if a truck has a scheduled repair and starts it.
+ */
+export function processScheduledRepair(S: any, truckId: number) {
+  if (!S.repairs) return;
+  const rep = S.repairs.find((r: any) => r.truckId === truckId && r.scheduled);
+  if (rep) {
+    const now = Date.now();
+    rep.scheduled = false;
+    rep.start = now;
+    rep.end = now + rep.durationMs;
+    const truck = S.fleet.find((t: any) => t.id === truckId);
+    if (truck) truck.status = 'repair';
+  }
 }
 
 /**

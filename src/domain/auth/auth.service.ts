@@ -1,5 +1,6 @@
 import { set } from '../../core/store';
 import { UserAccount } from './auth.types';
+import { pushNote } from '../../systems/notify';
 
 const ACCOUNTS_KEY = 'sam.accounts.v1';
 
@@ -64,6 +65,11 @@ export const authService = {
     set(s => {
       s.isAuthenticated = true;
       s.company = company;
+      pushNote(s, `Enterprise Established: Welcome to NexHaul Logistics, ${company}! Your global logistics empire registration is complete.`, {
+        title: 'EMPIRE ESTABLISHED',
+        type: 'system',
+        priority: 2
+      });
     });
   }
 };
