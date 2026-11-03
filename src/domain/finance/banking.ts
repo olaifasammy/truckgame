@@ -116,3 +116,33 @@ export const REGIONAL_FUEL_SPOT = {
   Munich: { diesel: 1.68, adBlue: 0.82 },
   Tokyo: { diesel: 1.35, adBlue: 0.68 }
 };
+
+/**
+ * Calculates current market price for Fleet Bonds (Gold).
+ * Uses a deterministic fluctuation based on game ticks to ensure stability within a session
+ * but variability over time.
+ */
+export function getGoldMarketData(S: any) {
+  const basePrice = 9500; // Base price for 1 Fleet Bond
+  const hourSeed = Math.floor(Date.now() / (1000 * 60 * 60));
+  
+  // Use a pseudo-random wave for price fluctuation (+/- 15%)
+  const wave = Math.sin(hourSeed * 0.5) * 1200 + Math.cos(hourSeed * 0.3) * 300;
+  const currentPrice = Math.round(basePrice + wave);
+  
+  // Spread: 2.5% fee on selling
+  const sellPrice = Math.round(currentPrice * 0.975);
+  
+  // Trend indicator
+  const prevHourSeed = hourSeed - 1;
+  const prevWave = Math.sin(prevHourSeed * 0.5) * 1200 + Math.cos(prevHourSeed * 0.3) * 300;
+  const trend = currentPrice >= (basePrice + prevWave) ? 'bullish' : 'bearish';
+
+  return {
+    buyPrice: currentPrice,
+    sellPrice: sellPrice,
+    trend,
+    volatility: 'MEDIUM',
+    nextUpdateMs: (1000 * 60 * 60) - (Date.now() % (1000 * 60 * 60))
+  };
+}

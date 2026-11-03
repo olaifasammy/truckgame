@@ -11,9 +11,12 @@ let activeTab: 'employed' | 'pool' = 'employed';
 let selectedRegion: Region | 'All' = 'All';
 let expandedDriverId: number | null = null;
 let transferModalDriverId: number | null = null;
+let currentPage = 1;
+const DRIVERS_PER_PAGE = 10;
 
-action('driver-tab', d => { activeTab = (d as any).tab; refresh(); });
-action('driver-region', d => { selectedRegion = (d as any).region; refresh(); });
+action('driver-tab', d => { activeTab = (d as any).tab; currentPage = 1; refresh(); });
+action('driver-region', d => { selectedRegion = (d as any).region; currentPage = 1; refresh(); });
+action('driver-page', d => { currentPage = +(d as any).page; refresh(); });
 action('toggle-driver-expand', d => {
   const id = +(d as any).id;
   expandedDriverId = expandedDriverId === id ? null : id;
@@ -94,6 +97,11 @@ export default {
     const filteredEmployed = selectedRegion === 'All' ? employed : employed.filter((d: any) => (d.region || 'Africa') === selectedRegion);
     const filteredPool = selectedRegion === 'All' ? pool : pool.filter((d: any) => (d.region || 'Africa') === selectedRegion);
 
+    const list = activeTab === 'employed' ? filteredEmployed : filteredPool;
+    const totalPages = Math.ceil(list.length / DRIVERS_PER_PAGE) || 1;
+    if (currentPage > totalPages) currentPage = totalPages;
+    const paginatedList = list.slice((currentPage - 1) * DRIVERS_PER_PAGE, currentPage * DRIVERS_PER_PAGE);
+
     const regions: (Region | 'All')[] = ['All', 'America', 'Europe', 'Africa', 'Asia'];
 
     const transferDriverObj = employed.find((d: any) => d.id === transferModalDriverId);
@@ -129,14 +137,14 @@ export default {
           `).join('')}
         </div>
 
-        <!-- Employed Drivers List -->
-        ${activeTab === 'employed' ? `
-          <div style="display:flex; flex-direction:column; gap:10px;">
-            ${filteredEmployed.length === 0 ? '<div class="card" style="padding:30px; text-align:center; color:var(--mu);">No drivers found in this region.</div>' : 
-              filteredEmployed.map((d: any) => {
+        <!-- Driver List -->
+        <div style="display:flex; flex-direction:column; gap:10px;">
+          ${paginatedList.length === 0 ? `<div class="card" style="padding:30px; text-align:center; color:var(--mu);">${activeTab === 'employed' ? 'No drivers found in this region.' : 'No candidates available in this region. Check back later.'}</div>` : 
+            paginatedList.map((d: any) => {
+              if (activeTab === 'employed') {
                 const isExpanded = expandedDriverId === d.id;
                 const trait = TRAIT_REGISTRY[d.trait as keyof typeof TRAIT_REGISTRY];
-                const assignedTruck = S.fleet?.find((t: any) => t.id === d.assignedTruckId);
+                const assignedTruck = S.fleet?.find((t: any) => t.driverId === d.id || t.id === d.assignedTruckId);
                 const regionStr = (d.region || 'Africa').toUpperCase();
                 const stats = d.stats || { tripsCompleted: 0, kmDriven: 0, earned: 0 };
                 const morale = d.morale !== undefined ? d.morale : 90;
@@ -168,10 +176,10 @@ export default {
                           </div>
                         </div>
                       </div>
-                      <div style="text-align:right; display:flex; align-items:center; gap:10px;">
+                        <div style="text-align:right; display:flex; align-items:center; gap:10px;">
                         <div>
-                          <div style="font-size:10px; color:var(--grn); font-weight:700;">Morale: ${morale}%</div>
-                          <div style="font-size:10px; color:${fatigue > 75 ? '#ef4444' : 'var(--mu)'}; font-weight:700;">Fatigue: ${fatigue}%</div>
+                          <div style="font-size:10px; color:var(--grn); font-weight:700;">Morale: ${Math.round(morale)}%</div>
+                          <div style="font-size:10px; color:${fatigue > 75 ? '#ef4444' : 'var(--mu)'}; font-weight:700;">Fatigue: ${Math.round(fatigue)}%</div>
                         </div>
                         <div style="font-size:14px; color:var(--mu);">${isExpanded ? '▲' : '▼'}</div>
                       </div>
@@ -365,13 +373,7 @@ export default {
                     ` : ''}
                   </div>
                 `;
-              }).join('')}
-          </div>
-        ` : `
-          <!-- Recruitment Pool List -->
-          <div style="display:flex; flex-direction:column; gap:10px;">
-            ${filteredPool.length === 0 ? '<div class="card" style="padding:30px; text-align:center; color:var(--mu);">No candidates available in this region. Check back later.</div>' : 
-              filteredPool.map((d: any) => {
+              } else {
                 const trait = TRAIT_REGISTRY[d.trait as keyof typeof TRAIT_REGISTRY];
                 const cost = hireFee(d);
                 const regionStr = (d.region || 'Africa').toUpperCase();
@@ -397,9 +399,18 @@ export default {
                     </div>
                   </div>
                 `;
-              }).join('')}
+              }
+            }).join('')}
+        </div>
+
+        <!-- Pagination -->
+        ${totalPages > 1 ? `
+          <div style="display:flex; justify-content:center; align-items:center; gap:10px; margin-top:20px; padding:10px;">
+            <button class="btn alt" style="padding:6px 12px; font-size:10px; font-weight:800;" data-act="driver-page" data-page="${currentPage - 1}" ${currentPage === 1 ? 'disabled' : ''}>PREV</button>
+            <span style="font-size:11px; font-family:monospace; color:var(--mu);">PAGE ${currentPage} / ${totalPages}</span>
+            <button class="btn alt" style="padding:6px 12px; font-size:10px; font-weight:800;" data-act="driver-page" data-page="${currentPage + 1}" ${currentPage === totalPages ? 'disabled' : ''}>NEXT</button>
           </div>
-        `}
+        ` : ''}
 
         <!-- Transfer Region Modal -->
         ${transferDriverObj ? `

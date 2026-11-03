@@ -1,6 +1,7 @@
 import { TRUCK_MODELS } from './trucks.data';
 import { Truck, TruckModel, TrailerType } from './trucks.types';
 import { Driver } from '../drivers/drivers.types';
+import { TRAIT_REGISTRY } from '../drivers/drivers.names';
 
 export const PART_WEAR_COEFFICIENTS: Record<string, number> = {
   engine: 0.0001,
@@ -125,20 +126,32 @@ export function calculatePerformance(
   const driverSkill = driver ? driver.skill : 1;
   const driverFactor = 0.92 + (driverSkill * 0.02); // Skill ranges 1 to 5
 
+  // Driver Trait Modifiers
+  let traitFuelMod = 1.0;
+  let traitSpeedMod = 1.0;
+
+  if (driver?.trait) {
+    const traitDef = TRAIT_REGISTRY[driver.trait];
+    if (traitDef?.effect) {
+      if (traitDef.effect.fuelMod) traitFuelMod += traitDef.effect.fuelMod;
+      if (traitDef.effect.speedMod) traitSpeedMod += traitDef.effect.speedMod;
+    }
+  }
+
   // 6. Effective Power & Power-to-Weight Ratio
   const effectiveHp = model.engine.hp * engineHealth * altitudeAirDensityMod;
   const powerWeightRatio = effectiveHp / grossVehicleMass; // HP per tonne
 
   // 7. Physics Highway Cruising Speed
   const rawCruisingSpeed = (powerWeightRatio * 12.8) / Math.sqrt(cdA * gradeInclineDrag);
-  let topSpeed = Math.min(110, rawCruisingSpeed) * weatherSpeedMod * driverFactor * transHealth;
+  let topSpeed = Math.min(110, rawCruisingSpeed) * weatherSpeedMod * driverFactor * traitSpeedMod * transHealth;
   topSpeed = Math.max(30, Math.min(120, topSpeed));
 
   // 8. Acceleration Factor (0 - 1)
-  const acceleration = Math.max(0.1, Math.min(1.0, (powerWeightRatio / 60) * transHealth * weatherTractionMod));
+  const acceleration = Math.max(0.1, Math.min(1.0, (powerWeightRatio / 60) * transHealth * weatherTractionMod * traitSpeedMod));
 
   // 9. Dynamic Fuel Consumption (L/100km)
-  let fuelConsumption = ((model.engine.displacement * 1.5) + (grossVehicleMass * 0.45)) * gradeInclineDrag * weatherFuelMod;
+  let fuelConsumption = ((model.engine.displacement * 1.5) + (grossVehicleMass * 0.45)) * gradeInclineDrag * weatherFuelMod * traitFuelMod;
   fuelConsumption *= (2 - engineHealth);
   // Powertrain Customizations
   if (truck.upgrades?.gearbox === '16spd_crawler') {
@@ -191,18 +204,28 @@ export function applyTripWear(
   truck: Truck,
   distanceKm: number,
   payloadTonnes: number,
-  env?: EnvironmentalConditions
+  env?: EnvironmentalConditions,
+  driver?: Driver
 ) {
   const loadFactor = 1 + (payloadTonnes / 20);
   const envFactor = env?.weather === 'snow' ? 1.35 : env?.weather === 'heatwave' ? 1.25 : 1.0;
   const gradeFactor = 1 + ((env?.roadGrade || 1.5) * 0.03);
   
+  // Driver Trait Wear Modifier
+  let driverWearMod = 1.0;
+  if (driver?.trait) {
+    const traitDef = TRAIT_REGISTRY[driver.trait];
+    if (traitDef?.effect?.wearMod) {
+      driverWearMod += traitDef.effect.wearMod;
+    }
+  }
+
   Object.keys(truck.components).forEach(key => {
     const component = (truck.components as any)[key];
     const coefficient = PART_WEAR_COEFFICIENTS[key] || 0.0001;
     
     // Calculate wear amount
-    let wear = distanceKm * coefficient * loadFactor * envFactor * gradeFactor;
+    let wear = distanceKm * coefficient * loadFactor * envFactor * gradeFactor * driverWearMod;
     
     // Apply health reduction
     component.health = Math.max(0, parseFloat((component.health - wear).toFixed(2)));

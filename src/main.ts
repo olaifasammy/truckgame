@@ -11,9 +11,12 @@ import * as header from './ui/header';
 import * as nav from './ui/nav';
 import { replenish, completeJobs, processEconomics } from './systems/jobs';
 import { fillPool } from './systems/drivers';
+import { syncProgressionAudit } from './domain/company/progression';
 import { completeRepairs } from './systems/maintenance';
+import { pushNote } from './systems/notify';
 import { activeAuctionModalId, renderModalOverlay } from './views/home/auction-modal';
 import { tripMs } from './systems/calc';
+import { TRAIT_REGISTRY } from './domain/drivers/drivers.names';
 
 console.log('Main: Imports completed');
 
@@ -50,11 +53,12 @@ function renderApp(st: any) {
     if (headerEl) { headerEl.style.display = 'flex'; header.render(st); }
     if (navEl) { navEl.style.display = 'flex'; nav.render(st); }
 
-    const targetTab = st.tab && find(st.tab) ? st.tab : 'home';
-    if (st.tab !== targetTab) {
-      st.tab = targetTab;
+    const targetTab = 'company';
+    if (!st.tab || (st.tab === 'home' && !sessionStorage.getItem('init_tab_set'))) {
+      st.tab = 'company';
+      sessionStorage.setItem('init_tab_set', '1');
     }
-    const view = find(targetTab);
+    const view = find(st.tab && find(st.tab) ? st.tab : 'company');
     viewEl.innerHTML = view ? view.render(st) : 'View not found';
   } catch (e: any) {
     console.error('Main: Render crash', e);
@@ -105,6 +109,7 @@ try {
     }
     replenish(st);
     fillPool(st);
+    syncProgressionAudit(st);
     processEconomics(st, now);
     completeJobs(st, now);
     completeRepairs(st, now);
@@ -178,7 +183,82 @@ try {
       }
     });
 
-    // Update live header cash & bonds surgically if changed without re-rendering header
+    // Update truck odometers surgically
+    document.querySelectorAll('[data-truck-odo]').forEach(el => {
+      const truckId = +(el as HTMLElement).dataset.truckOdo!;
+      const truck = (st.fleet || []).find((t: any) => t.id === truckId);
+      if (truck) {
+        const formatted = Math.round(truck.odometer).toLocaleString() + ' km';
+        if (el.textContent?.trim() !== formatted) el.textContent = formatted;
+      }
+    });
+
+    // Update company total km stats surgically
+    document.querySelectorAll('[data-stat-km]').forEach(el => {
+      const formatted = (st.stats?.km || 0).toLocaleString() + ' km';
+      if (el.textContent?.trim() !== formatted) el.textContent = formatted;
+    });
+
+    // Check active drivers on the road for fatigue accumulation & 80% mandatory rest
+    if (st.active && st.active.length > 0) {
+      st.active.forEach((a: any) => {
+        const t = (st.fleet || []).find((tr: any) => tr.id === a.truck);
+        if (t && t.driverId) {
+          const drv = (st.drivers || []).find((d: any) => d.id === t.driverId);
+          if (drv) {
+            // Skip fatigue accumulation if currently resting en-route
+            if (drv.hosRestUntil && drv.hosRestUntil > now) {
+              a.lastFatigueTick = now;
+              return;
+            }
+
+            // Fatigue accumulation: ~9% per simulation hour (11h drive time = 100% fatigue)
+            // 1 simulation hour = 300,000ms (5 minutes)
+            if (!a.lastFatigueTick) a.lastFatigueTick = now;
+            const msElapsed = now - a.lastFatigueTick;
+            const simHoursElapsed = msElapsed / 300000;
+            
+            let fatigueMod = 1.0;
+            if (drv.trait) {
+              const traitDef = TRAIT_REGISTRY[drv.trait];
+              if (traitDef?.effect?.fatigueMod) {
+                fatigueMod += traitDef.effect.fatigueMod;
+              }
+            }
+
+            const fatigueGain = simHoursElapsed * 9.1 * fatigueMod;
+            drv.fatigue = Math.min(100, (drv.fatigue || 0) + fatigueGain);
+            // Clamp fatigue to integer for consistency in storage
+            drv.fatigue = Math.round(drv.fatigue * 100) / 100;
+            a.lastFatigueTick = now;
+
+            if (drv.fatigue >= 80) {
+              // Safety stop: reset fatigue/HOS and add 30s (real time) delay
+              drv.fatigue = 0;
+              drv.hosHours = 0;
+              const restDurationMs = 30000;
+              drv.hosRestUntil = now + restDurationMs;
+              a.end += restDurationMs;
+              pushNote(st, `${drv.name} reached 80% fatigue en-route and pulled over at a travel plaza for mandatory sleeper berth rest.`, { title: 'HOS SAFETY REST', type: 'ops' });
+              toast(`${drv.name} taking mandatory HOS rest (80% fatigue reached)`, 'info');
+            }
+          }
+        }
+      });
+    }
+    if (auctionChanged && st.tab === 'home') {
+      const activeEl = document.activeElement;
+      const isInputFocused = activeEl && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName);
+      if (!isInputFocused) {
+        const homeView = find('home');
+        const viewEl = $('view');
+        if (homeView && viewEl) {
+          const scrollY = window.scrollY;
+          viewEl.innerHTML = homeView.render(st);
+          window.scrollTo(0, scrollY);
+        }
+      }
+    }
     const cashEl = document.getElementById('hdr-cash-val');
     if (cashEl) {
       const formatted = fmt(st.money);

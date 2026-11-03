@@ -16,7 +16,7 @@ import { getTruckTelematics, getDrivingStateBadge } from '../domain/trucks/truck
 let openId: number | null = null, panel: string | null = null;
 let hitchModalTruckId: number | null = null;
 let garagePage = 1;
-const TRUCKS_PER_PAGE = 3;
+const TRUCKS_PER_PAGE = 10;
 let garageFilter: 'all' | 'parked' | 'transit' = 'all';
 
 action('garage-page-prev', () => {
@@ -169,28 +169,36 @@ function panelHtml(S: any, t: any, busy: boolean) {
           <span style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">COMMERCIAL DRIVER ROSTER & DISPATCH</span>
           <span style="font-size:9px; color:var(--mu); font-family:monospace;">CDL CLASS-A LICENSED</span>
         </div>
-        ${S.drivers.length > 0 ? S.drivers.map((d: any) => {
-          const cur = t.driverId === d.id;
-          const o = S.fleet.find((x: any) => x.driverId === d.id && x.id !== t.id);
-          const lock = o && o.status === 'busy';
-          return `
-            <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px; margin-bottom:6px; background:#111827; border:1px solid #1f293d; border-radius:6px;">
-              <div>
-                <div style="font-size:12px; font-weight:800; color:var(--tx);">${d.name}</div>
-                <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
-                  Skill Level ${d.skill}/5 · ${o ? `Assigned to Unit #${o.id}` : cur ? 'Currently in Command' : 'Off-Duty Standby'}
-                </div>
-              </div>
-              <button class="btn ${cur ? 'gold' : 'alt'}" style="padding:4px 10px; font-size:9px; font-weight:800;" data-act="assign" data-id="${t.id}" data-driver="${d.id}" ${cur || busy || lock ? 'disabled' : ''}>
-                ${cur ? 'ASSIGNED' : lock ? 'ON MISSION' : 'ASSIGN'}
-              </button>
+        ${(() => {
+          const list = S.drivers.filter((d: any) => {
+            const cur = t.driverId === d.id;
+            const assignedToOther = S.fleet.find((x: any) => x.driverId === d.id && x.id !== t.id);
+            return cur || !assignedToOther;
+          });
+
+          if (list.length === 0) return `
+            <div style="padding:14px; text-align:center; color:var(--mu); font-size:10px; font-family:monospace;">
+              NO AVAILABLE CDL DRIVERS. ALL PERSONNEL CURRENTLY ASSIGNED TO OTHER RIGS.
             </div>
           `;
-        }).join('') : `
-          <div style="padding:14px; text-align:center; color:var(--mu); font-size:10px; font-family:monospace;">
-            NO LICENSED CDL DRIVERS HIRED. VISIT HR CREW MANAGEMENT.
-          </div>
-        `}
+
+          return list.map((d: any) => {
+            const cur = t.driverId === d.id;
+            return `
+              <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px; margin-bottom:6px; background:#111827; border:1px solid #1f293d; border-radius:6px;">
+                <div>
+                  <div style="font-size:12px; font-weight:800; color:var(--tx);">${d.name}</div>
+                  <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
+                    Skill Level ${d.skill}/5 · ${cur ? 'Currently in Command' : 'Off-Duty Standby'}
+                  </div>
+                </div>
+                <button class="btn ${cur ? 'gold' : 'alt'}" style="padding:4px 10px; font-size:9px; font-weight:800;" data-act="assign" data-id="${t.id}" data-driver="${d.id}" ${cur || busy ? 'disabled' : ''}>
+                  ${cur ? 'ASSIGNED' : 'ASSIGN'}
+                </button>
+              </div>
+            `;
+          }).join('');
+        })()}
         ${t.driverId ? `
           <div style="margin-top:8px;">
             <button class="btn alt" style="width:100%; padding:6px; font-size:10px; font-weight:800; color:var(--red); border-color:rgba(239,68,68,0.3);" data-act="assign" data-id="${t.id}" data-driver="" ${busy ? 'disabled' : ''}>
@@ -321,7 +329,7 @@ function body(S: any, t: any, m: any, a: any, now: number) {
         ${cell('TRANSMISSION', t.upgrades?.gearbox === '16spd_crawler' ? '16-Spd Crawler' : '12-Spd Automated', t.upgrades?.gearbox === '16spd_crawler' ? 'Vocational Heavy' : 'Direct Drive')}
         ${cell('AXLE RATIO', t.upgrades?.axleRatio === 'heavy_diff_lock' ? '3.42:1 Diff Lock' : '2.64:1 Highway', m.axle)}
         ${cell('CRUISE RANGE', `~${estimatedRangeKm} km`, `Calculated`)}
-        ${cell('LIFETIME ODO', `${Math.round(t.odometer).toLocaleString()} km`, `Total Distance`)}
+        ${cell('LIFETIME ODO', `<span data-truck-odo="${t.id}">${Math.round(t.odometer).toLocaleString()} km</span>`, 'Total Distance')}
         ${cell('ENGINE HOURS', `${estimatedHours} hrs`, `Cumulative Run`)}
         ${cell('FUEL RATE', `${st.fuelConsumption.toFixed(1)} L/100`, `Telematics Avg`)}
       </div>
@@ -570,7 +578,7 @@ function truck(S: any, t: any) {
 
       <!-- Quick Telematics Bar -->
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--mu); font-family:monospace; padding-top:4px;">
-        <span>ODO: <b style="color:var(--tx);">${Math.round(t.odometer).toLocaleString()} km</b></span>
+        <span>ODO: <b style="color:var(--tx);" data-truck-odo="${t.id}">${Math.round(t.odometer).toLocaleString()} km</b></span>
         <span style="color:var(--gold); font-weight:700;">${o ? 'COLLAPSE TELEMATICS ▲' : 'EXPAND TELEMATICS ▼'}</span>
       </div>
 

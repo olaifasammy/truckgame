@@ -12,10 +12,12 @@ export interface Notification {
 }
 
 /**
- * Pushes a structured notification to the company inbox
+ * Pushes a structured notification to the company inbox.
+ * Strict Inbox Filtering: Only tracks FX & Crypto, major item purchases, truck breakdowns, asset increases, and rank promotions.
  */
 export function pushNote(S: any, msg: string, options?: { title?: string, type?: NotificationType, priority?: 0 | 1 | 2, body?: string }) {
   if (!S.notes) S.notes = [];
+  if (!S.logs) S.logs = [];
   
   const id = Math.random().toString(36).substring(2, 11);
   const note: Notification = {
@@ -29,33 +31,55 @@ export function pushNote(S: any, msg: string, options?: { title?: string, type?:
     priority: options?.priority ?? 0
   };
 
-  S.notes.unshift(note);
+  // 1. Central Logs (Always recorded for history)
+  S.logs.unshift(note);
+  if (S.logs.length > 250) S.logs.pop();
+
+  // 2. Strict Inbox Filtering: Only track allowed event categories
+  const lowerMsg = (msg + ' ' + note.title).toLowerCase();
   
-  // Cap at 150 historical notifications for realism/performance
-  if (S.notes.length > 150) S.notes.pop();
+  const isFxCrypto = lowerMsg.includes('exchange') || lowerMsg.includes('fleet bond') || lowerMsg.includes('crypto') || lowerMsg.includes('bitcoin') || lowerMsg.includes('mining') || lowerMsg.includes('flb');
+  const isMajorPurchase = lowerMsg.includes('purchase') || lowerMsg.includes('acquired') || lowerMsg.includes('depot') || lowerMsg.includes('leased') || lowerMsg.includes('investment');
+  const isTruckBreakdown = lowerMsg.includes('breakdown') || lowerMsg.includes('failure') || lowerMsg.includes('damage') || lowerMsg.includes('citation') || lowerMsg.includes('accident');
+  const isAssetIncrease = lowerMsg.includes('asset') || lowerMsg.includes('delivery complete') || lowerMsg.includes('expanded') || lowerMsg.includes('terminal');
+  const isRankPromotion = lowerMsg.includes('rank') || lowerMsg.includes('vip') || lowerMsg.includes('promotion') || lowerMsg.includes('attained');
+
+  const shouldInbox = isFxCrypto || isMajorPurchase || isTruckBreakdown || isAssetIncrease || isRankPromotion;
+
+  if (shouldInbox) {
+    S.notes.unshift(note);
+    if (S.notes.length > 150) S.notes.pop();
+  }
   
   return note;
 }
 
 export function markRead(S: any, id: string) {
-  const n = S.notes.find((x: any) => x.id === id);
-  if (n) n.read = true;
-}
-
-export function markAllRead(S: any) {
-  S.notes.forEach((n: any) => n.read = true);
+  if (!S.notes) return;
+  const note = S.notes.find((n: any) => n.id === id);
+  if (note) note.read = true;
 }
 
 export function deleteNote(S: any, id: string) {
+  if (!S.notes) return;
   S.notes = S.notes.filter((n: any) => n.id !== id);
 }
 
-export function deleteSelected(S: any, ids: string[]) {
-  S.notes = S.notes.filter((n: any) => !ids.includes(n.id));
+export function markAllRead(S: any) {
+  if (!S.notes) return;
+  for (const n of S.notes) {
+    n.read = true;
+  }
 }
 
-export function markSelectedRead(S: any, ids: string[]) {
-  S.notes.forEach((n: any) => {
-    if (ids.includes(n.id)) n.read = true;
-  });
+export function deleteSelected(S: any, ids: Set<string>) {
+  if (!S.notes) return;
+  S.notes = S.notes.filter((n: any) => !ids.has(n.id));
+}
+
+export function markSelectedRead(S: any, ids: Set<string>) {
+  if (!S.notes) return;
+  for (const n of S.notes) {
+    if (ids.has(n.id)) n.read = true;
+  }
 }

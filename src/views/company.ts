@@ -2,7 +2,7 @@ import { ic } from '../core/icons';
 import { action, fmt, dur, toast } from '../core/ui';
 import { set, refresh } from '../core/store';
 import { fillPool } from '../systems/drivers';
-import { getCompanyProgression, renderProgressLogoRing } from '../domain/company/progression';
+import { getCompanyProgression, renderProgressLogoRing, getBondRewardForTier } from '../domain/company/progression';
 import { CARGO_TYPES } from '../domain/freight/cargo/registry';
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { renderTelematicsOverlay } from './telematics-modal';
@@ -11,7 +11,7 @@ import { REGIONAL_HUBS, REGION_AUTHORITIES, RegionName, isRegionUnlocked, getOwn
 import { LOCATIONS } from '../data/world';
 
 let transitPage = 1;
-const TRANSIT_PER_PAGE = 3;
+const TRANSIT_PER_PAGE = 6;
 let hubTab: 'regions' | 'hubs' | 'routes' = 'regions';
 
 action('transit-page', d => {
@@ -124,6 +124,10 @@ export default {
             <span>${prog.xpInTier} XP</span>
             <span>Target: ${prog.targetXp} XP</span>
           </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; font-size:9px; font-family:monospace; color:var(--mu); margin-top:8px; padding-top:6px; border-top:1px dashed rgba(255,255,255,0.08);">
+            <span>PROMOTION REWARD:</span>
+            <span style="color:var(--gold); font-weight:900;">+${getBondRewardForTier(prog.tier + 1)} FLEET BONDS 🪙</span>
+          </div>
         </div>
       </div>
 
@@ -142,7 +146,7 @@ export default {
           <span class="stat-lab" style="font-size:9px; color:var(--mu); text-transform:uppercase; font-weight:700;">Gross Freight Revenue</span>
         </div>
         <div class="stat-box" style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:12px;">
-          <span class="stat-val" style="font-size:18px; font-weight:900; color:var(--gold); font-family:monospace;">${(S.stats?.km || 0).toLocaleString()} km</span>
+          <span class="stat-val" style="font-size:18px; font-weight:900; color:var(--gold); font-family:monospace;" data-stat-km>${(S.stats?.km || 0).toLocaleString()} km</span>
           <span class="stat-lab" style="font-size:9px; color:var(--mu); text-transform:uppercase; font-weight:700;">Highway Logged</span>
         </div>
       </div>
@@ -198,37 +202,29 @@ export default {
                 const telem = getTruckTelematics(truckObj, a, drv, now);
 
                 return `
-                  <div style="background:#0f172a; border:1px solid ${telem.stateBadgeColor}80; border-radius:10px; padding:12px; display:flex; flex-direction:column; gap:8px;">
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+                  <div style="background:#0f172a; border:1px solid ${telem.stateBadgeColor}80; border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                       <div style="min-width:0; flex:1;">
                         <div style="display:flex; align-items:center; gap:6px;">
-                          <span style="font-size:13px; font-weight:900; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                            ${cargoName}
-                          </span>
+                          <span style="font-size:12px; font-weight:900; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${cargoName}</span>
                           ${getDrivingStateBadge(telem.state, true)}
                         </div>
-                        <div style="font-size:11px; font-family:monospace; color:var(--gold); font-weight:800; margin-top:2px;">
-                          ${a.from} → ${a.to} <span style="color:var(--mu); font-weight:400;">(${a.km} km)</span>
-                        </div>
-                        <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:2px;">
-                          Unit #${a.truck} (${truckObj?.name || 'Tractor'}) · Driver: <b style="color:var(--tx);">${drv ? drv.name : 'CDL Driver'}</b> · Phase: <b style="color:#38bdf8;">${telem.phase}</b>
+                        <div style="font-size:10px; font-family:monospace; color:var(--gold); font-weight:800; margin-top:1px;">
+                          ${a.from} → ${a.to} <span style="color:var(--mu); font-weight:400;">(${a.km}km)</span>
                         </div>
                       </div>
-
-                      <button class="btn alt" style="padding:6px 12px; font-size:9px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.4); display:flex; align-items:center; gap:5px; flex-shrink:0;" data-act="open-telematics" data-id="${a.truck}">
-                        <span>🛰️</span> TELEMATICS (${telem.speedKmh} KM/H)
+                      <button class="btn alt" style="padding:4px 8px; font-size:9px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.3); display:flex; align-items:center; gap:4px; flex-shrink:0;" data-act="open-telematics" data-id="${a.truck}">
+                        🛰️ ${telem.speedKmh} KM/H
                       </button>
                     </div>
 
-                    <!-- Progress Bar & Live Countdown -->
-                    <div style="background:#080c16; border:1px solid #141d2e; border-radius:6px; padding:6px 10px;">
-                      <div style="display:flex; justify-content:space-between; align-items:center; font-size:9px; font-family:monospace; margin-bottom:4px;">
-                        <span style="color:var(--mu);">Progress: <b style="color:var(--grn);">${pct.toFixed(0)}%</b> · <b style="color:${telem.stateBadgeColor};">${telem.speedKmh > 0 ? telem.speedKmh + ' km/h' : telem.stateLabel}</b></span>
-                        <span style="color:var(--gold); font-weight:800;" data-eta="${a.end}">ETA: ${dur(remainingMs)}</span>
-                      </div>
-                      <div style="height:5px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
-                        <div style="width:${pct}%; height:100%; background:linear-gradient(90deg, #0284c7, #38bdf8); border-radius:3px; transition:width 0.5s ease;"></div>
-                      </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:9px; color:var(--mu); font-family:monospace; margin-top:-2px;">
+                      <span>#${a.truck} · ${drv ? drv.name : 'Driver'} · <b style="color:#38bdf8;">${telem.phase}</b></span>
+                      <span style="color:var(--gold); font-weight:800;" data-eta="${a.end}">${dur(remainingMs)}</span>
+                    </div>
+
+                    <div style="height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden;">
+                      <div style="width:${pct}%; height:100%; background:linear-gradient(90deg, #0284c7, #38bdf8); transition:width 0.5s ease;"></div>
                     </div>
                   </div>
                 `;
@@ -370,7 +366,7 @@ export default {
       <div style="padding:0 14px 14px;">
         <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
           <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">OPERATIONS & DISPATCH LOG</span>
-          <span class="mu-tx" style="font-size:9px; font-family:monospace;">${(S.notes || []).length} LOGS RECORDED</span>
+          <span class="mu-tx" style="font-size:9px; font-family:monospace;">${(S.logs || []).length} ENTRIES REGISTERED</span>
         </div>
 
         <div style="background:#050811; border:1px solid #1a2336; border-radius:10px; overflow:hidden; box-shadow:0 10px 25px rgba(0,0,0,0.4); font-family:monospace;">
@@ -380,36 +376,38 @@ export default {
               <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#ef4444; opacity:0.85;"></span>
               <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#f59e0b; opacity:0.85;"></span>
               <span style="display:inline-block; width:7px; height:7px; border-radius:50%; background:#10b981; opacity:0.85;"></span>
-              <span style="font-size:9px; font-weight:800; color:var(--tx); margin-left:6px; letter-spacing:0.5px;">SYSTEM CONSOLE · DISPATCH TELEMETRY</span>
+              <span style="font-size:9px; font-weight:800; color:var(--tx); margin-left:6px; letter-spacing:0.5px;">CENTRAL OPS LOG · LIVE TELEMETRY</span>
             </div>
             <div style="display:flex; align-items:center; gap:5px; font-size:9px;">
               <span style="display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--grn); box-shadow:0 0 5px var(--grn);"></span>
-              <span style="color:var(--grn); font-weight:800;">RECORDING</span>
+              <span style="color:var(--grn); font-weight:800;">SYNCED</span>
             </div>
           </div>
 
-          <!-- Console Feed Window -->
+          <!-- Console Feed Window (Using S.logs for full history) -->
           <div style="padding:10px 12px; max-height:240px; overflow-y:auto; display:flex; flex-direction:column; gap:5px; font-size:10px; line-height:1.5;">
-            ${(S.notes && S.notes.length > 0) ? S.notes.slice(0, 20).map((n: any, idx: number) => {
-              const text = String(n.t || '');
-              const isTenderWon = text.includes('Tender Won') || text.includes('Secured');
-              const isAuthority = text.includes('LICENSING') || text.includes('AUTHORITY');
-              const isCompetitor = text.includes('Contract Awarded') || text.includes('won the');
-              const logNum = String(idx + 1).padStart(2, '0');
-              const accentColor = isTenderWon ? 'var(--gold)' : isAuthority ? '#38bdf8' : isCompetitor ? 'var(--mu)' : 'var(--grn)';
+            ${(S.logs && S.logs.length > 0) ? S.logs.map((n: any, idx: number) => {
+              const text = n.msg || n.title || '';
+              const type = n.type || 'ops';
+              const logNum = String(S.logs.length - idx).padStart(3, '0');
+              
+              let color = 'var(--grn)';
+              if (type === 'finance') color = 'var(--gold)';
+              if (type === 'compliance' || type === 'alert') color = '#ef4444';
+              if (type === 'tender') color = '#38bdf8';
 
               return `
-                <div style="display:flex; align-items:flex-start; gap:8px; padding:3px 6px; border-radius:4px; background:rgba(255,255,255,0.02); border-left:2px solid ${accentColor};">
-                  <span style="color:var(--mu); font-size:9px; font-weight:700; flex-shrink:0;">[#${logNum}]</span>
-                  <span style="color:${accentColor}; font-weight:800; flex-shrink:0;">&gt;</span>
-                  <span style="color:${isTenderWon ? '#fef08a' : isAuthority ? '#e0f2fe' : 'var(--tx)'}; flex:1; word-break:break-word;">
-                    ${text}
+                <div style="display:flex; align-items:flex-start; gap:8px; padding:2px 4px;">
+                  <span style="color:var(--mu); font-size:8px; width:30px; flex-shrink:0;">[${logNum}]</span>
+                  <span style="color:${color}; opacity:0.8; flex-shrink:0;">&gt;</span>
+                  <span style="color:var(--tx); flex:1; word-break:break-word; opacity:0.9;">
+                    <span style="color:var(--mu); font-size:8px;">${fmt.time(n.at)}</span> ${text}
                   </span>
                 </div>
               `;
             }).join('') : `
               <div style="color:var(--mu); padding:12px; text-align:center; font-size:10px;">
-                &gt; NO DISPATCH TRANSMISSIONS RECORDED YET. CONSOLE LISTENING...
+                &gt; NO LOG DATA RECORDED. LISTENING FOR CARRIER SIGNALS...
               </div>
             `}
             <div style="display:flex; align-items:center; gap:6px; padding:2px 6px; color:var(--mu); font-size:9px; margin-top:2px;">

@@ -48,6 +48,7 @@ const DEF = () => ({
   leases: [] as any[],
   insurance: { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 },
   fuelBunker: { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 },
+  fuelBunkerLevel: 0,
   depots: ['hub_lagos'] as string[],
   unlockedRegions: ['Africa'] as ('Africa' | 'Europe' | 'America' | 'Asia')[],
   warehouseUpgrades: { cross_docking: false, cold_vault: false, gantry_crane: false } as Record<string, boolean>,
@@ -69,6 +70,7 @@ function fix(state: any) {
   if (!state.leases) state.leases = [];
   if (!state.insurance) state.insurance = { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 };
   if (!state.fuelBunker) state.fuelBunker = { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
+  if (state.fuelBunkerLevel === undefined) state.fuelBunkerLevel = 0;
   if (!state.depots) state.depots = ['hub_lagos'];
   if (!state.unlockedRegions || state.unlockedRegions.length === 0) {
     state.unlockedRegions = ['Africa'];
@@ -131,7 +133,17 @@ function fix(state: any) {
       if (!d.stats) d.stats = { tripsCompleted: 0, kmDriven: 0, earned: 0 };
     });
   }
-  if (!state.pool) state.pool = [];
+  if (state.drivers && state.fleet) {
+    state.drivers.forEach((d: any) => {
+      const assigned = state.fleet.find((t: any) => t.id === d.assignedTruckId || t.driverId === d.id);
+      if (assigned) {
+        d.assignedTruckId = assigned.id;
+        assigned.driverId = d.id;
+      } else {
+        d.assignedTruckId = null;
+      }
+    });
+  }
   if (state.pool) {
     state.pool.forEach((d: any) => {
       if (!d.region) d.region = 'Africa';

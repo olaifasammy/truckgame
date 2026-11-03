@@ -12,6 +12,9 @@ import { LOCATIONS } from '../data/world';
 import { isRegionUnlocked } from '../domain/logistics/network';
 import { INSURANCE_POLICIES } from '../domain/finance/banking';
 
+import { Driver } from '../domain/drivers/drivers.types';
+import { TRAIT_REGISTRY } from '../domain/drivers/drivers.names';
+
 export const fuelCost = (j: any, t?: any) => {
   if (t) return Math.round(fuelCostForTrip(j.km, t, j.weight));
   // Default estimate for job card preview
@@ -345,23 +348,25 @@ export function completeJobs(S: any, now: number) {
       const truckModel = t ? (TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730']) : null;
 
       if (t) {
+        const drv = (S.drivers || []).find((x: any) => x.id === t.driverId);
         const st = stats(S, t, a.weight || 0, a.env);
         t.status = 'idle';
         t.loc = a.to;
         syncUsage(t, km, st, a.env, S);
-        applyWear(t, km, a.weight || 0, a.env);
+        applyWear(t, km, a.weight || 0, a.env, drv);
 
         // Driver Hours of Service, Fatigue & Welfare Accrual
-        const drv = (S.drivers || []).find((x: any) => x.id === t.driverId);
         if (drv) {
           if (!drv.stats) drv.stats = { tripsCompleted: 0, kmDriven: 0, earned: 0 };
           drv.stats.tripsCompleted++;
           drv.stats.kmDriven += km;
           drv.stats.earned += Math.round(a.pay * 0.12);
 
-          const tripDriveHours = km / Math.max(50, st.topSpeed);
-          drv.hosHours = parseFloat(((drv.hosHours || 0) + tripDriveHours).toFixed(1));
-          drv.fatigue = Math.min(100, Math.round((drv.fatigue || 10) + (km / 75)));
+          // Fully rest driver upon job completion so they are always ready to move
+          drv.fatigue = 0;
+          drv.hosHours = 0;
+          drv.hosRestUntil = null;
+          pushNote(S, `${drv.name} completed consignment and returned to terminal fully rested and ready for dispatch.`, { title: 'DRIVER RESTED', type: 'ops' });
 
           // Environmental stress & weather wear
           if (a.env?.weather === 'snow' || a.env?.weather === 'heatwave') {
@@ -435,6 +440,17 @@ export function completeJobs(S: any, now: number) {
 
       let finalPay = a.pay;
 
+      // Driver Trait Bonuses
+      const drv = t ? (S.drivers || []).find((x: any) => x.id === t.driverId) : null;
+      if (drv?.trait) {
+        const traitDef = TRAIT_REGISTRY[drv.trait];
+        if (traitDef?.effect?.payoutMod) {
+          const traitBonus = Math.round(a.pay * traitDef.effect.payoutMod);
+          finalPay += traitBonus;
+          pushNote(S, `+$${traitBonus.toLocaleString()} trait bonus earned by ${drv.name} (${traitDef.name}).`, { title: 'DRIVER PERFORMANCE BONUS', type: 'finance' });
+        }
+      }
+
       // Warehouse Infrastructure Bonuses
       if (S.warehouseUpgrades?.cold_vault && (a.trailer === 'reefer' || cargo?.tempControlled)) {
         const coldBonus = Math.round(a.pay * 0.20);
@@ -462,22 +478,28 @@ export function completeJobs(S: any, now: number) {
         if (tender) {
           tender.completedLoads = (tender.completedLoads || 0) + 1;
           tender.loadsRemaining = Math.max(0, tender.loadsRemaining - 1);
-          if (tender.loadsRemaining === 0) {
+          if ((tender.completedLoads >= tender.totalLoads || tender.loadsRemaining <= 0) && !tender.bonusAwarded) {
+            tender.bonusAwarded = true;
             S.money += tender.bonusPayout;
-            pushNote(S, `${tender.client} awarded $${tender.bonusPayout.toLocaleString()} SLA performance bonus!`, {
-              title: 'TENDER COMPLETE',
+            S.stats.earned += tender.bonusPayout;
+            pushNote(S, `${tender.client} contract completed! Awarded $${tender.bonusPayout.toLocaleString()} SLA performance bonus!`, {
+              title: 'CORPORATE TENDER COMPLETED',
               type: 'tender',
               priority: 1,
               body: `Corporate Tender ID: ${a.tenderId}\nClient: ${tender.client}\nPerformance Bonus: $${tender.bonusPayout.toLocaleString()}\nSLA Met: 100%`
             });
+            toast(`Tender Completed: ${tender.client}! +$${tender.bonusPayout.toLocaleString()} Bonus 🪙`, 'success');
+            
+            // Remove completed tender so new enterprise contracts from other companies become available
+            S.corporateTenders = S.corporateTenders.filter((ct: any) => ct.id !== a.tenderId);
           }
         }
       }
 
-      const baseXp = 140;
-      const kmXp = Math.round((a.km || 0) * 0.12);
-      const auctionBonus = a.isAuctionWon ? 90 : 0;
-      const hazmatBonus = cargo?.isHazmat ? 75 : 0;
+      const baseXp = 25;
+      const kmXp = Math.round((a.km || 0) * 0.02);
+      const auctionBonus = a.isAuctionWon ? 20 : 0;
+      const hazmatBonus = cargo?.isHazmat ? 15 : 0;
       const totalXp = baseXp + kmXp + auctionBonus + hazmatBonus;
 
       addCompanyXp(S, totalXp, `Delivery: ${cargo?.name || 'Freight'}`);
@@ -491,13 +513,38 @@ export function completeJobs(S: any, now: number) {
  * Processes passive income and economic ticks based on elapsed time.
  * Supports offline progression.
  */
+import { processMiningTick } from '../domain/finance/markets/mining';
+
 export function processEconomics(S: any, now: number) {
   if (!S.lastTick) S.lastTick = now;
   const elapsedMs = now - S.lastTick;
   if (elapsedMs <= 0) return;
 
   const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+  // Check and settle any completed corporate tenders retroactively or on tick
+  if (S.corporateTenders && S.corporateTenders.length > 0) {
+    S.corporateTenders = S.corporateTenders.filter((tender: any) => {
+      if ((tender.completedLoads >= tender.totalLoads || tender.loadsRemaining <= 0) && !tender.bonusAwarded) {
+        tender.bonusAwarded = true;
+        S.money += tender.bonusPayout;
+        S.stats.earned += tender.bonusPayout;
+        pushNote(S, `${tender.client} contract completed! Awarded $${tender.bonusPayout.toLocaleString()} SLA performance bonus!`, {
+          title: 'CORPORATE TENDER COMPLETED',
+          type: 'tender',
+          priority: 1,
+          body: `Corporate Tender ID: ${tender.id}\nClient: ${tender.client}\nPerformance Bonus: $${tender.bonusPayout.toLocaleString()}\nSLA Met: 100%`
+        });
+        toast(`Tender Completed: ${tender.client}! +$${tender.bonusPayout.toLocaleString()} Bonus 🪙`, 'success');
+        return false; // Remove completed tender
+      }
+      return tender.loadsRemaining > 0;
+    });
+  }
   
+  // Process Crypto Mining Yield & Electricity Costs
+  processMiningTick(S, elapsedMs);
+
   let dailyInflow = 0;
   let dailyOutflow = 0;
 
@@ -587,6 +634,23 @@ export function processEconomics(S: any, now: number) {
     for (const lease of S.leases) {
       lease.daysRemaining = Math.max(0, lease.daysRemaining - (elapsedMs / MS_PER_DAY));
     }
+  }
+
+  // 6. Instant Idle Recovery
+  // Drivers are considered rested immediately when not on an active dispatch.
+  if (S.drivers && S.drivers.length > 0) {
+    S.drivers.forEach((drv: any) => {
+      const isOnTrip = (S.active || []).some((a: any) => {
+        const truck = (S.fleet || []).find((t: any) => t.id === a.truck);
+        return truck && truck.driverId === drv.id;
+      });
+
+      if (!isOnTrip) {
+        drv.fatigue = 0;
+        drv.hosHours = 0;
+        drv.hosRestUntil = null;
+      }
+    });
   }
 
   S.lastTick = now;

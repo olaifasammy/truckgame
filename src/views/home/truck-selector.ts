@@ -244,9 +244,9 @@ export function renderSelectorOverlay(S: any) {
 
   const missingLicense = requiredLicenseId && !hasLicense(S, requiredLicenseId) ? FREIGHT_LICENSES[requiredLicenseId] : null;
 
-  // Compatible Fleet
   const fleet = S.fleet || [];
-  const compatibleFleet = fleet.filter((t: any) => !why(S, t, job));
+  // Show only idle tractors, but include currently matched tractor if user re-opens
+  const compatibleFleet = fleet.filter((t: any) => t.status === 'idle' && !why(S, t, job));
   
   let existing = document.getElementById('truck-selector-overlay');
   if (!existing) {
@@ -360,7 +360,7 @@ export function renderSelectorOverlay(S: any) {
                         <span>HITCHED: <b>${trailerDesc.toUpperCase()}</b></span>
                       </div>
                       <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
-                        Driver: <b style="color:var(--tx);">${drv ? drv.name : 'Unassigned'}</b> · Fuel: <b style="color:var(--grn);">${t.fluids?.fuel || 0}L</b> <span style="color:var(--mu); font-size:8px;">(Auto-refills)</span>
+                        Driver: <b style="color:var(--tx);">${drv ? drv.name : 'Unassigned'}</b> · Fuel: <b style="color:var(--grn);">${Math.round(t.fluids?.fuel || 0)}L</b>
                       </div>
                     </div>
                   </div>
@@ -376,121 +376,12 @@ export function renderSelectorOverlay(S: any) {
           <!-- No Compatible Trucks Notice -->
           <div style="padding:16px 14px; text-align:center; background:#070a12; border:1px dashed #1e2638; border-radius:8px;">
             <div style="font-size:24px; margin-bottom:4px;">🚛</div>
-            <div style="font-weight:800; font-size:12px; color:var(--gold);">No Fully Compatible Tractors Ready Right Now</div>
+            <div style="font-weight:800; font-size:12px; color:var(--gold);">No Compatible Tractors Ready For Dispatch</div>
             <div style="font-size:10px; color:var(--mu); margin-top:4px; font-family:monospace; line-height:1.4;">
-              ${missingLicense ? 'Your company needs to acquire the regulatory freight authority above to transport this class.' : 'Resolve driver endorsement or trailer coupling requirements below to dispatch.'}
+              Ensure you have idle trucks with the correct trailer and qualified drivers assigned in the Garage.
             </div>
           </div>
         `}
-
-        <!-- Ineligible Fleet Diagnostics & Quick Resolution Section -->
-        ${(() => {
-          const ineligible = fleet.filter((t: any) => why(S, t, job));
-          if (ineligible.length === 0) return '';
-
-          const busy = ineligible.filter((t: any) => t.status === 'busy');
-          const noDriver = ineligible.filter((t: any) => t.status !== 'busy' && !t.driverId);
-          const wrongTrailer = ineligible.filter((t: any) => t.status !== 'busy' && t.driverId && (why(S, t, job)?.includes('Requires') || why(S, t, job)?.includes('trailer')));
-          const needsCert = ineligible.filter((t: any) => t.status !== 'busy' && t.driverId && (why(S, t, job)?.includes('Certification') || why(S, t, job)?.includes('Endorsement')));
-
-          let certRequired = 'ADR Hazmat';
-          if (cargo?.tempControlled) certRequired = 'Cold Chain';
-          if (trailerType === 'lowboy') certRequired = 'Heavy Haul';
-          if (trailerType === 'double_trailer') certRequired = 'Double Trailer LCV';
-
-          return `
-            <div style="background:#070a12; border:1px solid #1a2336; border-radius:10px; padding:12px; font-family:monospace; font-size:10px;">
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:6px;">
-                <span style="font-weight:900; color:var(--gold); text-transform:uppercase;">
-                  FLEET DIAGNOSTIC (${ineligible.length} INELIGIBLE / ${fleet.length} TOTAL)
-                </span>
-                <span style="font-size:9px; color:${compatibleFleet.length > 0 ? 'var(--grn)' : 'var(--mu)'};">
-                  ${compatibleFleet.length} READY TO DISPATCH
-                </span>
-              </div>
-
-              <!-- Actionable Resolution Categories -->
-              <div style="display:flex; flex-direction:column; gap:6px;">
-                ${busy.length > 0 ? `
-                  <div style="display:flex; justify-content:space-between; align-items:center; background:#0e1320; padding:8px 10px; border-radius:6px; border:1px solid #1e2638;">
-                    <span style="color:var(--mu);">🚚 <b>${busy.length} Vehicles</b> currently in transit en-route</span>
-                    <span style="color:var(--gold); font-size:9px; font-weight:800;">EN-ROUTE</span>
-                  </div>
-                ` : ''}
-
-                ${noDriver.length > 0 ? `
-                  <div style="display:flex; justify-content:space-between; align-items:center; background:#0e1320; padding:8px 10px; border-radius:6px; border:1px solid #1e2638; gap:8px;">
-                    <span style="color:var(--mu);">👤 <b>${noDriver.length} Vehicles</b> have no CDL driver assigned</span>
-                    <button class="btn alt" style="padding:4px 8px; font-size:8px; font-weight:800; flex-shrink:0;" onclick="document.getElementById('truck-selector-overlay')?.remove(); window.dispatchEvent(new CustomEvent('nav-tab', {detail:{tab:'garage'}}));">ASSIGN IN GARAGE</button>
-                  </div>
-                ` : ''}
-
-                ${wrongTrailer.length > 0 ? (() => {
-                  const availableCount = (S.trailers || []).filter((t: string) => t === trailerType).length;
-                  const trailerName = TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType;
-                  const price = (TRAILER_PRICES as any)[trailerType] || 15000;
-
-                  return `
-                    <div style="display:flex; justify-content:space-between; align-items:center; background:#0e1320; padding:8px 10px; border-radius:6px; border:1px solid #1e2638; gap:8px;">
-                      <div style="min-width:0; flex:1;">
-                        <span style="color:var(--mu);">🔗 <b>${wrongTrailer.length} Tractors</b> need ${trailerName}</span>
-                        <div style="font-size:8px; color:${availableCount > 0 ? 'var(--grn)' : '#f87171'}; font-weight:800; margin-top:2px;">
-                          ${availableCount > 0 ? `✓ ${availableCount} available in HQ Storage` : `⚠ None in Storage (Requires $${price.toLocaleString()} purchase)`}
-                        </div>
-                      </div>
-                      ${availableCount > 0 ? `
-                        <button class="btn gold" style="padding:4px 8px; font-size:8px; font-weight:800; flex-shrink:0;" data-act="batch-hitch-trailer" data-trailer="${trailerType}">AUTO-HITCH ALL</button>
-                      ` : `
-                        <button class="btn gold" style="padding:4px 8px; font-size:8px; font-weight:800; flex-shrink:0;" data-act="quick-buy-trailer" data-trailer="${trailerType}" ${S.money < price ? 'disabled' : ''}>BUY 1x ($${(price/1000).toFixed(1)}k)</button>
-                      `}
-                    </div>
-                  `;
-                })() : ''}
-
-                ${needsCert.length > 0 ? `
-                  <div style="display:flex; justify-content:space-between; align-items:center; background:#0e1320; padding:8px 10px; border-radius:6px; border:1px solid #1e2638; gap:8px;">
-                    <span style="color:var(--mu);">🎓 <b>${needsCert.length} Drivers</b> require ${certRequired}</span>
-                    <button class="btn gold" style="padding:4px 8px; font-size:8px; font-weight:800; flex-shrink:0;" data-act="batch-certify-drivers" data-cert="${certRequired}">CERTIFY ALL</button>
-                  </div>
-                ` : ''}
-              </div>
-
-              <!-- Individual Fleet Listing with Per-Tractor Status -->
-              <div style="margin-top:10px; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px;">
-                <div style="font-size:9px; color:var(--mu); font-weight:800; margin-bottom:6px; text-transform:uppercase;">
-                  Individual Tractor Roster:
-                </div>
-                <div style="display:flex; flex-direction:column; gap:4px; max-height:160px; overflow-y:auto;">
-                  ${fleet.map((t: any) => {
-                    const reason = why(S, t, job);
-                    const isOk = !reason;
-                    const drv = (S.drivers || []).find((x: any) => x.id === t.driverId);
-                    return `
-                      <div style="background:#090d18; border:1px solid ${isOk ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.04)'}; border-radius:6px; padding:6px 8px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                        <div style="min-width:0; flex:1;">
-                          <div style="font-size:10px; font-weight:800; color:${isOk ? 'var(--grn)' : 'var(--tx)'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                            ${t.name} ${drv ? `(${drv.name})` : '(No Driver)'}
-                          </div>
-                          <div style="font-size:8px; color:${isOk ? 'var(--grn)' : '#f87171'}; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-                            ${isOk ? '✓ Eligible and ready' : reason}
-                          </div>
-                        </div>
-
-                        ${!isOk && t.driverId && reason?.includes('Certification') ? `
-                          <button class="btn gold" style="padding:2px 6px; font-size:8px; font-weight:800; flex-shrink:0;" data-act="quick-certify-driver" data-truck-id="${t.id}" data-cert="${certRequired}">CERTIFY ($${certRequired === 'ADR Hazmat' ? '6.5k' : '3.5k'})</button>
-                        ` : ''}
-
-                        ${!isOk && (t.fluids?.fuel || 0) < 100 && t.status !== 'busy' ? `
-                          <button class="btn gold" style="padding:2px 6px; font-size:8px; font-weight:800; flex-shrink:0;" data-act="quick-refuel" data-truck-id="${t.id}">REFUEL ($150)</button>
-                        ` : ''}
-                      </div>
-                    `;
-                  }).join('')}
-                </div>
-              </div>
-            </div>
-          `;
-        })()}
 
       </div>
 

@@ -1,13 +1,25 @@
 import { ic } from '../core/icons';
 import { fmt, action, toast } from '../core/ui';
 import { refresh, set } from '../core/store';
-import { AVAILABLE_LOANS, calculateCreditRating, INSURANCE_POLICIES, REGIONAL_FUEL_SPOT } from '../domain/finance/banking';
+import { AVAILABLE_LOANS, calculateCreditRating, INSURANCE_POLICIES, REGIONAL_FUEL_SPOT, getGoldMarketData } from '../domain/finance/banking';
 import { createTruck } from '../domain/trucks/trucks.physics';
 
-let financeTab: 'cashflow' | 'banking' | 'fuel' | 'insurance' = 'cashflow';
+// Modular Tab Imports
+import { renderTreasuryTab } from './finance/tabs/treasury';
+import { renderExchangeTab } from './finance/tabs/exchange';
+import { renderFinanceNav } from './finance/tabs/shared';
+
+// Initialize tab state if not present on window
+if (!(window as any).financeTab) (window as any).financeTab = 'treasury';
+let accountsReceivableOpen = false;
 
 action('finance-tab', d => {
-  financeTab = (d as any).tab;
+  (window as any).financeTab = (d as any).tab;
+  refresh();
+});
+
+action('toggle-receivable', () => {
+  accountsReceivableOpen = !accountsReceivableOpen;
   refresh();
 });
 
@@ -16,31 +28,14 @@ action('take-loan', d => {
   set(S => {
     const loanDef = AVAILABLE_LOANS.find(l => l.id === loanId);
     if (!loanDef) return;
-
     if (!S.loans) S.loans = [];
-    if (S.loans.some((l: any) => l.id === loanId)) {
-      return toast('You already have this active credit facility', 'err');
-    }
-
+    if (S.loans.some((l: any) => l.id === loanId)) return toast('Active loan exists', 'err');
     const { rating } = calculateCreditRating(S);
     const order = ['BBB', 'A', 'AA', 'AAA'];
-    if (order.indexOf(rating) < order.indexOf(loanDef.requiredRating)) {
-      return toast(`Credit rating ${loanDef.requiredRating} required (Current: ${rating})`, 'err');
-    }
-
-    S.loans.push({
-      id: loanDef.id,
-      name: loanDef.name,
-      principal: loanDef.principal,
-      balance: loanDef.principal,
-      apr: loanDef.apr,
-      dailyRate: loanDef.dailyRate,
-      termDays: loanDef.termDays,
-      daysRemaining: loanDef.termDays
-    });
-
+    if (order.indexOf(rating) < order.indexOf(loanDef.requiredRating)) return toast('Low credit rating', 'err');
+    S.loans.push({ ...loanDef, balance: loanDef.principal, daysRemaining: loanDef.termDays });
     S.money += loanDef.principal;
-    toast(`Commercial Loan Approved: +$${loanDef.principal.toLocaleString()} disbursed to working capital!`, 'success');
+    toast(`Loan Disbursed: +$${loanDef.principal.toLocaleString()}`, 'success');
   });
 });
 
@@ -48,13 +43,10 @@ action('payoff-loan', d => {
   const loanId = (d as any).id;
   set(S => {
     const loan = S.loans?.find((l: any) => l.id === loanId);
-    if (!loan) return;
-    if (S.money < loan.balance) {
-      return toast(`Insufficient funds to clear $${loan.balance.toLocaleString()} balance`, 'err');
-    }
+    if (!loan || S.money < loan.balance) return toast('Insufficient funds', 'err');
     S.money -= loan.balance;
     S.loans = S.loans.filter((l: any) => l.id !== loanId);
-    toast(`Loan fully paid off and settled: $${loan.balance.toLocaleString()}`, 'success');
+    toast('Loan Settled', 'success');
   });
 });
 
@@ -62,29 +54,25 @@ action('lease-tractor', d => {
   const modelId = (d as any).modelId || 'scania_s730';
   set(S => {
     const downPayment = 18000;
-    const dailyRate = 480;
-    if (S.money < downPayment) {
-      return toast(`Insufficient down payment ($${downPayment.toLocaleString()}) for commercial lease`, 'err');
-    }
-
+    if (S.money < downPayment) return toast('Insufficient funds', 'err');
     S.money -= downPayment;
-    const newTruckId = (S.fleet.reduce((max: number, t: any) => Math.max(max, t.id), 0) || 0) + 1;
-    const leasedTruck = createTruck(newTruckId, modelId, `Leased S730 #${newTruckId}`, 'LAGOS');
-    S.fleet.push(leasedTruck);
-
+    const newId = (S.fleet.reduce((m: any, t: any) => Math.max(m, t.id), 0) || 0) + 1;
+    S.fleet.push(createTruck(newId, modelId, `Leased ${modelId}`, 'LAGOS'));
     if (!S.leases) S.leases = [];
-    S.leases.push({
-      id: `lease_${Date.now()}`,
-      modelId,
-      name: `Leased ${modelId}`,
-      downPayment,
-      dailyRate,
-      termDays: 45,
-      daysRemaining: 45,
-      truckId: newTruckId
-    });
+    S.leases.push({ id: `L${Date.now()}`, modelId, downPayment, dailyRate: 480, termDays: 45, daysRemaining: 45, truckId: newId });
+    toast('Lease Activated', 'success');
+  });
+});
 
-    toast(`Equipment Lease Activated: Unit #${newTruckId} delivered to depot!`, 'success');
+action('upgrade-fuel-bunker', () => {
+  set(S => {
+    const nextLevel = (S.fuelBunkerLevel || 0) + 1;
+    const cost = 25000 * Math.pow(2, nextLevel - 1);
+    if (S.money < cost) return toast('Insufficient funds', 'err');
+    S.money -= cost;
+    S.fuelBunkerLevel = nextLevel;
+    S.fuelBunker.maxCapacity += 12000;
+    toast('Bunker Expanded', 'success');
   });
 });
 
@@ -92,31 +80,24 @@ action('buy-wholesale-fuel', d => {
   const liters = +(d as any).liters;
   const spotPrice = +(d as any).price || 0.82;
   set(S => {
-    if (!S.fuelBunker) S.fuelBunker = { currentLiters: 0, maxCapacity: 12000, avgCostPerLiter: 0.95 };
-    const room = S.fuelBunker.maxCapacity - S.fuelBunker.currentLiters;
-    const toBuy = Math.min(room, liters);
-    if (toBuy <= 0) return toast('HQ Fuel Bunker storage tank is at maximum capacity (12,000L)', 'err');
-
-    const totalCost = Math.round(toBuy * spotPrice);
-    if (S.money < totalCost) {
-      return toast(`Insufficient cash to purchase ${toBuy}L ($${totalCost.toLocaleString()})`, 'err');
-    }
-
-    S.money -= totalCost;
-    const prevLiters = S.fuelBunker.currentLiters;
-    const prevCost = S.fuelBunker.avgCostPerLiter || spotPrice;
-    S.fuelBunker.currentLiters += toBuy;
-    S.fuelBunker.avgCostPerLiter = parseFloat(((prevLiters * prevCost + totalCost) / S.fuelBunker.currentLiters).toFixed(2));
-    toast(`Purchased ${toBuy.toLocaleString()}L wholesale diesel at $${spotPrice}/L into HQ Bunker!`, 'success');
+    const bunker = S.fuelBunker;
+    const toBuy = Math.min(bunker.maxCapacity - bunker.currentLiters, liters);
+    const cost = Math.round(toBuy * spotPrice);
+    if (toBuy <= 0 || S.money < cost) return toast('Cannot purchase', 'err');
+    S.money -= cost;
+    const prevL = bunker.currentLiters;
+    const prevC = bunker.avgCostPerLiter || spotPrice;
+    bunker.currentLiters += toBuy;
+    bunker.avgCostPerLiter = parseFloat(((prevL * prevC + cost) / bunker.currentLiters).toFixed(2));
+    toast(`Refilled ${toBuy}L`, 'success');
   });
 });
 
 action('toggle-insurance', d => {
-  const policyId = (d as any).id as 'liability' | 'collision' | 'cargo';
+  const id = (d as any).id as any;
   set(S => {
-    if (!S.insurance) S.insurance = { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 };
-    S.insurance[policyId] = !S.insurance[policyId];
-    toast(`Insurance Policy ${S.insurance[policyId] ? 'Activated' : 'Suspended'}: ${INSURANCE_POLICIES[policyId]?.name}`, 'success');
+    S.insurance[id] = !S.insurance[id];
+    toast('Policy Updated', 'success');
   });
 });
 
@@ -125,315 +106,84 @@ export default {
   icon: 'cash',
   label: 'Finance',
   render: (S: any) => {
+    const financeTab = (window as any).financeTab || 'treasury';
     const { rating, score, maxCredit } = calculateCreditRating(S);
-    const totalLoanDebt = (S.loans || []).reduce((sum: number, l: any) => sum + (l.balance || 0), 0);
-    const enterpriseValue = S.money + (S.fleet.length * 125000) + ((S.offices?.length || 0) * 50000) - totalLoanDebt;
     const bunker = S.fuelBunker || { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
-    const ins = S.insurance || { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 };
-
-    const dailyWarehouseInflow = (S.warehouseUpgrades?.cross_docking ? 1200 : 0) + (S.warehouseUpgrades?.gantry_crane ? 600 : 0);
-    const subcontractCount = (S.subcontractedTrucks || []).length;
-    const dailySubcontractInflow = subcontractCount * 1800;
-    const totalDailyInflow = dailyWarehouseInflow + dailySubcontractInflow;
-
-    const dailyPayroll = (S.drivers || []).reduce((acc: number, d: any) => acc + (d.salary || 250), 0);
-    let dailyInsurance = 0;
-    if (S.insurance) {
-      if (S.insurance.liability) dailyInsurance += INSURANCE_POLICIES.liability?.dailyCost || 85;
-      if (S.insurance.collision) dailyInsurance += INSURANCE_POLICIES.collision?.dailyCost || 220;
-      if (S.insurance.cargo) dailyInsurance += INSURANCE_POLICIES.cargo?.dailyCost || 310;
-    }
-    const dailyDebtService = (S.loans || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0);
-    const dailyLeases = (S.leases || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0);
-    const totalDailyOutflow = dailyPayroll + dailyInsurance + dailyDebtService + dailyLeases;
-    const netDailyCashflow = totalDailyInflow - totalDailyOutflow;
-    const runwayDays = netDailyCashflow < 0 ? Math.floor(S.money / Math.abs(netDailyCashflow)) : null;
+    const ins = S.insurance || { liability: true, collision: true, cargo: false };
 
     return `
       <div style="padding: 16px; padding-bottom: 90px;">
-        <!-- Header Banner -->
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:14px;">
           <div>
-            <div style="font-size: 10px; color: var(--gold); font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase;">
-              CORPORATE TREASURY & BANKING
-            </div>
-            <div style="font-size: 22px; font-weight: 900; color: var(--tx); margin-top:2px;">
-              Enterprise Financials
-            </div>
+            <div style="font-size: 9px; color: var(--gold); font-weight: 900; letter-spacing: 1.5px; text-transform: uppercase;">TREASURY & BANKING</div>
+            <div style="font-size: 20px; font-weight: 900; color: var(--tx); margin-top:2px;">Enterprise Finance</div>
           </div>
           <div style="text-align:right;">
-            <div style="font-size: 9px; color: var(--mu); text-transform:uppercase;">CREDIT RATING</div>
-            <div style="font-size: 16px; font-weight: 900; color: var(--gold); font-family:monospace;">
-              ${rating} <span style="font-size:10px; color:var(--tx); font-weight:700;">(${score} Pts)</span>
-            </div>
+            <div style="font-size: 9px; color: var(--mu);">CREDIT GRADE</div>
+            <div style="font-size: 15px; font-weight: 900; color: var(--gold); font-family:monospace;">${rating} <span style="font-size:9px; color:var(--tx); opacity:0.6;">(${score})</span></div>
           </div>
         </div>
 
-        <!-- Segmented Navigation Controls -->
-        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:16px;">
-          <button class="btn ${financeTab === 'cashflow' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:10px; font-weight:800;" data-act="finance-tab" data-tab="cashflow">
-            Treasury
-          </button>
-          <button class="btn ${financeTab === 'banking' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:10px; font-weight:800;" data-act="finance-tab" data-tab="banking">
-            Credit & Loans
-          </button>
-          <button class="btn ${financeTab === 'fuel' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:10px; font-weight:800;" data-act="finance-tab" data-tab="fuel">
-            Fuel Bunker
-          </button>
-          <button class="btn ${financeTab === 'insurance' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:10px; font-weight:800;" data-act="finance-tab" data-tab="insurance">
-            Insurance
-          </button>
-        </div>
+        ${renderFinanceNav(financeTab)}
 
-        <!-- 1. Treasury & Cash Flow Sub-View -->
-        ${financeTab === 'cashflow' ? `
-          <div class="grid2" style="margin-bottom:14px;">
-            <div class="stat-box" style="background:#111827; border:1px solid #1f293d; border-radius:10px; padding:12px;">
-              <span class="stat-lab" style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">TOTAL REVENUE</span>
-              <span class="stat-val" style="color:var(--grn); font-size:20px; font-weight:900; font-family:monospace;">${fmt(S.stats.earned)}</span>
-            </div>
-            <div class="stat-box" style="background:#111827; border:1px solid #1f293d; border-radius:10px; padding:12px;">
-              <span class="stat-lab" style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">LIQUID WORKING CAPITAL</span>
-              <span class="stat-val" style="font-size:20px; font-weight:900; color:var(--tx); font-family:monospace;">${fmt(S.money)}</span>
-            </div>
-          </div>
+        ${financeTab === 'treasury' ? renderTreasuryTab(S) : ''}
+        ${financeTab === 'exchange' ? renderExchangeTab(S) : ''}
 
-          <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase;">Daily Recurring Cashflow & P&L</span>
-            <span style="font-size:9px; color:${netDailyCashflow >= 0 ? 'var(--grn)' : '#ef4444'}; font-weight:800; font-family:monospace;">
-              ${netDailyCashflow >= 0 ? `+${fmt(netDailyCashflow)}/DAY NET PROFIT` : `-${fmt(Math.abs(netDailyCashflow))}/DAY NET BURN`}
-            </span>
-          </div>
-
-          <div class="card" style="padding: 14px; background:#0f172a; border:1px solid #1e293b; border-radius:10px; margin-bottom:16px;">
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:12px;">
-              <div>
-                <div style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">RECURRING INFLOWS</div>
-                <div style="font-size:16px; font-weight:900; color:var(--grn); font-family:monospace; margin-top:2px;">+${fmt(totalDailyInflow)}<span style="font-size:10px; color:var(--mu);">/day</span></div>
-                <div style="font-size:10px; color:var(--mu); margin-top:4px;">
-                  Depot Automation: +$${dailyWarehouseInflow.toLocaleString()}/d<br/>
-                  Charter Subcontracts: +$${dailySubcontractInflow.toLocaleString()}/d
-                </div>
-              </div>
-              <div>
-                <div style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">FIXED COMMITMENTS</div>
-                <div style="font-size:16px; font-weight:900; color:#ef4444; font-family:monospace; margin-top:2px;">-${fmt(totalDailyOutflow)}<span style="font-size:10px; color:var(--mu);">/day</span></div>
-                <div style="font-size:10px; color:var(--mu); margin-top:4px;">
-                  Payroll (${S.drivers?.length || 1} Drivers): -$${dailyPayroll.toLocaleString()}/d<br/>
-                  Insurance & Facilities: -$${(dailyInsurance + dailyDebtService + dailyLeases).toLocaleString()}/d
-                </div>
-              </div>
-            </div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; font-size:11px;">
-              <div>
-                <span style="color:var(--mu);">Liquidity Runway Buffer:</span>
-                <span style="font-weight:800; color:${runwayDays === null ? 'var(--grn)' : runwayDays > 14 ? 'var(--gold)' : '#ef4444'}; margin-left:4px;">
-                  ${runwayDays === null ? 'Self-Sustaining Surplus (Positive Cashflow)' : `${runwayDays} Operating Days Remaining`}
-                </span>
-              </div>
-              <div style="font-size:9px; color:var(--mu);">
-                Processed live per engine tick
-              </div>
-            </div>
-          </div>
-
-          <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-            <span style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase;">Enterprise Balance Sheet</span>
-            <span style="font-size:9px; color:var(--mu); font-family:monospace;">GAAP AUDITED</span>
-          </div>
-
-          <div class="card" style="padding: 16px; background:#0f172a; border:1px solid #1e293b; border-radius:10px; display: flex; flex-direction: column; gap: 10px; margin-bottom:16px;">
-            <div style="display:flex; justify-content:space-between; font-size:12px;">
-              <span style="color:var(--mu);">Fleet Tangible Assets (${S.fleet.length} Tractors)</span>
-              <span style="font-weight:700; color:var(--tx);">${fmt(S.fleet.length * 125000)}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:12px;">
-              <span style="color:var(--mu);">Regional Depots & Terminals</span>
-              <span style="font-weight:700; color:var(--tx);">${fmt((S.depots?.length || 1) * 85000)}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:12px;">
-              <span style="color:var(--mu);">HQ Wholesale Fuel Inventory</span>
-              <span style="font-weight:700; color:var(--tx);">${fmt(Math.round(bunker.currentLiters * (bunker.avgCostPerLiter || 0.95)))}</span>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:12px;">
-              <span style="color:#ef4444;">Commercial Bank Liabilities (Outstanding Debt)</span>
-              <span style="font-weight:700; color:#ef4444;">-${fmt(totalLoanDebt)}</span>
-            </div>
-            <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 10px; display: flex; justify-content: space-between; font-size:14px;">
-              <span style="font-weight: 900; color: var(--gold);">NET CORPORATE EQUITY</span>
-              <span style="font-weight: 900; color: var(--gold); font-family:monospace;">${fmt(enterpriseValue)}</span>
-            </div>
-          </div>
-
-          <div class="sec" style="margin-bottom:8px;">
-            <span style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase;">Pending Consignment Accounts Receivable</span>
-          </div>
-          <div>
-            ${S.active.length > 0 ? S.active.map((a: any) => `
-              <div class="card" style="margin-bottom:8px; padding:12px; background:#111827; border:1px solid #1f293d; border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
-                <div>
-                  <div style="font-size:12px; font-weight:800; color:var(--tx);">${a.cargo}</div>
-                  <div style="font-size:10px; color:var(--mu); margin-top:2px;">INVOICE: ${a.from} → ${a.to}</div>
-                </div>
-                <div style="text-align:right;">
-                  <div style="font-size:13px; font-weight:900; color:var(--gold); font-family:monospace;">+$${a.pay.toLocaleString()}</div>
-                  <div style="font-size:9px; color:var(--mu);">Payout upon delivery</div>
-                </div>
-              </div>
-            `).join('') : '<div style="text-align:center; padding:20px; color:var(--mu); font-size:11px; background:#0f172a; border-radius:8px;">No pending transit invoices.</div>'}
-          </div>
-        ` : ''}
-
-        <!-- 2. Bank Loans & Equipment Leasing Sub-View -->
         ${financeTab === 'banking' ? `
           <div style="background:#0f172a; border:1px solid var(--gold); border-radius:10px; padding:14px; margin-bottom:14px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
               <div>
-                <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase;">BANK SYNDICATE CREDIT LIMIT</div>
-                <div style="font-size:18px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;">
-                  ${fmt(maxCredit)} <span style="font-size:11px; color:var(--mu);">Maximum Line</span>
-                </div>
+                <div style="font-size:9px; color:var(--gold); text-transform:uppercase;">CREDIT LIMIT</div>
+                <div style="font-size:16px; font-weight:900; color:var(--tx); font-family:monospace;">${fmt(maxCredit)}</div>
               </div>
-              <div style="text-align:right;">
-                <div style="font-size:9px; color:var(--mu); text-transform:uppercase;">CREDIT GRADE</div>
-                <div style="font-size:18px; font-weight:900; color:var(--grn); font-family:monospace;">${rating}</div>
+              <div style="text-align:right;"><div style="font-size:18px; font-weight:900; color:var(--grn);">${rating}</div></div>
+            </div>
+          </div>
+          ${AVAILABLE_LOANS.map(l => `
+            <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <div>
+                <div style="font-size:12px; font-weight:800; color:var(--tx);">${l.name}</div>
+                <div style="font-size:9px; color:var(--mu);">$${l.principal.toLocaleString()} · ${l.apr}% APR</div>
               </div>
+              <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900;" data-act="take-loan" data-id="${l.id}">BORROW</button>
             </div>
-            <div style="font-size:10px; color:var(--mu); line-height:1.4;">
-              Maintain high delivery volume and positive net equity to qualify for lower APR interest rates on commercial term facilities.
-            </div>
-          </div>
-
-          <!-- Active Loans -->
-          ${(S.loans || []).length > 0 ? `
-            <div style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase; margin-bottom:8px;">Active Debt Facilities</div>
-            <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
-              ${S.loans.map((l: any) => `
-                <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center;">
-                  <div>
-                    <div style="font-size:12px; font-weight:800; color:var(--tx);">${l.name}</div>
-                    <div style="font-size:10px; color:var(--mu); margin-top:2px;">APR: ${l.apr}% · Balance: <b style="color:#ef4444;">$${l.balance.toLocaleString()}</b></div>
-                  </div>
-                  <button class="btn alt" style="padding:6px 12px; font-size:10px; font-weight:800; color:var(--grn); border-color:rgba(34,197,94,0.3);" data-act="payoff-loan" data-id="${l.id}">
-                    PAY OFF EARLY
-                  </button>
-                </div>
-              `).join('')}
-            </div>
-          ` : ''}
-
-          <!-- Available Commercial Loans -->
-          <div style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase; margin-bottom:8px;">Commercial Term Facilities</div>
-          <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
-            ${AVAILABLE_LOANS.map(loan => {
-              const hasLoan = (S.loans || []).some((l: any) => l.id === loan.id);
-              return `
-                <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center;">
-                  <div>
-                    <div style="font-size:12px; font-weight:800; color:var(--tx);">${loan.name}</div>
-                    <div style="font-size:10px; color:var(--mu); margin-top:2px;">Principal: <b style="color:var(--gold);">$${loan.principal.toLocaleString()}</b> · APR: ${loan.apr}% · Req: ${loan.requiredRating}</div>
-                  </div>
-                  <div>
-                    ${hasLoan ? `
-                      <span style="font-size:9px; font-weight:800; color:var(--mu); background:rgba(255,255,255,0.06); padding:4px 8px; border-radius:4px;">ACTIVE</span>
-                    ` : `
-                      <button class="btn gold" style="padding:6px 14px; font-size:10px; font-weight:900;" data-act="take-loan" data-id="${loan.id}">
-                        BORROW
-                      </button>
-                    `}
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-
-          <!-- Equipment Leasing -->
-          <div style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase; margin-bottom:8px;">Equipment Leasing</div>
-          <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <div style="font-size:12px; font-weight:800; color:var(--tx);">Commercial Lease: Scania S730 V8 6x4</div>
-              <div style="font-size:10px; color:var(--mu); margin-top:2px;">Down Payment: $18,000 · Retainer: $480/day · 45-day contract</div>
-            </div>
-            <button class="btn alt" style="padding:6px 12px; font-size:10px; font-weight:800; color:var(--gold); border-color:rgba(193,154,91,0.4);" data-act="lease-tractor" data-model-id="scania_s730">
-              LEASE TRACTOR
-            </button>
-          </div>
+          `).join('')}
         ` : ''}
 
-        <!-- 3. Wholesale Fuel Spot Market & HQ Bunker -->
         ${financeTab === 'fuel' ? `
           <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:14px; margin-bottom:14px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <div>
-                <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase;">HQ WHOLESALE FUEL BUNKER STORAGE</div>
-                <div style="font-size:18px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;">
-                  ${bunker.currentLiters.toLocaleString()}L <span style="font-size:11px; color:var(--mu);">/ ${bunker.maxCapacity.toLocaleString()}L (${Math.round((bunker.currentLiters / bunker.maxCapacity) * 100)}%)</span>
-                </div>
-                <div style="font-size:10px; color:var(--mu); margin-top:2px;">Average Cost: $${(bunker.avgCostPerLiter || 0.95).toFixed(2)}/L</div>
-              </div>
-              <span style="font-size:32px;">⛽</span>
+            <div style="font-size:9px; color:var(--gold); font-weight:800;">HQ FUEL BUNKER</div>
+            <div style="font-size:18px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:4px;">${bunker.currentLiters.toLocaleString()}L / ${bunker.maxCapacity.toLocaleString()}L</div>
+            <div style="height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden; margin-top:10px;">
+              <div style="width:${(bunker.currentLiters/bunker.maxCapacity)*100}%; height:100%; background:var(--gold);"></div>
             </div>
-            
-            <div style="height:8px; background:rgba(255,255,255,0.08); border-radius:4px; overflow:hidden; margin-bottom:10px;">
-              <div style="width:${Math.min(100, (bunker.currentLiters / bunker.maxCapacity) * 100)}%; height:100%; background:var(--gold); border-radius:4px;"></div>
-            </div>
-
-            <div style="display:flex; gap:8px;">
-              <button class="btn gold" style="flex:1; padding:8px; font-size:10px; font-weight:900;" data-act="buy-wholesale-fuel" data-liters="2000" data-price="0.82">
-                BUY +2,000L ($1,640)
-              </button>
-              <button class="btn gold" style="flex:1; padding:8px; font-size:10px; font-weight:900;" data-act="buy-wholesale-fuel" data-liters="5000" data-price="0.82">
-                BUY +5,000L ($4,100)
-              </button>
+            <div style="display:flex; gap:8px; margin-top:14px;">
+              <button class="btn gold" style="flex:1; padding:8px; font-size:9px;" data-act="buy-wholesale-fuel" data-liters="5000">REFILL 5,000L</button>
+              <button class="btn alt" style="flex:1; padding:8px; font-size:9px;" data-act="upgrade-fuel-bunker">UPGRADE TANK</button>
             </div>
           </div>
-
-          <div style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase; margin-bottom:8px;">Regional Fuel Spot Market Rates</div>
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-            ${Object.entries(REGIONAL_FUEL_SPOT).map(([city, prices]) => `
-              <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:10px 12px;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                  <span style="font-size:12px; font-weight:800; color:var(--tx);">${city}</span>
-                  <span style="font-size:12px; font-weight:900; color:var(--gold); font-family:monospace;">$${prices.diesel.toFixed(2)}/L</span>
-                </div>
-                <div style="font-size:9px; color:var(--mu); margin-top:2px;">AdBlue: $${prices.adBlue.toFixed(2)}/L</div>
+            ${Object.entries(REGIONAL_FUEL_SPOT).map(([city, p]) => `
+              <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:10px;">
+                <div style="font-size:11px; font-weight:800; color:var(--tx);">${city}</div>
+                <div style="font-size:12px; font-weight:900; color:var(--gold); font-family:monospace; margin-top:2px;">$${p.diesel}/L</div>
               </div>
             `).join('')}
           </div>
         ` : ''}
 
-        <!-- 4. Corporate Insurance Sub-View -->
         ${financeTab === 'insurance' ? `
-          <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:14px; margin-bottom:14px;">
-            <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase;">COMMERCIAL CARRIER RISK PROTECTION</div>
-            <div style="font-size:16px; font-weight:900; color:var(--tx); margin-top:2px;">Active Insurance Coverage</div>
-            <div style="font-size:10px; color:var(--mu); margin-top:2px;">
-              Policies automatically reimburse collision repair claims, roadside towing, stolen cargo, and statutory DOT citations.
-            </div>
-          </div>
-
           <div style="display:flex; flex-direction:column; gap:10px;">
-            ${Object.values(INSURANCE_POLICIES).map(policy => {
-              const isActive = !!ins[policy.id];
-              return `
-                <div style="background:#111827; border:1px solid ${isActive ? 'rgba(34,197,94,0.4)' : '#1f293d'}; border-radius:8px; padding:12px;">
-                  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
-                    <div>
-                      <div style="font-size:13px; font-weight:800; color:var(--tx);">${policy.name}</div>
-                      <div style="font-size:9px; color:var(--mu);">${policy.type} · Deductible: $${policy.deductible}</div>
-                    </div>
-                    <button class="btn ${isActive ? 'alt' : 'gold'}" style="padding:6px 12px; font-size:9px; font-weight:900; ${isActive ? 'color:var(--grn); border-color:var(--grn);' : ''}" data-act="toggle-insurance" data-id="${policy.id}">
-                      ${isActive ? '✓ COVERED ($' + policy.dailyCost + '/day)' : 'ENROLL ($' + policy.dailyCost + '/day)'}
-                    </button>
-                  </div>
-                  <div style="font-size:10px; color:var(--mu); line-height:1.4;">${policy.desc}</div>
+            ${Object.values(INSURANCE_POLICIES).map(p => `
+              <div style="background:#111827; border:1px solid ${ins[p.id] ? 'var(--grn)' : '#1f293d'}; border-radius:8px; padding:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <div><div style="font-size:12px; font-weight:800; color:var(--tx);">${p.name}</div><div style="font-size:9px; color:var(--mu);">$${p.dailyCost}/day</div></div>
+                  <button class="btn ${ins[p.id] ? 'alt' : 'gold'}" style="padding:6px 12px; font-size:9px;" data-act="toggle-insurance" data-id="${p.id}">${ins[p.id] ? 'ACTIVE' : 'ENROLL'}</button>
                 </div>
-              `;
-            }).join('')}
+              </div>
+            `).join('')}
           </div>
         ` : ''}
-
       </div>
     `;
   }

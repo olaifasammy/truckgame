@@ -112,6 +112,14 @@ export const assign = (id: number, did: number | null) => set(S => {
     if (o) o.driverId = null;
   }
   t.driverId = did || null;
+
+  // Sync assignedTruckId across all drivers
+  if (S.drivers && S.fleet) {
+    S.drivers.forEach((d: any) => {
+      const assigned = S.fleet.find((tr: any) => tr.driverId === d.id);
+      d.assignedTruckId = assigned ? assigned.id : null;
+    });
+  }
 });
 
 export function transportInfo(S: any, t: any, city: string) {

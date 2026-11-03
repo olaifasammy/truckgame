@@ -2,11 +2,19 @@ import { Region, FreightJob, JobKind } from '../types';
 import { COMPANIES } from '../companies/registry';
 import { CARGO_TYPES } from '../cargo/registry';
 import { CITIES, LOCATIONS, RegionName } from '../../../data/world';
-import { rnd } from '../../../core/ui';
+import { rnd, toast } from '../../../core/ui';
 import { BiddingEngine } from '../bids/engine';
 import { distKm, getRouteEnv } from '../../../systems/calc';
 import { getCompanyProgression } from '../../company/progression';
 import { SAMPLE_TENDERS } from '../../logistics/network';
+import { pushNote } from '../../../systems/notify';
+
+// Internal constants for simulation
+const INSURANCE_POLICIES: any = {
+  liability: { dailyCost: 85 },
+  collision: { dailyCost: 220 },
+  cargo: { dailyCost: 310 }
+};
 
 export class FreightEngine {
   /**
@@ -140,14 +148,10 @@ export class FreightEngine {
     let rate = 2.0;
 
     if (tender) {
-      // Tender has a fixed pay per load, but we'll store it as pay
-      // The pay in the job object should be what's rewarded
+      // Tender has a fixed pay per load
     } else if (options.isAuction) {
       // PREMIUM SPOT AUCTION RATES: High-paying contracts only
-      // Base rate: $7.50 – $22.00+/km
       rate = 7.50 + (cargo.baseValue * 0.22);
-
-      // Higher VIP rank = higher chances of massive bidding payouts
       const vipMultiplier = 1.05 + Math.min(2.8, (vipLevel * 0.022));
       rate *= vipMultiplier;
 
@@ -158,14 +162,14 @@ export class FreightEngine {
       if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') rate *= 1.25;
       if ((routeEnv.roadGrade || 0) > 5.0) rate *= 1.20;
     } else {
-      // NORMAL JOB GENERATOR: Balanced, modest payouts ($1.90 – $3.20/km)
-      rate = 1.90 + (cargo.baseValue * 0.04);
-      if (options.vip) rate *= 1.20;
-      if (cargo.isHazmat) rate *= 1.20;
-      if (cargo.tempControlled) rate *= 1.15;
-      if (weight > 18) rate *= 1.10;
-      if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') rate *= 1.15;
-      if ((routeEnv.roadGrade || 0) > 5.0) rate *= 1.10;
+      // NORMAL JOB GENERATOR: More realistic logistics rates ($3.40 – $5.80/km)
+      rate = 3.40 + (cargo.baseValue * 0.08);
+      if (options.vip) rate *= 1.30;
+      if (cargo.isHazmat) rate *= 1.45;
+      if (cargo.tempControlled) rate *= 1.35;
+      if (weight > 18) rate *= 1.25;
+      if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') rate *= 1.40;
+      if ((routeEnv.roadGrade || 0) > 5.0) rate *= 1.30;
     }
 
     const pay = tender ? tender.ratePerDelivery : Math.round(baseKm * rate);
@@ -198,12 +202,11 @@ export class FreightEngine {
       env: routeEnv,
       requirements: {
         requiredSkills,
-        minLevel: options.vip ? 5 : 1,
-        adrClass: cargo.adrClass,
-        reefer: cargo.tempControlled
+        requiredLicenses: cargo.isHazmat ? ['adr_hazmat'] : []
       },
-      vip: options.vip,
-      isAuction: options.isAuction
+      trailer: cargo.trailer,
+      isShipperTanker: cargo.isHazmat && !ownedTrailers.has('hazmat'),
+      vip: !!options.vip
     };
 
     if (options.isAuction) {
@@ -238,7 +241,6 @@ export class FreightEngine {
     // Inject corporate tender loads if active
     if (S.corporateTenders && S.corporateTenders.length > 0) {
       for (const tender of S.corporateTenders) {
-        // Ensure there is at least one active job on the board for each signed tender
         const activeLoadsOnBoard = S.jobs.filter((j: any) => j.tenderId === tender.id).length;
         if (activeLoadsOnBoard < 1 && (tender.loadsRemaining || 0) > 0) {
           S.jobs.push(this.generate(S, { tenderId: tender.id }));
@@ -249,5 +251,111 @@ export class FreightEngine {
     while (S.jobs.length < count) {
       S.jobs.push(this.generate(S, { vip: isVipCarrier && Math.random() < 0.15 }));
     }
+  }
+
+  /**
+   * Main simulation tick for economics and driver state
+   */
+  static processEconomics(S: any, now: number) {
+    if (!S.lastTick) S.lastTick = now;
+    const elapsedMs = now - S.lastTick;
+    if (elapsedMs <= 0) return;
+
+    const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+    // 1. Corporate Tender Completion
+    if (S.corporateTenders && S.corporateTenders.length > 0) {
+      S.corporateTenders = S.corporateTenders.filter((tender: any) => {
+        if ((tender.completedLoads >= tender.totalLoads || tender.loadsRemaining <= 0) && !tender.bonusAwarded) {
+          tender.bonusAwarded = true;
+          S.money += tender.bonusPayout;
+          if (S.stats) S.stats.earned += tender.bonusPayout;
+          pushNote(S, `${tender.client} contract completed! Awarded $${tender.bonusPayout.toLocaleString()} SLA performance bonus!`, {
+            title: 'CORPORATE TENDER COMPLETED',
+            type: 'tender',
+            priority: 1,
+            body: `Corporate Tender ID: ${tender.id}\nClient: ${tender.client}\nPerformance Bonus: $${tender.bonusPayout.toLocaleString()}\nSLA Met: 100%`
+          });
+          toast(`Tender Completed: ${tender.client}! +$${tender.bonusPayout.toLocaleString()} Bonus 🪙`, 'success');
+          return false;
+        }
+        return true;
+      });
+    }
+    
+    let dailyInflow = 0;
+    let dailyOutflow = 0;
+
+    if (S.warehouseUpgrades?.cross_docking) dailyInflow += 1200;
+    if (S.warehouseUpgrades?.cold_vault) dailyInflow += 800;
+    if (S.warehouseUpgrades?.gantry_crane) dailyInflow += 600;
+
+    const subcontractCount = (S.subcontractedTrucks || []).length;
+    if (subcontractCount > 0) dailyInflow += subcontractCount * 1800;
+
+    const totalSalaries = (S.drivers || []).reduce((acc: number, d: any) => acc + (d.salary || 250), 0);
+    dailyOutflow += totalSalaries;
+
+    if (S.insurance) {
+      if (S.insurance.liability) dailyOutflow += 85;
+      if (S.insurance.collision) dailyOutflow += 220;
+      if (S.insurance.cargo) dailyOutflow += 310;
+    }
+
+    if (S.loans) S.loans.forEach((l: any) => dailyOutflow += (l.dailyRate || 0));
+    if (S.leases) S.leases.forEach((l: any) => dailyOutflow += (l.dailyRate || 0));
+
+    const netDaily = dailyInflow - dailyOutflow;
+    const netDelta = (netDaily / MS_PER_DAY) * elapsedMs;
+    S.money += netDelta;
+
+    // 2. Loan Amortization
+    if (S.loans && S.loans.length > 0) {
+      S.loans.forEach((loan: any) => {
+        const loanPayment = (loan.dailyRate / MS_PER_DAY) * elapsedMs;
+        loan.balance = Math.max(0, loan.balance - loanPayment);
+        loan.daysRemaining = Math.max(0, loan.daysRemaining - (elapsedMs / MS_PER_DAY));
+      });
+      const settled = S.loans.filter((l: any) => l.balance <= 0);
+      if (settled.length > 0) {
+        S.loans = S.loans.filter((l: any) => l.balance > 0);
+        settled.forEach(l => pushNote(S, `Facility Paid: ${l.name}`, { title: 'LOAN SETTLED', type: 'finance' }));
+      }
+    }
+
+    // 3. Lease Amortization
+    if (S.leases && S.leases.length > 0) {
+      S.leases.forEach((lease: any) => {
+        lease.daysRemaining = Math.max(0, lease.daysRemaining - (elapsedMs / MS_PER_DAY));
+      });
+      const expired = S.leases.filter((l: any) => l.daysRemaining <= 0);
+      if (expired.length > 0) {
+        S.leases = S.leases.filter((l: any) => l.daysRemaining > 0);
+        expired.forEach(l => {
+          const truck = S.fleet.find((t: any) => t.id === l.truckId);
+          if (truck) truck.status = 'expired';
+          pushNote(S, `Lease expired for Unit #${l.truckId}`, { title: 'LEASE EXPIRED', type: 'ops' });
+        });
+      }
+    }
+
+    // 4. Instant Idle Recovery
+    // Drivers are considered rested immediately when not on an active dispatch.
+    if (S.drivers && S.drivers.length > 0) {
+      S.drivers.forEach((drv: any) => {
+        const isOnTrip = (S.active || []).some((a: any) => {
+          const truck = (S.fleet || []).find((t: any) => t.id === a.truck);
+          return truck && truck.driverId === drv.id;
+        });
+
+        if (!isOnTrip) {
+          drv.fatigue = 0;
+          drv.hosHours = 0;
+          drv.hosRestUntil = null;
+        }
+      });
+    }
+
+    S.lastTick = now;
   }
 }

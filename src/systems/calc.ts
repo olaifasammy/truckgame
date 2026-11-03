@@ -148,8 +148,8 @@ export const tripMs = (km: number, speed: number = 80, env?: EnvironmentalCondit
   return Math.round(totalSeconds * 1000);
 };
 
-export function applyWear(t: any, km: number, payload = 0, env?: EnvironmentalConditions) {
-  applyTripWear(t, km, payload, env);
+export function applyWear(t: any, km: number, payload = 0, env?: EnvironmentalConditions, driver?: any) {
+  applyTripWear(t, km, payload, env, driver);
 }
 
 export function syncUsage(t: any, km: number, metrics: any, env?: EnvironmentalConditions, S?: any) {

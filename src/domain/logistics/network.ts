@@ -328,6 +328,51 @@ export const SAMPLE_TENDERS: CorporateTender[] = [
     bonusPayout: 75000,
     desc: 'Continuous cold chain distribution across regional retail distribution centers under strict temperature SLAs.',
     icon: '❄️'
+  },
+  {
+    id: 'tender_tech',
+    client: 'Apex Semiconductor & Microelectronics',
+    industry: 'High-Tech & Precision Electronics',
+    durationDays: 30,
+    ratePerDelivery: 24000,
+    slaTarget: 99,
+    requiredCerts: [],
+    loadsRemaining: 10,
+    totalLoads: 10,
+    completedLoads: 0,
+    bonusPayout: 85000,
+    desc: 'High-security air-ride transport of delicate silicon wafers and server blade arrays between fab facilities.',
+    icon: '🖥️'
+  },
+  {
+    id: 'tender_mining',
+    client: 'Sahara Heavy Mining & Ore Ltd',
+    industry: 'Mining & Heavy Machinery',
+    durationDays: 30,
+    ratePerDelivery: 29000,
+    slaTarget: 94,
+    requiredCerts: [],
+    loadsRemaining: 8,
+    totalLoads: 8,
+    completedLoads: 0,
+    bonusPayout: 95000,
+    desc: 'Lowboy and flatbed heavy haulage transporting drilling rigs, steel assemblies, and mineral aggregates.',
+    icon: '⛏️'
+  },
+  {
+    id: 'tender_aerospace',
+    client: 'Pacific Aerospace & Defense Logistics',
+    industry: 'Aerospace & Specialized Cargo',
+    durationDays: 30,
+    ratePerDelivery: 34000,
+    slaTarget: 99,
+    requiredCerts: [],
+    loadsRemaining: 6,
+    totalLoads: 6,
+    completedLoads: 0,
+    bonusPayout: 120000,
+    desc: 'Classified transport of turbine components and avionics modules across strategic defense hubs.',
+    icon: '🛰️'
   }
 ];
 

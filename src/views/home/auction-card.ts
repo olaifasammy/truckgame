@@ -34,7 +34,7 @@ export function renderAuctionCard(S: any, j: any) {
                 ${cargo?.name || 'High-Value Contract'}
               </span>
               <span style="font-size:7px; background:rgba(193,154,91,0.15); border:1px solid var(--gold); color:var(--gold); padding:0 4px; border-radius:2px; font-weight:800; font-family:monospace;">
-                REVERSE BID
+                BID
               </span>
             </div>
             

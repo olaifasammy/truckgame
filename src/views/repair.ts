@@ -101,7 +101,7 @@ export default {
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
               <div>
                 <h3 style="margin:0; font-size:16px; color:var(--tx);">${truck.name}</h3>
-                <div style="font-size:11px; color:var(--gold); font-weight:700; margin-top:2px;">${model?.brand} ${model?.name} · Odometer: ${Math.round(truck.odometer).toLocaleString()} km</div>
+                <div style="font-size:11px; color:var(--gold); font-weight:700; margin-top:2px;">${model?.brand} ${model?.name} · Odometer: <span data-truck-odo="${truck.id}">${Math.round(truck.odometer).toLocaleString()} km</span></div>
               </div>
               <div style="text-align:right;">
                 <div style="font-size:11px; font-weight:900; color:${truck.status === 'repair' ? '#ef4444' : 'var(--grn)'}; text-transform:uppercase;">Status: ${truck.status}</div>

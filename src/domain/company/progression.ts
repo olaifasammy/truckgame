@@ -40,38 +40,33 @@ export function getRankTitle(tier: number): string {
  */
 export function getRequiredXpForTier(tier: number): number {
   const t = Math.max(0, Math.min(132, Math.floor(tier || 0)));
-  if (t === 0) return 350;   // Fast early milestone from 0 - Newbie -> Professional
-  if (t === 1) return 750;   // Professional -> Expert
-  if (t === 2) return 1200;  // Expert -> VIP 1
+  if (t === 0) return 500;   // Newbie -> Professional
+  if (t === 1) return 1500;  // Professional -> Expert
+  if (t === 2) return 3500;  // Expert -> VIP 1
   const vipNum = t - 2;
-  // Scaled progressive tier requirements for VIP 1 - 130
-  return Math.min(25000, 1500 + (vipNum - 1) * 220);
+  // Maximum prestige requires massive XP accumulation
+  return Math.min(250000, 5000 + (vipNum - 1) * 2500);
+}
+
+/**
+ * Returns the Fleet Bonds reward for promoting to a specific tier
+ */
+export function getBondRewardForTier(tier: number): number {
+  const t = Math.max(0, Math.min(132, Math.floor(tier || 0)));
+  if (t <= 0) return 0;
+  if (t === 1) return 5;    // Professional
+  if (t === 2) return 10;   // Expert
+  if (t === 3) return 15;   // VIP 1
+  if (t === 4) return 20;   // VIP 2
+  if (t === 5) return 25;   // VIP 3
+  return Math.min(50, 15 + (t - 3) * 2);
 }
 
 /**
  * Retrieves comprehensive progression metrics for the company
  */
 export function getCompanyProgression(S: any): CompanyProgression {
-  const minTierFromLoads = !S.loads || S.loads === 0 
-    ? 0 
-    : S.loads < 2 ? 0 : S.loads < 5 ? 1 : S.loads < 10 ? 2 : Math.min(132, 2 + Math.floor((S.loads - 10) / 3) + 1);
-
-  if (S.companyTier === undefined) {
-    if (S.vip && S.vip > 1) {
-      S.companyTier = S.vip + 2;
-    } else {
-      S.companyTier = minTierFromLoads;
-    }
-  } else {
-    // Keep in sync if loads or VIP progression exceeded recorded tier
-    if (minTierFromLoads > S.companyTier) {
-      S.companyTier = minTierFromLoads;
-    }
-    if (S.vip && S.vip > 1 && S.companyTier < S.vip + 2) {
-      S.companyTier = S.vip + 2;
-    }
-  }
-
+  if (S.companyTier === undefined) S.companyTier = 0;
   const tier = Math.max(0, Math.min(132, S.companyTier || 0));
   // Keep legacy S.vip in sync
   S.vip = Math.max(1, tier >= 3 ? tier - 2 : 1);
@@ -117,28 +112,56 @@ export function getCompanyProgression(S: any): CompanyProgression {
 }
 
 /**
- * Adds company XP and handles tier promotions smoothly
+ * Adds company XP and handles tier promotions smoothly.
+ * Also handles "Back-pay" for tiers reached via loads/legacy shortcuts.
  */
 export function addCompanyXp(S: any, amount: number, source: string = 'Freight Ops'): void {
-  if (!amount || amount <= 0) return;
   if (S.companyTier === undefined) S.companyTier = 0;
   if (!S.xp) S.xp = 0;
+  if (S.lastAwardedTier === undefined) S.lastAwardedTier = 0;
+
+  // 1. Check for "Back-pay" (Tiers reached but rewards not claimed)
+  if (S.lastAwardedTier < S.companyTier) {
+    let totalCatchupBonds = 0;
+    const missingTiers = [];
+    for (let t = S.lastAwardedTier + 1; t <= S.companyTier; t++) {
+      totalCatchupBonds += getBondRewardForTier(t);
+      missingTiers.push(getRankTitle(t));
+    }
+    
+    if (totalCatchupBonds > 0) {
+      S.coins = (S.coins || 0) + totalCatchupBonds;
+      pushNote(S, `Treasury Audit: Disbursed +${totalCatchupBonds} Fleet Bonds for historical carrier milestones.`, {
+        title: 'RETROACTIVE PROMOTION BONUS',
+        type: 'finance',
+        priority: 2,
+        body: `Audit determined that ${missingTiers.length} rank promotions were pending payout.\nTotal Bonds Disbursed: +${totalCatchupBonds}\nReason: Strategic Alignment Bonus`
+      });
+      toast(`Milestone Catch-up: +${totalCatchupBonds} Bonds 🪙`, 'success');
+    }
+    S.lastAwardedTier = S.companyTier;
+  }
+
+  if (!amount || amount <= 0) return;
 
   S.xp += amount;
   
   const initialTier = S.companyTier;
   let currentTier = initialTier;
   let required = getRequiredXpForTier(currentTier);
-  let totalBondsAwarded = 0;
+  let leveledUp = false;
+  let promoBondsEarned = 0;
 
   while (S.xp >= required && currentTier < 132) {
     S.xp -= required;
     currentTier++;
     S.companyTier = currentTier;
-    // Reward bonds: Tier 1 (Pro): +5, Tier 2 (Expert): +10, VIP 1+: +15..+50
-    const tierBonds = currentTier === 1 ? 5 : currentTier === 2 ? 10 : Math.min(50, 15 + (currentTier - 3) * 2);
-    totalBondsAwarded += tierBonds;
     required = getRequiredXpForTier(currentTier);
+    leveledUp = true;
+
+    const bondsReward = getBondRewardForTier(currentTier);
+    promoBondsEarned += bondsReward;
+    S.lastAwardedTier = currentTier;
   }
 
   // Cap at max level
@@ -150,19 +173,45 @@ export function addCompanyXp(S: any, amount: number, source: string = 'Freight O
   // Keep legacy S.vip in sync for any systems referencing it
   S.vip = Math.max(1, currentTier >= 3 ? currentTier - 2 : 1);
 
-  if (currentTier > initialTier) {
-    if (!S.coins) S.coins = 0;
-    S.coins += totalBondsAwarded;
-
+  if (leveledUp) {
+    if (promoBondsEarned > 0) {
+      S.coins = (S.coins || 0) + promoBondsEarned;
+    }
     const newTitle = getRankTitle(currentTier);
-    pushNote(S, `Promotion: Carrier reached ${newTitle.toUpperCase()}! Treasury awarded +${totalBondsAwarded} Fleet Bonds.`, {
-      title: 'COMPANY PROMOTION',
-      type: 'finance',
+    pushNote(S, `Your carrier has attained the rank of ${newTitle.toUpperCase()}! Reward: +${promoBondsEarned} Fleet Bonds.`, { 
+      title: 'COMPANY PROMOTION & BONDS REWARD', 
+      type: 'finance', 
       priority: 2,
-      body: `Carrier Rank Attained: ${newTitle}\nFleet Bonds Awarded: +${totalBondsAwarded} Bonds\nNew Treasury Balance: ${S.coins} Bonds`
+      body: `Carrier Rank Attained: ${newTitle}\nFleet Bonds Awarded: +${promoBondsEarned} Bonds\nNew Treasury Balance: ${S.coins || 0} Bonds`
     });
-    toast(`PROMOTED: ${newTitle}! (+${totalBondsAwarded} Fleet Bonds)`, 'success');
+    toast(`PROMOTED: ${newTitle}! +${promoBondsEarned} Bonds 🪙`, 'success');
   }
+}
+
+/**
+ * Ensures the company tier is synchronized with delivery history and awards missed bonuses.
+ * This handles the jump from legacy "loads-based" levels to XP-based levels.
+ */
+export function syncProgressionAudit(S: any): void {
+  // Ultra-Professional Load-to-Tier Sync: 1 VIP level every 25 loads (hardcore progression)
+  const minTierFromLoads = !S.loads || S.loads === 0 
+    ? 0 
+    : S.loads < 10 ? 0 : S.loads < 25 ? 1 : S.loads < 50 ? 2 : Math.min(132, 2 + Math.floor((S.loads - 50) / 25) + 1);
+
+  const initialTier = S.companyTier || 0;
+  
+  // If loads count suggests a higher tier, jump up
+  if (minTierFromLoads > initialTier) {
+    S.companyTier = minTierFromLoads;
+  }
+
+  // If VIP legacy field is higher, jump up
+  if (S.vip && S.vip > 1 && (S.companyTier || 0) < S.vip + 2) {
+    S.companyTier = S.vip + 2;
+  }
+
+  // Trigger the back-pay logic in addCompanyXp
+  addCompanyXp(S, 0, 'Initial Audit');
 }
 
 /**
