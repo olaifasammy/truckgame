@@ -1,5 +1,5 @@
 import { fmt } from '../../../core/ui';
-import { calculateCreditRating, INSURANCE_POLICIES } from '../../../domain/finance/banking';
+import { calculateCreditRating, INSURANCE_POLICIES, getGoldMarketData } from '../../../domain/finance/banking';
 import { getTotalCryptoValue } from '../../../domain/finance/markets/crypto';
 
 export function renderTreasuryTab(S: any) {
@@ -7,8 +7,20 @@ export function renderTreasuryTab(S: any) {
   const bunker = S.fuelBunker || { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
   const cryptoVal = getTotalCryptoValue(S);
   
+  // Fleet Bonds (FLB) valuation at current market bid price
+  const goldMarket = getGoldMarketData(S);
+  const bondsCount = S.coins || 0;
+  const bondsValUsd = bondsCount * goldMarket.sellPrice;
+
+  // Total Loan Liabilities
   const totalLoanDebt = (S.loans || []).reduce((sum: number, l: any) => sum + (l.balance || 0), 0);
-  const enterpriseValue = S.money + cryptoVal + (S.fleet.length * 125000) + ((S.depots?.length || 1) * 85000) - totalLoanDebt;
+
+  // Comprehensive Real Corporate Enterprise Value (Net Worth / Equity)
+  const totalLiquidCash = S.money || 0;
+  const fleetAssetsVal = (S.fleet || []).reduce((sum: number, t: any) => sum + (t.value || 125000), 0);
+  const terminalsVal = ((S.depots?.length || 1) * 85000) + Math.round(bunker.currentLiters * (bunker.avgCostPerLiter || 0.95));
+  
+  const enterpriseValue = totalLiquidCash + bondsValUsd + cryptoVal + fleetAssetsVal + terminalsVal - totalLoanDebt;
 
   // Cashflow Calculations
   const dailyWarehouseInflow = (S.warehouseUpgrades?.cross_docking ? 1200 : 0) + (S.warehouseUpgrades?.gantry_crane ? 600 : 0);
@@ -27,7 +39,7 @@ export function renderTreasuryTab(S: any) {
   const dailyLeases = (S.leases || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0);
   const totalDailyOutflow = dailyPayroll + dailyInsurance + dailyDebtService + dailyLeases;
   const netDailyCashflow = totalDailyInflow - totalDailyOutflow;
-  const runwayDays = netDailyCashflow < 0 ? Math.floor(S.money / Math.abs(netDailyCashflow)) : null;
+  const runwayDays = netDailyCashflow < 0 ? Math.floor(totalLiquidCash / Math.abs(netDailyCashflow)) : null;
 
   return `
     <div style="display:flex; flex-direction:column; gap:14px;">
@@ -38,7 +50,7 @@ export function renderTreasuryTab(S: any) {
         </div>
         <div class="stat-box" style="background:#111827; border:1px solid #1f293d; border-radius:10px; padding:12px;">
           <span class="stat-lab" style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">LIQUID CAPITAL</span>
-          <span class="stat-val" style="font-size:20px; font-weight:900; color:var(--tx); font-family:monospace;">${fmt(S.money)}</span>
+          <span class="stat-val" style="font-size:20px; font-weight:900; color:var(--tx); font-family:monospace;">${fmt(totalLiquidCash)}</span>
         </div>
       </div>
 
@@ -65,28 +77,43 @@ export function renderTreasuryTab(S: any) {
       </div>
 
       <div class="card" style="padding: 16px; background:#0f172a; border:1px solid #1e293b; border-radius:10px; display: flex; flex-direction: column; gap: 8px;">
-        <div style="font-size:10px; color:var(--mu); font-weight:800; text-transform:uppercase; margin-bottom:4px;">Balance Sheet (Tangible Equity)</div>
+        <div style="font-size:10px; color:var(--mu); font-weight:800; text-transform:uppercase; margin-bottom:4px;">Enterprise Balance Sheet (Net Worth)</div>
+        
         <div style="display:flex; justify-content:space-between; font-size:11px;">
-          <span style="color:var(--mu);">Fleet Assets (${S.fleet.length})</span>
-          <span style="font-weight:700; color:var(--tx);">${fmt(S.fleet.length * 125000)}</span>
+          <span style="color:var(--mu);">Liquid Cash Reserve</span>
+          <span style="font-weight:700; color:var(--tx);">${fmt(totalLiquidCash)}</span>
         </div>
+
         <div style="display:flex; justify-content:space-between; font-size:11px;">
-          <span style="color:var(--mu);">Terminals & Fuel Inventory</span>
-          <span style="font-weight:700; color:var(--tx);">${fmt((S.depots?.length || 1) * 85000 + Math.round(bunker.currentLiters * (bunker.avgCostPerLiter || 0.95)))}</span>
+          <span style="color:var(--gold);">Fleet Bonds (${bondsCount} FLB)</span>
+          <span style="font-weight:700; color:var(--gold);">${fmt(Math.round(bondsValUsd))}</span>
         </div>
+
         ${cryptoVal > 0 ? `
           <div style="display:flex; justify-content:space-between; font-size:11px;">
-            <span style="color:var(--grn);">Digital Crypto Assets</span>
+            <span style="color:var(--grn);">Digital Crypto Holdings</span>
             <span style="font-weight:700; color:var(--grn);">${fmt(Math.round(cryptoVal))}</span>
           </div>
         ` : ''}
+
         <div style="display:flex; justify-content:space-between; font-size:11px;">
-          <span style="color:#ef4444;">Bank Liabilities</span>
+          <span style="color:var(--mu);">Fleet Assets (${(S.fleet || []).length} Tractors)</span>
+          <span style="font-weight:700; color:var(--tx);">${fmt(fleetAssetsVal)}</span>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; font-size:11px;">
+          <span style="color:var(--mu);">Terminals & Fuel Inventory</span>
+          <span style="font-weight:700; color:var(--tx);">${fmt(terminalsVal)}</span>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; font-size:11px;">
+          <span style="color:#ef4444;">Commercial Bank Liabilities</span>
           <span style="font-weight:700; color:#ef4444;">-${fmt(totalLoanDebt)}</span>
         </div>
+
         <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; display: flex; justify-content: space-between; font-size:13px;">
-          <span style="font-weight: 900; color: var(--gold);">NET CORPORATE EQUITY</span>
-          <span style="font-weight: 900; color: var(--gold); font-family:monospace;">${fmt(enterpriseValue)}</span>
+          <span style="font-weight: 900; color: var(--gold);">TOTAL NET ENTERPRISE VALUE</span>
+          <span style="font-weight: 900; color: var(--gold); font-family:monospace;">${fmt(Math.round(enterpriseValue))}</span>
         </div>
       </div>
     </div>
