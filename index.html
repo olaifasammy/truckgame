@@ -45,18 +45,15 @@
   </style>
 
   <script>
-    // 1. Immediately wipe any stale service workers and CacheStorage to prevent blank page intercepts
-    if ('caches' in window) {
-      caches.keys().then(function(names) {
-        names.forEach(function(name) { caches.delete(name); });
-      }).catch(function() {});
-    }
+    // 1. Register Service Worker for offline PWA support
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.getRegistrations().then(function(regs) {
-        for (var i = 0; i < regs.length; i++) {
-          regs[i].unregister();
-        }
-      }).catch(function() {});
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/sw.js').then(function(reg) {
+          console.log('ServiceWorker registration successful with scope: ', reg.scope);
+        }).catch(function(err) {
+          console.log('ServiceWorker registration failed: ', err);
+        });
+      });
     }
 
     // 2. Capture-phase error handler catches script element load errors and evaluation exceptions
