@@ -62,33 +62,79 @@ export function renderExchangeTab(S: any) {
   return `
     <div style="display:flex; flex-direction:column; gap:16px;">
       
-      <!-- 1. Carrier Reserve Market (Fleet Bonds) -->
+      <!-- 1. Carrier Reserve Market (Fleet Bonds) & Corporate Staking Pool -->
       <div style="background:linear-gradient(135deg, #111827 0%, #0f172a 100%); border:1px solid var(--gold); border-radius:12px; padding:16px;">
         <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
           <div>
-            <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase;">Carrier Reserve Market</div>
+            <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase;">Carrier Reserve Market & Security Token</div>
             <div style="font-size:18px; font-weight:900; color:var(--tx); margin-top:2px;">Fleet Bond (FLB)</div>
           </div>
           <div style="text-align:right;">
              <div style="font-size:14px; font-weight:900; color:${trendColor}; font-family:monospace;">$${goldMarket.buyPrice.toLocaleString()}</div>
-             <div style="font-size:9px; color:var(--mu);">Spread: 2.5%</div>
+             <div style="font-size:9px; color:var(--mu);">Spread: 2.5% · Asset-Backed</div>
           </div>
         </div>
 
-        <div style="display:flex; gap:8px; margin-bottom:12px;">
-          <div style="flex:1; background:rgba(255,255,255,0.03); padding:8px; border-radius:6px; border:1px solid #1e293b;">
-            <div style="font-size:8px; color:var(--mu);">YOUR HOLDINGS</div>
-            <div style="font-size:12px; font-weight:800; color:var(--gold);">${userCoins} FLB</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+          <div style="background:rgba(255,255,255,0.03); padding:8px 10px; border-radius:6px; border:1px solid #1e293b;">
+            <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">LIQUID TREASURY</div>
+            <div style="font-size:13px; font-weight:900; color:var(--gold); font-family:monospace;">${userCoins} FLB</div>
+            <div style="font-size:8px; color:var(--mu); font-family:monospace;">$${(userCoins * goldMarket.sellPrice).toLocaleString()} USD</div>
           </div>
-          <div style="flex:1; background:rgba(255,255,255,0.03); padding:8px; border-radius:6px; border:1px solid #1e293b;">
-            <div style="font-size:8px; color:var(--mu);">TOTAL VALUE</div>
-            <div style="font-size:12px; font-weight:800; color:var(--tx);">$${(userCoins * goldMarket.sellPrice).toLocaleString()}</div>
+          <div style="background:rgba(255,255,255,0.03); padding:8px 10px; border-radius:6px; border:1px solid #1e293b;">
+            <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">STAKED IN CORPORATE POOL</div>
+            <div style="font-size:13px; font-weight:900; color:var(--grn); font-family:monospace;">${miningStats.stakedBonds} FLB</div>
+            <div style="font-size:8px; color:var(--mu); font-family:monospace;">$${(miningStats.stakedBonds * goldMarket.sellPrice).toLocaleString()} USD</div>
           </div>
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-          <button class="btn gold" style="padding:10px; font-size:10px; font-weight:900;" data-act="exchange-buy-gold" data-qty="1">BUY 1 FLB</button>
-          <button class="btn alt" style="padding:10px; font-size:10px; font-weight:900; color:var(--tx);" data-act="exchange-sell-gold" data-qty="1">SELL 1 FLB</button>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px;">
+          <button class="btn gold" style="padding:8px; font-size:9px; font-weight:900;" data-act="exchange-buy-gold" data-qty="1">BUY 1 FLB ($${goldMarket.buyPrice.toLocaleString()})</button>
+          <button class="btn alt" style="padding:8px; font-size:9px; font-weight:900; color:var(--tx);" data-act="exchange-sell-gold" data-qty="1">SELL 1 FLB ($${goldMarket.sellPrice.toLocaleString()})</button>
+        </div>
+
+        <!-- Corporate Treasury Staking Pool Box -->
+        <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:13px;">🏛️</span>
+              <span style="font-size:10px; font-weight:900; color:var(--gold); text-transform:uppercase;">Corporate Treasury Staking Pool</span>
+            </div>
+            <span style="font-size:9px; font-weight:900; color:var(--grn); background:rgba(34,197,94,0.12); border:1px solid rgba(34,197,94,0.3); padding:2px 6px; border-radius:4px;">
+              ${miningStats.stakingApyPct}% APY
+            </span>
+          </div>
+
+          <div style="font-size:9px; color:var(--mu); line-height:1.4; margin-bottom:10px;">
+            Lock FLB tokens into the corporate treasury smart contract to earn daily dividends (~<b style="color:var(--grn); font-family:monospace;">+$${Math.round(miningStats.dailyStakingYieldUsd).toLocaleString()}/day</b>) and unlock enterprise fleet discounts:
+          </div>
+
+          <!-- Staking Tiers Readout -->
+          <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; margin-bottom:10px;">
+            <div style="background:${miningStats.stakedBonds >= 5 ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.02)'}; border:1px solid ${miningStats.stakedBonds >= 5 ? 'var(--grn)' : '#1e293b'}; border-radius:4px; padding:6px 4px; text-align:center;">
+              <div style="font-size:7px; color:var(--mu);">TIER 1 (5+ FLB)</div>
+              <div style="font-size:8px; font-weight:900; color:${miningStats.stakedBonds >= 5 ? 'var(--grn)' : 'var(--tx)'}; margin-top:2px;">-5% Fuel Cost</div>
+            </div>
+            <div style="background:${miningStats.stakedBonds >= 15 ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.02)'}; border:1px solid ${miningStats.stakedBonds >= 15 ? 'var(--grn)' : '#1e293b'}; border-radius:4px; padding:6px 4px; text-align:center;">
+              <div style="font-size:7px; color:var(--mu);">TIER 2 (15+ FLB)</div>
+              <div style="font-size:8px; font-weight:900; color:${miningStats.stakedBonds >= 15 ? 'var(--grn)' : 'var(--tx)'}; margin-top:2px;">+8% Freight Rate</div>
+            </div>
+            <div style="background:${miningStats.stakedBonds >= 35 ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.02)'}; border:1px solid ${miningStats.stakedBonds >= 35 ? 'var(--grn)' : '#1e293b'}; border-radius:4px; padding:6px 4px; text-align:center;">
+              <div style="font-size:7px; color:var(--mu);">TIER 3 (35+ FLB)</div>
+              <div style="font-size:8px; font-weight:900; color:${miningStats.stakedBonds >= 35 ? 'var(--grn)' : 'var(--tx)'}; margin-top:2px;">-25% Bay Labor</div>
+            </div>
+            <div style="background:${miningStats.stakedBonds >= 75 ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.02)'}; border:1px solid ${miningStats.stakedBonds >= 75 ? 'var(--grn)' : '#1e293b'}; border-radius:4px; padding:6px 4px; text-align:center;">
+              <div style="font-size:7px; color:var(--mu);">TIER 4 (75+ FLB)</div>
+              <div style="font-size:8px; font-weight:900; color:${miningStats.stakedBonds >= 75 ? 'var(--grn)' : 'var(--tx)'}; margin-top:2px;">-50% Grid Power</div>
+            </div>
+          </div>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:6px;">
+            <button class="btn gold" style="padding:6px 4px; font-size:8px; font-weight:900;" data-act="stake-flb" data-qty="1" ${userCoins >= 1 ? '' : 'disabled'}>STAKE 1 FLB</button>
+            <button class="btn gold" style="padding:6px 4px; font-size:8px; font-weight:900;" data-act="stake-flb" data-qty="5" ${userCoins >= 5 ? '' : 'disabled'}>STAKE 5 FLB</button>
+            <button class="btn alt" style="padding:6px 4px; font-size:8px; font-weight:900; color:var(--tx);" data-act="unstake-flb" data-qty="1" ${miningStats.stakedBonds >= 1 ? '' : 'disabled'}>UNSTAKE 1</button>
+            <button class="btn alt" style="padding:6px 4px; font-size:8px; font-weight:900; color:var(--tx);" data-act="unstake-flb" data-qty="${miningStats.stakedBonds}" ${miningStats.stakedBonds > 0 ? '' : 'disabled'}>UNSTAKE ALL</button>
+          </div>
         </div>
       </div>
 
@@ -226,7 +272,7 @@ export function renderExchangeTab(S: any) {
             </div>
           </div>
           <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900;" data-act="claim-mining-rewards">
-            ⚡ CLAIM ($${Math.round(totalPendingUsd).toLocaleString()})
+            ⚡ CLAIM (<span data-mining-pending-usd>$${Math.round(totalPendingUsd).toLocaleString()}</span>)
           </button>
         </div>
 
@@ -243,14 +289,14 @@ export function renderExchangeTab(S: any) {
               const q = qty as number;
               if (q <= 0) return '';
               const coin = CRYPTO_ASSETS.find(c => c.id === coinId)!;
-              const valUsd = q * (getCryptoMarketData(coinId)?.sellPrice || 0);
+              const valUsd = q * (getCryptoMarketData(coinId)?.sellPrice || (coinId === 'flb' ? 5000 : 0));
 
               return `
                 <div style="background:#111827; border:1px solid ${coin.color}40; border-radius:6px; padding:6px 10px; min-width:110px; flex:0 0 auto;">
                   <div style="display:flex; align-items:center; gap:4px; font-size:10px; font-weight:900; color:${coin.color};">
                     <span>${coin.icon}</span> ${coin.symbol}
                   </div>
-                  <div style="font-size:11px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;">
+                  <div style="font-size:11px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;" data-mining-yield-coin="${coinId}">
                     ${formatCryptoQty(q)}
                   </div>
                   <div style="font-size:8px; color:var(--grn); font-family:monospace;">
@@ -266,13 +312,20 @@ export function renderExchangeTab(S: any) {
         <div style="padding:14px; background:#0b0f19; border-bottom:1px solid #1e293b; display:flex; flex-direction:column; gap:10px;">
           
           <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-            <div style="background:#111827; padding:10px; border-radius:8px; border:1px solid #1f293d;">
-              <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">SUBSTATION POWER (LVL ${miningStats.substationLevel})</div>
-              <div style="font-size:13px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;">
+            <div style="background:#111827; padding:10px; border-radius:8px; border:1px solid ${miningStats.isOverloaded ? '#ef4444' : '#1f293d'};">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">SUBSTATION POWER (LVL ${miningStats.substationLevel})</div>
+                <div style="font-size:8px; font-weight:900; color:${miningStats.isOverloaded ? '#ef4444' : 'var(--grn)'};" data-mining-status>${miningStats.transformerStatus}</div>
+              </div>
+              <div style="font-size:14px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;" data-mining-power-kw>
                 ${miningStats.usedPowerKw.toFixed(1)} kW / ${miningStats.currentPowerKw} kW
               </div>
-              <div style="height:4px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden; margin-top:6px;">
-                <div style="width:${miningStats.powerUsagePct}%; height:100%; background:${miningStats.powerUsagePct > 90 ? '#ef4444' : 'var(--gold)'};"></div>
+              <div style="height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden; margin-top:6px;">
+                <div data-mining-power-bar style="width:${miningStats.powerUsagePct}%; height:100%; background:${miningStats.isOverloaded ? '#ef4444' : miningStats.powerUsagePct > 85 ? '#f59e0b' : 'var(--gold)'}; transition:width 0.4s ease;"></div>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center; font-size:8px; color:var(--mu); font-family:monospace; margin-top:5px;">
+                <span>Grid: 480V 3-Phase · 59.99 Hz</span>
+                <span>Core: <b data-mining-temp style="color:${miningStats.transformerTempC > 75 ? '#ef4444' : 'var(--gold)'};">${miningStats.transformerTempC}°C</b></span>
               </div>
             </div>
 
@@ -284,8 +337,22 @@ export function renderExchangeTab(S: any) {
               <div style="font-size:8px; color:var(--mu); margin-top:4px;">
                 Yield Boost: <b style="color:var(--gold);">${Math.round(miningStats.yieldMultiplier * 100)}%</b> | Power Bill: <b style="color:var(--grn);">${Math.round(miningStats.powerCostMultiplier * 100)}%</b>
               </div>
+              <div style="display:flex; gap:6px; font-size:8px; color:var(--mu); font-family:monospace; margin-top:5px;">
+                <span>${miningStats.cleanEnergyKw > 0 ? `<b style="color:#10b981;">☀️ +${miningStats.cleanEnergyKw} kW Solar</b>` : '☀️ 0 kW Solar'}</span>
+                <span>·</span>
+                <span>${miningStats.bessSurgeKw > 0 ? `<b style="color:#06b6d4;">🔋 +${miningStats.bessSurgeKw} kW BESS</b>` : '🔋 0 kW BESS'}</span>
+              </div>
             </div>
           </div>
+
+          ${miningStats.isOverloaded ? `
+            <div style="background:rgba(239,68,68,0.12); border:1px solid #ef4444; border-radius:6px; padding:8px 12px; font-size:9px; color:#fca5a5; display:flex; align-items:center; gap:8px;">
+              <span style="font-size:14px;">⚠️</span>
+              <div>
+                <b>SUBSTATION GRID OVERLOAD:</b> Rigs demand (${miningStats.usedPowerKw.toFixed(1)} kW) exceeds transformer limit (${miningStats.currentPowerKw} kW). Breaker triggered <b>50% thermal throttling</b>. Upgrade transformer below to restore full hash velocity!
+              </div>
+            </div>
+          ` : ''}
 
           <!-- Active Multi-Coin Mining Badges -->
           <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:9px;">

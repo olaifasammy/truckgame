@@ -214,7 +214,7 @@ export default {
                         </div>
                       </div>
                       <button class="btn alt" style="padding:4px 8px; font-size:9px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.3); display:flex; align-items:center; gap:4px; flex-shrink:0;" data-act="open-telematics" data-id="${a.truck}">
-                        🛰️ ${telem.speedKmh} KM/H
+                        🛰️ <span data-truck-speed="${a.truck}">${telem.speedKmh > 0 ? `${telem.speedKmh} km/h` : '0 km/h'}</span>
                       </button>
                     </div>
 

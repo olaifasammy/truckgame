@@ -63,13 +63,13 @@ export class BiddingEngine {
       } else {
         const timeLeft = auc.expiresAt - now;
         
-        let bidChance = 0.14; // Base chance
-        if (timeLeft < 15000) bidChance = 0.65; // High intensity countdown
-        else if (timeLeft < 45000) bidChance = 0.35;
+        let bidChance = 0.38; // Responsive base chance for live reverse auction
+        if (timeLeft < 15000) bidChance = 0.85; // High intensity final countdown
+        else if (timeLeft < 45000) bidChance = 0.60;
 
-        // If player is currently winning, rivals are slightly more motivated to contest
-        if (auc.currentWinner === 'player' && Math.random() < 0.4) {
-          bidChance += 0.2;
+        // If player is currently winning, rivals are actively motivated to contest
+        if (auc.currentWinner === 'player') {
+          bidChance += 0.30;
         }
 
         if (Math.random() < bidChance) {

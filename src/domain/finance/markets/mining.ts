@@ -135,6 +135,17 @@ export const MINING_ADDITIONS: MiningAdditionDef[] = [
     yieldBoostPct: 50,
     powerSavePct: 15,
     requiredVipLevel: 14
+  },
+  {
+    id: 'bess_storage',
+    name: 'Industrial BESS Battery System',
+    icon: '🔋',
+    description: '+30 kW Substation Surge Capacity buffer & -25% power cost via peak-load shaving',
+    cashCost: 95000,
+    bondsCost: 28,
+    yieldBoostPct: 15,
+    powerSavePct: 25,
+    requiredVipLevel: 8
   }
 ];
 
@@ -171,8 +182,12 @@ export function getSubstationUpgradeCost(currentLevel: number) {
   };
 }
 
-export function getSubstationPowerKw(currentLevel: number): number {
-  return 20 + currentLevel * 50;
+export function getSubstationPowerKw(currentLevel: number, S?: any): number {
+  let kw = 20 + (currentLevel || 0) * 50;
+  if (S?.mining?.upgrades?.['bess_storage']) {
+    kw += 30; // +30 kW industrial battery surge buffer
+  }
+  return kw;
 }
 
 export function calculateRigDailyCoinYield(typeId: string, targetAssetId: string, S?: any): number {
@@ -189,7 +204,7 @@ export function calculateRigDailyCoinYield(typeId: string, targetAssetId: string
   }
 
   const market = getCryptoMarketData(targetAssetId);
-  const coinPrice = market ? market.sellPrice : 1;
+  const coinPrice = market ? market.sellPrice : (targetAssetId === 'flb' ? 5000 : 1);
   const baseDailyUsd = rigDef.grossDailyUsdYield * yieldMult;
   return coinPrice > 0 ? (baseDailyUsd / coinPrice) : 0;
 }
@@ -197,8 +212,6 @@ export function calculateRigDailyCoinYield(typeId: string, targetAssetId: string
 export function processMiningTick(S: any, elapsedMs: number) {
   if (!S.mining) S.mining = { substationLevel: 0, subscriptions: [], upgrades: {}, pendingYield: {} };
   const subscriptions: MiningSubscription[] = S.mining.subscriptions || [];
-
-  if (subscriptions.length === 0) return;
 
   // Scale elapsedMs by MINING_TIME_SCALE so simulation days advance at game speed
   const simElapsedMs = elapsedMs * MINING_TIME_SCALE;
@@ -222,7 +235,26 @@ export function processMiningTick(S: any, elapsedMs: number) {
       }
     }
   }
-  const powerCostMult = Math.max(0.1, 1 - powerSaveTotalPct / 100);
+
+  // Corporate FLB Staking Tier 4 discount
+  const stakedBonds = S.stakedBonds || 0;
+  if (stakedBonds >= 75) {
+    powerSaveTotalPct += 50;
+  }
+
+  const powerCostMult = Math.max(0.05, 1 - Math.min(95, powerSaveTotalPct) / 100);
+
+  const currentPowerKw = getSubstationPowerKw(S.mining.substationLevel || 0, S);
+  let totalActivePowerKw = 0;
+  subscriptions.forEach(s => {
+    if (s.active && now < s.expiresAt) {
+      const def = MINING_RIG_TYPES.find(t => t.id === s.typeId);
+      if (def) totalActivePowerKw += def.powerKw;
+    }
+  });
+
+  // If overloaded, thermal throttle efficiency by 50%
+  const throttleMult = totalActivePowerKw > currentPowerKw ? 0.5 : 1.0;
 
   for (const sub of subscriptions) {
     if (!sub.active) continue;
@@ -239,11 +271,18 @@ export function processMiningTick(S: any, elapsedMs: number) {
     const powerCost = def.dailyPowerCost * powerCostMult * daysElapsed;
     totalPowerCostUSD += powerCost;
 
-    // Yield accrual with booster multiplier
-    const dailyCoinYield = calculateRigDailyCoinYield(sub.typeId, sub.targetAssetId, S);
+    // Yield accrual with booster multiplier & thermal throttle
+    const dailyCoinYield = calculateRigDailyCoinYield(sub.typeId, sub.targetAssetId, S) * throttleMult;
     const yieldMined = dailyCoinYield * daysElapsed;
 
     S.mining.pendingYield[sub.targetAssetId] = (S.mining.pendingYield[sub.targetAssetId] || 0) + yieldMined;
+  }
+
+  // FLB Staking Rewards accrual (18.5% APY)
+  if (stakedBonds > 0) {
+    const dailyStakingFlb = (stakedBonds * 0.185) / 365;
+    const flbMined = dailyStakingFlb * daysElapsed;
+    S.mining.pendingYield['flb'] = (S.mining.pendingYield['flb'] || 0) + flbMined;
   }
 
   if (totalPowerCostUSD > 0) {
@@ -253,7 +292,7 @@ export function processMiningTick(S: any, elapsedMs: number) {
 
 export function calculateMiningStats(S: any) {
   const mining = S.mining || { substationLevel: 0, subscriptions: [], upgrades: {}, pendingYield: {} };
-  const currentPowerKw = getSubstationPowerKw(mining.substationLevel || 0);
+  const currentPowerKw = getSubstationPowerKw(mining.substationLevel || 0, S);
   const subscriptions: MiningSubscription[] = mining.subscriptions || [];
 
   const now = Date.now();
@@ -272,7 +311,14 @@ export function calculateMiningStats(S: any) {
       }
     }
   }
-  const powerCostMult = Math.max(0.1, 1 - powerSaveTotalPct / 100);
+
+  // Corporate FLB Staking Tier 4 discount
+  const stakedBonds = S.stakedBonds || 0;
+  if (stakedBonds >= 75) {
+    powerSaveTotalPct += 50;
+  }
+
+  const powerCostMult = Math.max(0.05, 1 - Math.min(95, powerSaveTotalPct) / 100);
 
   const activeCoinsSet = new Set<string>();
 
@@ -287,18 +333,35 @@ export function calculateMiningStats(S: any) {
 
     const dailyCoinYield = calculateRigDailyCoinYield(sub.typeId, sub.targetAssetId, S);
     const market = getCryptoMarketData(sub.targetAssetId);
-    const price = market ? market.sellPrice : 1;
+    const price = market ? market.sellPrice : (sub.targetAssetId === 'flb' ? 5000 : 1);
     dailyRevenueUsd += dailyCoinYield * price;
   }
 
+  const isOverloaded = usedPowerKw > currentPowerKw;
+  const powerUsagePct = currentPowerKw > 0 ? (usedPowerKw / currentPowerKw) * 100 : 0;
+  const transformerTempC = Math.round(36 + Math.min(65, (powerUsagePct / 100) * 46));
+  const transformerStatus = isOverloaded ? 'OVERLOAD TRIPPED' : powerUsagePct > 85 ? 'HIGH LOAD' : 'NOMINAL';
+  const cleanEnergyKw = mining.upgrades?.['solar_auxiliary'] ? 12.5 : 0;
+  const bessSurgeKw = mining.upgrades?.['bess_storage'] ? 30 : 0;
   const netDailyProfitUsd = dailyRevenueUsd - dailyPowerCost;
   const activeSubsCount = subscriptions.filter(s => s.active && now < s.expiresAt).length;
+
+  // Staking metrics
+  const stakingApyPct = 18.5;
+  const dailyStakingYieldUsd = (stakedBonds * 5000 * (stakingApyPct / 100)) / 365;
+  const dailyStakingYieldFlb = (stakedBonds * (stakingApyPct / 100)) / 365;
 
   return {
     substationLevel: mining.substationLevel || 0,
     currentPowerKw,
     usedPowerKw,
-    powerUsagePct: Math.min(100, (usedPowerKw / currentPowerKw) * 100),
+    isOverloaded,
+    transformerTempC,
+    transformerStatus,
+    cleanEnergyKw,
+    bessSurgeKw,
+    powerUsagePct: Math.min(100, powerUsagePct),
+    rawPowerUsagePct: powerUsagePct,
     dailyPowerCost,
     dailyRevenueUsd,
     netDailyProfitUsd,
@@ -308,7 +371,11 @@ export function calculateMiningStats(S: any) {
     activeCoinsList: Array.from(activeCoinsSet),
     activeSubsCount,
     totalSubsCount: subscriptions.length,
-    pendingYield: mining.pendingYield || {}
+    pendingYield: mining.pendingYield || {},
+    stakedBonds,
+    stakingApyPct,
+    dailyStakingYieldUsd,
+    dailyStakingYieldFlb
   };
 }
 

@@ -319,7 +319,7 @@ export class FreightEngine {
       const settled = S.loans.filter((l: any) => l.balance <= 0);
       if (settled.length > 0) {
         S.loans = S.loans.filter((l: any) => l.balance > 0);
-        settled.forEach(l => pushNote(S, `Facility Paid: ${l.name}`, { title: 'LOAN SETTLED', type: 'finance' }));
+        settled.forEach((l: any) => pushNote(S, `Facility Paid: ${l.name}`, { title: 'LOAN SETTLED', type: 'finance' }));
       }
     }
 
@@ -331,7 +331,7 @@ export class FreightEngine {
       const expired = S.leases.filter((l: any) => l.daysRemaining <= 0);
       if (expired.length > 0) {
         S.leases = S.leases.filter((l: any) => l.daysRemaining > 0);
-        expired.forEach(l => {
+        expired.forEach((l: any) => {
           const truck = S.fleet.find((t: any) => t.id === l.truckId);
           if (truck) truck.status = 'expired';
           pushNote(S, `Lease expired for Unit #${l.truckId}`, { title: 'LEASE EXPIRED', type: 'ops' });

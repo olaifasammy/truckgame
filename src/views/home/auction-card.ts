@@ -21,7 +21,7 @@ export function renderAuctionCard(S: any, j: any) {
   const locTo = LOCATIONS[auc.to || j.to];
 
   return `
-    <div class="card auction-card" style="margin-bottom:6px; background:#0e1320; border:1px solid ${isWinning ? 'var(--grn)' : 'rgba(193,154,91,0.5)'}; border-radius:8px; padding:6px 10px; position:relative; overflow:hidden;">
+    <div class="card auction-card" data-auc-card="${auc.id}" style="margin-bottom:6px; background:#0e1320; border:1px solid ${isWinning ? 'var(--grn)' : 'rgba(193,154,91,0.5)'}; border-radius:8px; padding:6px 10px; position:relative; overflow:hidden;">
       <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
         <!-- Left: Icon & Auction Details -->
         <div style="display:flex; align-items:center; gap:8px; min-width:0;">
@@ -43,7 +43,7 @@ export function renderAuctionCard(S: any, j: any) {
               <span>→</span>
               <span style="color:var(--tx); font-weight:700;">${locTo?.name || auc.to || j.to}</span>
               <span>· ${auc.km || j.km}km · ${auc.weight || j.weight}t · </span>
-              <span style="color:${isWinning ? 'var(--grn)' : 'var(--mu)'};">${isWinning ? '★ Winning' : auc.currentWinnerName}</span>
+              <span style="color:${isWinning ? 'var(--grn)' : 'var(--mu)'};" data-auc-winner="${auc.id}">${isWinning ? '★ Winning' : auc.currentWinnerName}</span>
             </div>
           </div>
         </div>
@@ -55,7 +55,7 @@ export function renderAuctionCard(S: any, j: any) {
               ${fmt(auc.currentBid || 0)}
             </div>
             <div style="font-size:8px; color:${timeLeft < 20000 ? '#ef4444' : 'var(--mu)'}; font-weight:800; font-family:monospace;">
-              ⏱️ <span data-eta="${auc.expiresAt}">${dur(timeLeft)}</span>
+              ⏱️ <span data-auction-eta="${auc.expiresAt}">${dur(timeLeft)}</span>
             </div>
           </div>
           ${isVip ? `

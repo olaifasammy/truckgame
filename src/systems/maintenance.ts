@@ -90,8 +90,12 @@ export function startRepair(S: any, truckId: number, selectedParts: string[]): b
     toast('Truck not found', 'err');
     return false;
   }
-  if (truck.status === 'repair' || truck.status === 'busy') {
-    toast('Truck is currently busy or already in repair bay', 'err');
+  if (S.repairs && S.repairs.some((r: any) => r.truckId === truckId)) {
+    toast(`Truck #${truckId} already has an active or scheduled service in the repair bay queue.`, 'err');
+    return false;
+  }
+  if (truck.status === 'repair') {
+    toast(`Truck #${truckId} is already on the hydraulic hoist undergoing maintenance.`, 'err');
     return false;
   }
   if (!selectedParts || selectedParts.length === 0) {
@@ -133,20 +137,17 @@ export function startRepair(S: any, truckId: number, selectedParts: string[]): b
   S.money -= totalCost;
   const savedAmount = Math.max(0, retailTotal - totalCost);
 
+  // If truck is busy, it's a scheduled repair for when it returns to a hub
+  const isScheduled = truck.status === 'busy';
+
   pushNote(S, `Workshop Service: Unit #${truckId} (-$${totalCost.toLocaleString()})${savedAmount > 0 ? ` [Saved $${savedAmount.toLocaleString()} using warehouse stock]` : ''}`, {
     title: 'Financial Transaction',
     type: 'finance',
-    body: `Service authorization for Unit: ${truck.name} (#${truckId})\nParts/Fluids: ${selectedParts.join(', ')}\nParts from Inventory: ${partsUsedFromStock.length > 0 ? partsUsedFromStock.join(', ') : 'None'}\nAmount Paid: $${totalCost.toLocaleString()}\nSavings: $${savedAmount.toLocaleString()}\nStatus: Maintenance in Progress`
+    body: `Service authorization for Unit: ${truck.name} (#${truckId})\nParts/Fluids: ${selectedParts.join(', ')}\nParts from Inventory: ${partsUsedFromStock.length > 0 ? partsUsedFromStock.join(', ') : 'None'}\nAmount Paid: $${totalCost.toLocaleString()}\nSavings: $${savedAmount.toLocaleString()}\nStatus: ${isScheduled ? 'Scheduled for Hub Arrival' : 'Maintenance in Progress'}`
   });
-
-  // Set truck status to repair
-  truck.status = 'repair';
 
   // Add to repair queue
   S.repairs = S.repairs || [];
-  
-  // If truck is busy, it's a scheduled repair for when it returns
-  const isScheduled = truck.status === 'busy';
   
   S.repairs.push({
     id: S.nextId++,
@@ -166,7 +167,9 @@ export function startRepair(S: any, truckId: number, selectedParts: string[]): b
   }
 
   const savingsMsg = savedAmount > 0 ? ` (Saved $${savedAmount.toLocaleString()} using inventory!)` : '';
-  const statusMsg = isScheduled ? 'Repair scheduled for unit return.' : `Truck sent to Repair Bay. Estimated time: ${Math.round(durationMs / 1000)}s`;
+  const statusMsg = isScheduled 
+    ? `Pre-paid & scheduled workshop service for Unit #${truckId}! Hoist will start immediately upon arrival at hub.` 
+    : `Truck placed on Hydraulic Lift Bay! Estimated service time: ${Math.round(durationMs / 1000)}s`;
   toast(`${statusMsg}${savingsMsg}`, 'success');
   return true;
 }
@@ -184,6 +187,7 @@ export function processScheduledRepair(S: any, truckId: number) {
     rep.end = now + rep.durationMs;
     const truck = S.fleet.find((t: any) => t.id === truckId);
     if (truck) truck.status = 'repair';
+    toast(`Unit #${truckId} returned from transit and was hoisted into the Repair Bay!`, 'info');
   }
 }
 
@@ -196,6 +200,10 @@ export function completeRepairs(S: any, now: number): number {
   const remaining: any[] = [];
   let completedCount = 0;
   S.repairs.forEach((rep: any) => {
+    if (rep.scheduled) {
+      remaining.push(rep);
+      return;
+    }
     if (now >= rep.end) {
       completedCount++;
       // Complete repair

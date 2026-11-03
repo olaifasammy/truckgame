@@ -28,7 +28,7 @@ body {
 
 #view {
   min-height: calc(100vh - 148px);
-  padding: 0 4px 28px;
+  padding: 0 10px 36px;
   position: relative;
 }
 
@@ -36,12 +36,12 @@ body {
 
 /* Header (FMS Telematics Command Console) */
 .top { 
-  display: flex; padding: 8px 14px; min-height: 52px;
+  display: flex; padding: 10px 14px; min-height: 54px;
   background: #0d1424; 
   border-bottom: 1px solid rgba(193,154,91,0.35); 
   box-shadow: 0 4px 20px rgba(0,0,0,0.6);
   position: sticky; top: 0; z-index: 100; align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 14px;
 }
 .top::after {
   content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 1px;

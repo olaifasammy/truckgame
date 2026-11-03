@@ -9,6 +9,7 @@ export interface CryptoAsset {
 }
 
 export const CRYPTO_ASSETS: CryptoAsset[] = [
+  { id: 'flb', symbol: 'FLB', name: 'Fleet Logistics Bond', icon: '🪙', basePrice: 5000, volatility: 0.08, color: '#f59e0b' },
   { id: 'btc', symbol: 'BTC', name: 'Bitcoin', icon: '₿', basePrice: 98500, volatility: 0.15, color: '#f59e0b' },
   { id: 'eth', symbol: 'ETH', name: 'Ethereum', icon: 'Ξ', basePrice: 2750, volatility: 0.25, color: '#6366f1' },
   { id: 'sol', symbol: 'SOL', name: 'Solana', icon: '◎', basePrice: 145, volatility: 0.45, color: '#14f195' },
@@ -60,10 +61,11 @@ export function getCryptoMarketData(assetId: string) {
 }
 
 export function getTotalCryptoValue(S: any): number {
-  if (!S.cryptoHoldings) return 0;
   let total = 0;
   for (const asset of CRYPTO_ASSETS) {
-    const qty = S.cryptoHoldings[asset.id] || 0;
+    const qty = asset.id === 'flb' 
+      ? (S.coins || 0) + ((S.stakedBonds) || 0)
+      : ((S.cryptoHoldings && S.cryptoHoldings[asset.id]) || 0);
     if (qty > 0) {
       const data = getCryptoMarketData(asset.id);
       total += qty * (data?.sellPrice || asset.basePrice);

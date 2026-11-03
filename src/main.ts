@@ -18,6 +18,8 @@ import { pushNote } from './systems/notify';
 import { activeAuctionModalId, renderModalOverlay } from './views/home/auction-modal';
 import { tripMs } from './systems/calc';
 import { TRAIT_REGISTRY } from './domain/drivers/drivers.names';
+import { getTruckTelematics } from './domain/trucks/trucks.telematics';
+import { getCryptoMarketData } from './domain/finance/markets/crypto';
 
 console.log('Main: Imports completed');
 
@@ -127,14 +129,15 @@ try {
     
     // 1. Silent Simulation Processing (No intrusive view teardown or reload)
     processEconomics(st, now);
+    const prevAuctionCount = (st.auctions || []).length;
     const { done = [], auctionChanged = false } = completeJobs(st, now) || {};
     if (done.length > 0) {
       done.forEach((id: number) => onTruckArrival(st, id));
     }
     const repCount = completeRepairs(st, now) || 0;
 
-    // Periodic freight replenishment (every 45s) or if contracts dry up
-    if (now - lastReplenish > 45000 || (st.jobs && st.jobs.length < 3)) {
+    // Periodic freight replenishment (every 30s) or if contracts dry up
+    if (now - lastReplenish > 30000 || (st.jobs && st.jobs.length < 3)) {
       replenish(st);
       lastReplenish = now;
     }
@@ -154,7 +157,7 @@ try {
       localStorage.setItem('sam.v3', JSON.stringify(st));
     } catch (e) {}
 
-    // 2. Surgical Live UI Updates in-place (Completely silent to the user)
+    // 2. Surgical Live UI Updates in-place (Completely seamless and non-reloading)
     // Update live delivery and trip countdowns
     document.querySelectorAll('[data-eta]').forEach(el => {
       const targetTime = +(el as HTMLElement).dataset.eta!;
@@ -168,39 +171,88 @@ try {
       if (fill) fill.style.width = Math.min(100, Math.max(0, (now - s) / (e - s) * 100)) + '%';
     });
 
-    // Update auction countdown timers surgically if active on screen
+    // Update auction countdown timers surgically
     document.querySelectorAll('[data-auction-eta]').forEach(el => {
       const targetTime = +(el as HTMLElement).dataset.auctionEta!;
       const diff = Math.max(0, targetTime - now);
       (el as HTMLElement).textContent = dur(diff);
     });
 
-    // Update auction card bid amounts surgically if visible on screen
+    // Update auction card bids, winner text, and card border surgically in real-time
     document.querySelectorAll('[data-auc-bid]').forEach(el => {
       const aucId = +(el as HTMLElement).dataset.aucBid!;
       const auc = (st.auctions || []).find((a: any) => a.id === aucId);
       if (auc) {
+        const isWinning = auc.currentWinner === 'player';
         const formatted = fmt(auc.currentBid || 0);
-        if ((el as HTMLElement).textContent?.trim() !== formatted) {
-          (el as HTMLElement).textContent = formatted;
+        if (el.textContent?.trim() !== formatted) {
+          el.textContent = formatted;
+        }
+        (el as HTMLElement).style.color = isWinning ? 'var(--grn)' : 'var(--gold)';
+
+        const winnerEl = document.querySelector(`[data-auc-winner="${auc.id}"]`);
+        if (winnerEl) {
+          const winText = isWinning ? '★ Winning' : auc.currentWinnerName;
+          if (winnerEl.textContent !== winText) {
+            winnerEl.textContent = winText;
+            (winnerEl as HTMLElement).style.color = isWinning ? 'var(--grn)' : 'var(--mu)';
+          }
+        }
+
+        const cardEl = document.querySelector(`[data-auc-card="${auc.id}"]`);
+        if (cardEl) {
+          (cardEl as HTMLElement).style.borderColor = isWinning ? 'var(--grn)' : 'rgba(193,154,91,0.5)';
         }
       }
     });
 
-    // Update truck odometers surgically
+    // Update truck live odometers continuously during transit
     document.querySelectorAll('[data-truck-odo]').forEach(el => {
       const truckId = +(el as HTMLElement).dataset.truckOdo!;
       const truck = (st.fleet || []).find((t: any) => t.id === truckId);
       if (truck) {
-        const formatted = Math.round(truck.odometer).toLocaleString() + ' km';
+        const activeJob = (st.active || []).find((a: any) => a.truck === truck.id);
+        let liveOdo = truck.odometer;
+        if (activeJob && activeJob.end > activeJob.start) {
+          const pct = Math.min(1, Math.max(0, (now - activeJob.start) / (activeJob.end - activeJob.start)));
+          liveOdo += (activeJob.km || 0) * pct;
+        }
+        const formatted = Math.round(liveOdo).toLocaleString() + ' km';
         if (el.textContent?.trim() !== formatted) el.textContent = formatted;
       }
     });
 
-    // Update company total km stats surgically
+    // Update company total km stats surgically including in-transit distance
+    let inTransitTotalKm = 0;
+    (st.active || []).forEach((a: any) => {
+      if (a.end > a.start) {
+        const pct = Math.min(1, Math.max(0, (now - a.start) / (a.end - a.start)));
+        inTransitTotalKm += (a.km || 0) * pct;
+      }
+    });
     document.querySelectorAll('[data-stat-km]').forEach(el => {
-      const formatted = (st.stats?.km || 0).toLocaleString() + ' km';
+      const formatted = Math.round((st.stats?.km || 0) + inTransitTotalKm).toLocaleString() + ' km';
       if (el.textContent?.trim() !== formatted) el.textContent = formatted;
+    });
+
+    // Update live speeds and telematics button labels for active trucks
+    (st.active || []).forEach((a: any) => {
+      const truck = (st.fleet || []).find((t: any) => t.id === a.truck);
+      if (!truck) return;
+      const drv = (st.drivers || []).find((d: any) => d.id === truck.driverId);
+      const telem = getTruckTelematics(truck, a, drv, now);
+
+      document.querySelectorAll(`[data-truck-speed="${truck.id}"]`).forEach(el => {
+        const txt = telem.speedKmh > 0 ? `${telem.speedKmh} km/h` : '';
+        if (el.textContent !== txt) el.textContent = txt;
+      });
+
+      document.querySelectorAll(`[data-truck-telem-btn="${truck.id}"]`).forEach(el => {
+        const label = `🛰️ LIVE TELEMATICS · ${telem.stateLabel} (${telem.speedKmh} KM/H)`;
+        if (el.textContent?.trim() !== label) {
+          el.innerHTML = `<span>🛰️</span> ${label}`;
+        }
+      });
     });
 
     // Check active drivers on the road for fatigue accumulation & 80% mandatory rest
@@ -217,14 +269,13 @@ try {
             }
 
             // Fatigue accumulation: ~9% per simulation hour (11h drive time = 100% fatigue)
-            // 1 simulation hour = 300,000ms (5 minutes)
             if (!a.lastFatigueTick) a.lastFatigueTick = now;
             const msElapsed = now - a.lastFatigueTick;
             const simHoursElapsed = msElapsed / 300000;
             
             let fatigueMod = 1.0;
             if (drv.trait) {
-              const traitDef = TRAIT_REGISTRY[drv.trait];
+              const traitDef = (TRAIT_REGISTRY as any)[drv.trait];
               if (traitDef?.effect?.fatigueMod) {
                 fatigueMod += traitDef.effect.fatigueMod;
               }
@@ -232,7 +283,6 @@ try {
 
             const fatigueGain = simHoursElapsed * 9.1 * fatigueMod;
             drv.fatigue = Math.min(100, (drv.fatigue || 0) + fatigueGain);
-            // Clamp fatigue to integer for consistency in storage
             drv.fatigue = Math.round(drv.fatigue * 100) / 100;
             a.lastFatigueTick = now;
 
@@ -250,19 +300,44 @@ try {
         }
       });
     }
-    if (auctionChanged && st.tab === 'home') {
+
+    // Only structural updates (e.g. auction finalized/expired, delivery completed, or repair finished) require board refresh
+    const currentAuctionCount = (st.auctions || []).length;
+    const auctionStructurallyChanged = prevAuctionCount !== currentAuctionCount;
+
+    if ((auctionStructurallyChanged || done.length > 0 || repCount > 0) && (st.tab === 'home' || st.tab === 'garage' || st.tab === 'repair')) {
       const activeEl = document.activeElement;
       const isInputFocused = activeEl && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName);
       if (!isInputFocused) {
-        const homeView = find('home');
+        const view = find(st.tab);
         const viewEl = $('view');
-        if (homeView && viewEl) {
+        if (view && viewEl) {
           const scrollY = window.scrollY;
-          viewEl.innerHTML = homeView.render(st);
+          viewEl.innerHTML = view.render(st);
           window.scrollTo(0, scrollY);
         }
       }
     }
+
+    // Surgical live updates for Crypto Mining telemetry without re-rendering view
+    const pendingUsdEl = document.querySelector('[data-mining-pending-usd]');
+    if (pendingUsdEl && st.mining?.pendingYield) {
+      let pendingTotal = 0;
+      for (const [coinId, qty] of Object.entries(st.mining.pendingYield)) {
+        const q = qty as number;
+        if (q > 0) {
+          const coinEl = document.querySelector(`[data-mining-yield-coin="${coinId}"]`);
+          if (coinEl) {
+            const formattedQty = q >= 100 ? q.toFixed(2) : q >= 1 ? q.toFixed(4) : q >= 0.001 ? q.toFixed(5) : q.toFixed(7);
+            if (coinEl.textContent !== formattedQty) coinEl.textContent = formattedQty;
+          }
+          const price = coinId === 'flb' ? 5000 : (getCryptoMarketData(coinId)?.sellPrice || 1);
+          pendingTotal += q * price;
+        }
+      }
+      pendingUsdEl.textContent = `$${Math.round(pendingTotal).toLocaleString()}`;
+    }
+
     const cashEl = document.getElementById('hdr-cash-val');
     if (cashEl) {
       const formatted = fmt(st.money);

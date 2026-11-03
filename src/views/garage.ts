@@ -17,7 +17,7 @@ let openId: number | null = null, panel: string | null = null;
 let hitchModalTruckId: number | null = null;
 let garagePage = 1;
 const TRUCKS_PER_PAGE = 10;
-let garageFilter: 'all' | 'parked' | 'transit' = 'all';
+let garageFilter: 'all' | 'parked' | 'transit' | 'repair' = 'all';
 
 action('garage-page-prev', () => {
   if (garagePage > 1) {
@@ -105,6 +105,25 @@ action('repair', d => {
   const S = (window as any).__getStore?.();
   if (S) {
     S.repairTruckId = +(d as any).id;
+    S.workshopTab = 'bay';
+    S.tab = 'repair';
+    refresh();
+  }
+});
+action('open-workshop-scan', () => {
+  const S = (window as any).__getStore?.();
+  if (S) {
+    S.repairTruckId = null;
+    S.workshopTab = 'scan';
+    S.tab = 'repair';
+    refresh();
+  }
+});
+action('hoist-truck-to-bay', d => {
+  const S = (window as any).__getStore?.();
+  if (S) {
+    S.repairTruckId = +(d as any).id;
+    S.workshopTab = 'bay';
     S.tab = 'repair';
     refresh();
   }
@@ -298,8 +317,9 @@ function body(S: any, t: any, m: any, a: any, now: number) {
             </div>
             <div style="text-align:right;">
               <div style="font-size:9px; color:var(--mu);">SPEED · ETA</div>
-              <div style="font-size:12px; font-weight:800; color:var(--gold); font-family:monospace;" data-eta="${a.end}">
-                ${telem.speedKmh > 0 ? `<span style="color:#34d399; margin-right:4px;">${telem.speedKmh} km/h</span>` : ''}${dur(Math.max(0, a.end - now))}
+              <div style="font-size:12px; font-weight:800; color:var(--gold); font-family:monospace; display:flex; align-items:center; justify-content:flex-end; gap:4px;">
+                <span data-truck-speed="${t.id}" style="color:#34d399;">${telem.speedKmh > 0 ? `${telem.speedKmh} km/h` : ''}</span>
+                <span data-eta="${a.end}">${dur(Math.max(0, a.end - now))}</span>
               </div>
             </div>
           </div>
@@ -307,7 +327,7 @@ function body(S: any, t: any, m: any, a: any, now: number) {
             <div style="width:${pct}%; height:100%; background:var(--blu); border-radius:3px; transition:width 0.5s linear;"></div>
           </div>
           <div style="display:flex; gap:6px; margin-top:8px;">
-            <button class="btn alt" style="flex:1; padding:6px 10px; font-size:10px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.4); display:flex; align-items:center; justify-content:center; gap:6px;" data-act="open-telematics" data-id="${t.id}">
+            <button class="btn alt" style="flex:1; padding:6px 10px; font-size:10px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.4); display:flex; align-items:center; justify-content:center; gap:6px;" data-act="open-telematics" data-id="${t.id}" data-truck-telem-btn="${t.id}">
               <span>🛰️</span> LIVE TELEMATICS · ${telem.stateLabel} (${telem.speedKmh} KM/H)
             </button>
             <button class="btn" style="padding:6px 10px; font-size:9px; font-weight:900; background:rgba(239,68,68,0.1); color:#ef4444; border:1px solid rgba(239,68,68,0.2); letter-spacing:0.5px;" data-act="recall-truck" data-id="${t.id}">
@@ -461,11 +481,48 @@ function body(S: any, t: any, m: any, a: any, now: number) {
           <span style="font-size:7px; color:var(--mu);">REFUEL</span>
         </button>
 
-        <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px;" data-act="repair" data-id="${t.id}" ${busy ? 'disabled' : ''}>
-          ${ic('wrench')}
-          <span style="font-size:8px; font-weight:800; color:${avgCond >= 100 ? 'var(--grn)' : 'var(--gold)'};">${avgCond >= 100 ? 'CHECK' : 'REPAIR'}</span>
-          <span style="font-size:7px; color:var(--mu);">SERVICE</span>
-        </button>
+        ${(() => {
+          const compValues = Object.values(t.components || {}).map((c: any) => typeof c === 'number' ? c : c?.health ?? 100);
+          const minCompHealth = compValues.length > 0 ? Math.min(...compValues) : 100;
+          const needsService = avgCond < 85 || minCompHealth < 65 || (t.fluids?.coolant || 100) < 60 || (t.fluids?.oil || 40) < 25;
+          const isScheduled = S.repairs?.some((r: any) => r.truckId === t.id && r.scheduled);
+          const isRepairing = t.status === 'repair' || S.repairs?.some((r: any) => r.truckId === t.id && !r.scheduled);
+
+          if (isRepairing) {
+            return `
+              <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px; border-color:#ef4444; background:rgba(239,68,68,0.15);" data-act="hoist-truck-to-bay" data-id="${t.id}">
+                ${ic('wrench')}
+                <span style="font-size:8px; font-weight:900; color:#ef4444;">ON HOIST</span>
+                <span style="font-size:7px; color:#fca5a5;">VIEW BAY</span>
+              </button>
+            `;
+          }
+          if (isScheduled) {
+            return `
+              <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px; border-color:#38bdf8; background:rgba(56,189,248,0.12);" data-act="hoist-truck-to-bay" data-id="${t.id}">
+                ${ic('wrench')}
+                <span style="font-size:8px; font-weight:900; color:#38bdf8;">SCHEDULED</span>
+                <span style="font-size:7px; color:#93c5fd;">ON ARRIVAL</span>
+              </button>
+            `;
+          }
+          if (needsService) {
+            return `
+              <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px; border-color:rgba(239,68,68,0.5); background:rgba(239,68,68,0.12);" data-act="hoist-truck-to-bay" data-id="${t.id}">
+                ${ic('wrench')}
+                <span style="font-size:8px; font-weight:900; color:#ef4444;">SERVICE DUE</span>
+                <span style="font-size:7px; color:#fca5a5;">${busy ? 'PRE-PAY BAY' : 'HOIST TO BAY'}</span>
+              </button>
+            `;
+          }
+          return `
+            <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px; opacity:0.85;" data-act="hoist-truck-to-bay" data-id="${t.id}">
+              ${ic('wrench')}
+              <span style="font-size:8px; font-weight:800; color:var(--grn);">OPTIMAL</span>
+              <span style="font-size:7px; color:var(--mu);">MINT 100%</span>
+            </button>
+          `;
+        })()}
 
         <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px;" data-act="inspect" data-id="${t.id}" ${busy ? 'disabled' : ''}>
           ${ic('search')}
@@ -709,12 +766,27 @@ export default {
     const canUp = S.money >= upCost;
     const readiness = S.fleet.length > 0 ? Math.round(((S.fleet.length - busy) / S.fleet.length) * 100) : 100;
 
+    // Helper to check if truck needs servicing or is in repair
+    const truckNeedsRepair = (t: any) => {
+      if (t.status === 'repair') return true;
+      if (S.repairs?.some((r: any) => r.truckId === t.id)) return true;
+      const compValues = Object.values(t.components || {}).map((c: any) => typeof c === 'number' ? c : c?.health ?? 100);
+      const minHealth = compValues.length > 0 ? Math.min(...compValues) : 100;
+      const avgHealth = compValues.length > 0 ? compValues.reduce((a: number, b: number) => a + b, 0) / compValues.length : 100;
+      const lowFluids = (t.fluids?.coolant || 100) < 60 || (t.fluids?.oil || 40) < 25 || (t.fluids?.adBlue || 100) < 50;
+      return avgHealth < 85 || minHealth < 65 || lowFluids;
+    };
+
+    const repairUnitsCount = S.fleet.filter((t: any) => truckNeedsRepair(t)).length;
+
     // Filter fleet based on selected tab
     let filteredFleet = S.fleet;
     if (garageFilter === 'parked') {
       filteredFleet = S.fleet.filter((t: any) => t.status !== 'busy' && t.status !== 'repair');
     } else if (garageFilter === 'transit') {
       filteredFleet = S.fleet.filter((t: any) => t.status === 'busy');
+    } else if (garageFilter === 'repair') {
+      filteredFleet = S.fleet.filter((t: any) => truckNeedsRepair(t));
     }
 
     const totalPages = Math.max(1, Math.ceil(filteredFleet.length / TRUCKS_PER_PAGE));
@@ -732,9 +804,14 @@ export default {
             <div style="font-size:9px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase; font-family:monospace;">FLEET LOGISTICS COMMAND</div>
             <h2 style="margin:2px 0 0; font-size:16px; font-weight:900; color:var(--tx);">Commercial Fleet Depot</h2>
           </div>
-          <button class="btn alt" style="padding:5px 10px; font-size:9px; font-weight:800; border-radius:6px; display:flex; align-items:center; gap:4px;" data-act="upgrade-garage" ${canUp ? '' : 'disabled'}>
-            <span>+ EXPAND BERTHS (${fmt(upCost)})</span>
-          </button>
+          <div style="display:flex; gap:6px;">
+            <button class="btn alt" style="padding:5px 10px; font-size:9px; font-weight:800; border-radius:6px; display:flex; align-items:center; gap:4px; border-color:var(--gold); color:var(--gold);" data-act="open-workshop-scan">
+              <span>🔧</span> WORKSHOP SCAN
+            </button>
+            <button class="btn alt" style="padding:5px 10px; font-size:9px; font-weight:800; border-radius:6px; display:flex; align-items:center; gap:4px;" data-act="upgrade-garage" ${canUp ? '' : 'disabled'}>
+              <span>+ EXPAND (${fmt(upCost)})</span>
+            </button>
+          </div>
         </div>
 
         <!-- 4 Clean Metric Tiles -->
@@ -779,7 +856,7 @@ export default {
             EN-ROUTE (${busy})
           </button>
           <button class="btn ${garageFilter === 'repair' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="repair">
-            REPAIR (${S.fleet.filter((t: any) => t.status === 'repair').length})
+            SERVICE / REPAIR (${repairUnitsCount})
           </button>
         </div>
       </div>
@@ -803,15 +880,15 @@ export default {
       ${renderHitchModal(S)}
       ${renderTelematicsOverlay(S)}
 
-      <!-- Fleet Maintenance & Repair Gateway -->
-      <div class="card" style="margin-top:14px; padding:14px; background:#0f172a; border:1px solid var(--gold); border-radius:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-act="tab" data-id="repair">
+      <!-- Mechanic Workshop & Fleet Diagnostics Gateway -->
+      <div class="card" style="margin-top:14px; padding:14px; background:#0f172a; border:1px solid var(--gold); border-radius:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-act="open-workshop-scan">
         <div style="display:flex; align-items:center; gap:12px;">
           <div style="width:38px; height:38px; background:var(--gold); color:#0a0f1d; border-radius:6px; display:grid; place-items:center; font-size:18px;">
             ${ic('wrench')}
           </div>
           <div>
-            <div style="font-size:13px; font-weight:900; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">Fleet Maintenance & Repair</div>
-            <div style="font-size:10px; color:var(--mu); margin-top:1px;">Schedule service, repairs and component replacements</div>
+            <div style="font-size:13px; font-weight:900; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">Mechanic Workshop & Fleet Diagnostics</div>
+            <div style="font-size:10px; color:var(--mu); margin-top:1px;">Enter workshop terminal, run fleet OBD-II health scan & hoist trucks to repair bays</div>
           </div>
         </div>
         <div style="color:var(--gold); font-size:14px;">${ic('chev')}</div>

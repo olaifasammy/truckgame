@@ -443,7 +443,7 @@ export function completeJobs(S: any, now: number) {
       // Driver Trait Bonuses
       const drv = t ? (S.drivers || []).find((x: any) => x.id === t.driverId) : null;
       if (drv?.trait) {
-        const traitDef = TRAIT_REGISTRY[drv.trait];
+        const traitDef = (TRAIT_REGISTRY as any)[drv.trait];
         if (traitDef?.effect?.payoutMod) {
           const traitBonus = Math.round(a.pay * traitDef.effect.payoutMod);
           finalPay += traitBonus;

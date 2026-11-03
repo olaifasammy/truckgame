@@ -199,14 +199,41 @@ action('claim-mining-rewards', () => {
     for (const [assetId, qty] of Object.entries(S.mining.pendingYield)) {
       const amount = qty as number;
       if (amount > 0) {
-        S.cryptoHoldings[assetId] = (S.cryptoHoldings[assetId] || 0) + amount;
+        if (assetId === 'flb') {
+          // FLB yield deposits directly into authoritative S.coins!
+          S.coins = (S.coins || 0) + amount;
+        } else {
+          S.cryptoHoldings[assetId] = (S.cryptoHoldings[assetId] || 0) + amount;
+        }
         S.mining.pendingYield[assetId] = 0;
         claimedCount++;
       }
     }
 
     if (claimedCount === 0) return toast('No pending crypto yields to claim yet', 'info');
-    toast(`Claimed all pending mined crypto rewards into holdings!`, 'success');
+    toast(`Claimed all pending mined crypto & FLB bond rewards!`, 'success');
+  });
+});
+
+action('stake-flb', d => {
+  const qty = Math.max(1, +(d as any).qty || 1);
+  set(S => {
+    const userCoins = S.coins || 0;
+    if (userCoins < qty) return toast(`Insufficient Fleet Bonds (${qty} FLB required to stake)`, 'err');
+    S.coins = userCoins - qty;
+    S.stakedBonds = (S.stakedBonds || 0) + qty;
+    toast(`Staked ${qty} FLB into Corporate Treasury Pool! (18.5% APY active)`, 'success');
+  });
+});
+
+action('unstake-flb', d => {
+  const qty = Math.max(1, +(d as any).qty || 1);
+  set(S => {
+    const staked = S.stakedBonds || 0;
+    if (staked < qty) return toast(`Insufficient staked bonds (${qty} FLB requested, ${staked} staked)`, 'err');
+    S.stakedBonds = staked - qty;
+    S.coins = (S.coins || 0) + qty;
+    toast(`Unstaked ${qty} FLB back to available liquid treasury reserves`, 'info');
   });
 });
 
