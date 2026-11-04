@@ -1,3 +1,4 @@
+import { vehiclePurchaseTemplate } from '../domain/notifications/templates';
 import { set } from '../core/store';
 import { toast } from '../core/ui';
 import { TRUCK_MODELS, TRAILERS, TRAILER_PRICES } from '../domain/trucks/trucks.data';
@@ -74,6 +75,8 @@ export const refuel = (id: number) => set(S => {
       if (bunker) bunker.currentLiters += fromBunker;
       return;
     }
+    if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
+    S.dailyStats.fuel += cashCost;
   }
 
   t.fluids.fuel = model.tankSize;
@@ -91,6 +94,8 @@ export const repair = (id: number) => set(S => {
   if (!t) return;
   const c = repairCost(t);
   if (c <= 0 || !pay(S, c, `Repair Service Unit #${id} (${t.name})`)) return;
+  if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
+  S.dailyStats.maintenance += c;
   Object.values(t.components).forEach((comp: any) => {
     comp.health = 100;
   });
@@ -175,10 +180,12 @@ export const buyTruckBatch = (modelId: string, trailerType: TrailerType | null, 
       S.fleet.push(truck);
     }
 
-    pushNote(S, `Purchase processed for ${quantity}x ${m.brand} ${m.name}. Logistics team is currently transporting the vehicles to ${destinationCity}.`, { 
-      title: 'EQUIPMENT IN TRANSIT', 
-      type: 'ops',
-      body: `Order Details:\nQuantity: ${quantity}\nModel: ${m.brand} ${m.name}\nDestination: ${destinationCity} Terminal\nEstimated Arrival: ${new Date(arrivalTime).toLocaleTimeString()}`
+    const tpl = vehiclePurchaseTemplate(quantity > 1 ? `${quantity}x Units` : S.fleet[S.fleet.length - 1].id, `${m.brand} ${m.name}`, totalPrice, destinationCity);
+    pushNote(S, tpl.msg, { 
+      title: tpl.title, 
+      type: tpl.type,
+      priority: tpl.priority,
+      body: tpl.body
     });
     toast(`Order Processed: ${quantity} vehicle(s) in transit to garage`, 'success');
   });
@@ -246,12 +253,15 @@ export function buyTrailerToYard(trailerType: TrailerType) {
     if (!S.pendingTrailers) S.pendingTrailers = [];
     S.pendingTrailers.push({ type: trailerType, availableAt: arrivalTime });
 
-    pushNote(S, `Commercial Trailer Order: 1x ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType} is being delivered to Central Storage.`, { 
-      title: 'TRAILER IN TRANSIT', 
-      type: 'ops',
-      body: `Order Details:\nType: ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}\nDestination: HQ Storage Yard\nEstimated Arrival: ${new Date(arrivalTime).toLocaleTimeString()}`
+    const trailerName = TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType;
+    const tpl = vehiclePurchaseTemplate('Yard Asset', trailerName, price, 'HQ Storage Yard');
+    pushNote(S, tpl.msg, { 
+      title: 'TRAILER ORDER CONFIRMED', 
+      type: tpl.type,
+      priority: tpl.priority,
+      body: tpl.body
     });
-    toast(`${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType} purchased and en-route!`, 'success');
+    toast(`${trailerName} purchased and en-route!`, 'success');
   });
 }
 

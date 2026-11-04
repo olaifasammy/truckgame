@@ -54,6 +54,7 @@ const DEF = () => ({
   warehouseUpgrades: { cross_docking: false, cold_vault: false, gantry_crane: false } as Record<string, boolean>,
   corporateTenders: [] as any[],
   subcontractedTrucks: [] as number[],
+  dailyStats: { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 },
   lastTick: Date.now()
 });
 
@@ -242,6 +243,10 @@ function fix(state: any) {
         a.cargo = a.cargoId ? a.cargoId.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'Commercial Freight';
       }
     });
+  }
+  
+  if (!state.dailyStats) {
+    state.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
   }
   
   // Migration: Fresh start for new physics if old schema found

@@ -1,3 +1,4 @@
+import { salesLeadTemplate } from '../../notifications/templates';
 import { Region, FreightJob, JobKind } from '../types';
 import { COMPANIES } from '../companies/registry';
 import { CARGO_TYPES } from '../cargo/registry';
@@ -213,6 +214,18 @@ export class FreightEngine {
       const auction = BiddingEngine.createAuction(job, options.auctionDuration);
       if (!S.auctions) S.auctions = [];
       S.auctions.push(auction);
+
+      // Notification for high-value sales lead
+      if (job.pay > 15000) {
+        const tpl = salesLeadTemplate(company.name, job.from, job.to, job.pay);
+        pushNote(S, tpl.msg, {
+          title: tpl.title,
+          type: tpl.type,
+          priority: tpl.priority,
+          body: tpl.body
+        });
+      }
+
       return { ...job, isAuction: true, auctionId: auction.id };
     }
 

@@ -1,5 +1,6 @@
 import { set } from '../core/store';
 import { toast } from '../core/ui';
+import { vehicleDeliveryTemplate, dailyAccountingTemplate, weeklyAccountingTemplate, monthlyAccountingTemplate, tenderWonTemplate } from '../domain/notifications/templates';
 import { TRUCK_MODELS, TRAILERS } from '../domain/trucks/trucks.data';
 import { stats, fuelCostForTrip, tripMs, distKm, applyWear, syncUsage, getRouteEnv } from './calc';
 import { pushNote } from './notify';
@@ -319,10 +320,12 @@ export function completeJobs(S: any, now: number) {
   for (const t of arrivedTrucks) {
     t.status = 'idle';
     delete t.availableAt;
-    pushNote(S, `DELIVERY COMPLETE: Unit #${t.id} (${t.name}) has arrived at the terminal and is ready for service.`, {
-      title: 'EQUIPMENT ARRIVED',
-      type: 'ops',
-      priority: 1
+    const tpl = vehicleDeliveryTemplate(t.id, t.name, t.loc || 'Terminal');
+    pushNote(S, tpl.msg, {
+      title: tpl.title,
+      type: tpl.type,
+      priority: tpl.priority,
+      body: tpl.body
     });
   }
 
@@ -330,10 +333,13 @@ export function completeJobs(S: any, now: number) {
   if (arrivedTrailers.length > 0) {
     if (!S.trailers) S.trailers = [];
     for (const p of arrivedTrailers) {
+      const trailerName = TRAILERS[p.type as keyof typeof TRAILERS] || p.type;
       S.trailers.push(p.type);
-      pushNote(S, `LOGISTICS DELIVERY: 1x ${TRAILERS[p.type as keyof typeof TRAILERS] || p.type} trailer has been delivered to HQ Storage Yard.`, {
-        title: 'TRAILER ARRIVED',
-        type: 'ops'
+      const tpl = vehicleDeliveryTemplate('Yard', trailerName, 'HQ Storage Yard');
+      pushNote(S, tpl.msg, {
+        title: 'TRAILER DELIVERED',
+        type: tpl.type,
+        body: tpl.body
       });
     }
     S.pendingTrailers = S.pendingTrailers.filter((p: any) => p.availableAt > now);
@@ -460,8 +466,11 @@ export function completeJobs(S: any, now: number) {
         pushNote(S, `+$${coldBonus.toLocaleString()} premium earned via Cryogenic Warehouse Vault.`, { title: 'COLD STORAGE VAULT', type: 'finance' });
       }
 
-      S.money += finalPay;
-      pushNote(S, `Payment for ${cargo?.name || 'Freight'} haul: +$${finalPay.toLocaleString()}`, {
+    S.money += finalPay;
+    if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
+    S.dailyStats.revenue += finalPay;
+
+    pushNote(S, `Payment for ${cargo?.name || 'Freight'} haul: +$${finalPay.toLocaleString()}`, {
         title: 'PAYMENT REMITTANCE',
         type: 'finance',
         body: `Consignment: ${cargo?.name || 'Commercial Freight'}\nRoute: ${a.from} → ${a.to}\nGross Pay: $${finalPay.toLocaleString()}\nTimestamp: ${new Date().toLocaleString()}`
@@ -606,29 +615,70 @@ export function processEconomics(S: any, now: number) {
   const netDaily = dailyInflow - dailyOutflow;
   const netDelta = (netDaily / MS_PER_DAY) * elapsedMs;
 
+  if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
+  S.dailyStats.salaries += (totalSalaries / MS_PER_DAY) * elapsedMs;
+  S.dailyStats.insurance += ((dailyOutflow - totalSalaries - (S.loans || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0) - (S.leases || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0)) / MS_PER_DAY) * elapsedMs;
+  S.dailyStats.revenue += (dailyInflow / MS_PER_DAY) * elapsedMs;
+
   if (!S._lastDailyNote) S._lastDailyNote = now;
   if (now - S._lastDailyNote >= MS_PER_DAY) {
     S._lastDailyNote = now;
-    pushNote(S, `Daily Account Summary: Net Cashflow $${Math.round(netDaily).toLocaleString()} (In: $${Math.round(dailyInflow).toLocaleString()} / Out: $${Math.round(dailyOutflow).toLocaleString()})`, {
-      title: 'DAILY FINANCIAL SUMMARY',
-      type: 'finance'
+
+    const tplData = {
+      revenue: S.dailyStats?.revenue || dailyInflow,
+      salaries: S.dailyStats?.salaries || totalSalaries,
+      fuel: S.dailyStats?.fuel || 0,
+      maintenance: S.dailyStats?.maintenance || 0,
+      insurance: S.dailyStats?.insurance || (dailyOutflow - totalSalaries), // fallback
+      loans: (S.loans || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0) + (S.leases || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0),
+      net: (S.dailyStats?.revenue || 0) - (S.dailyStats?.salaries || 0) - (S.dailyStats?.fuel || 0) - (S.dailyStats?.maintenance || 0) - (S.dailyStats?.insurance || 0)
+    };
+
+    const dNote = dailyAccountingTemplate(tplData);
+    pushNote(S, dNote.msg, {
+      title: dNote.title,
+      type: dNote.type,
+      priority: dNote.priority,
+      body: dNote.body
     });
+
+    // Reset daily stats
+    S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
 
     if (!S._daysCounter) S._daysCounter = 0;
     S._daysCounter++;
 
     if (S._daysCounter % 7 === 0) {
-      pushNote(S, `Weekly Account Summary: Performance report for the past 7 days is now available.`, {
-        title: 'WEEKLY FINANCIAL SUMMARY',
-        type: 'finance',
-        priority: 1
+      const wNote = weeklyAccountingTemplate({
+        revenue: dailyInflow * 7,
+        expenses: dailyOutflow * 7,
+        net: netDaily * 7,
+        trips: S.loads || 0,
+        km: S.stats?.km || 0
+      });
+      pushNote(S, wNote.msg, {
+        title: wNote.title,
+        type: wNote.type,
+        priority: wNote.priority,
+        body: wNote.body
       });
     }
     if (S._daysCounter % 30 === 0) {
-      pushNote(S, `Monthly Account Summary: Full enterprise audit and profit/loss statement for the month.`, {
-        title: 'MONTHLY FINANCIAL SUMMARY',
-        type: 'finance',
-        priority: 2
+      const assetsValue = (S.fleet?.length || 0) * 125000 + (S.offices?.length || 0) * 60000;
+      const liabilities = (S.loans || []).reduce((acc: number, l: any) => acc + (l.balance || 0), 0);
+      const mNote = monthlyAccountingTemplate({
+        revenue: dailyInflow * 30,
+        expenses: dailyOutflow * 30,
+        net: netDaily * 30,
+        assetsValue,
+        liabilities,
+        equity: S.money + assetsValue - liabilities
+      });
+      pushNote(S, mNote.msg, {
+        title: mNote.title,
+        type: mNote.type,
+        priority: mNote.priority,
+        body: mNote.body
       });
     }
   }

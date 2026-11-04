@@ -1,3 +1,4 @@
+import { tenderWonTemplate } from '../../notifications/templates';
 import { JobAuction, BidHistoryItem } from './types';
 import { COMPETITORS, getRandomCompetitor } from './competitors';
 import { CARGO_TYPES } from '../cargo/registry';
@@ -194,10 +195,13 @@ export class BiddingEngine {
       if (!S.jobs.some((j: any) => j.id === wonJob.id)) {
         S.jobs.unshift(wonJob);
       }
-      pushNote(S, `🏆 Tender Won: Secured ${cargo?.name || 'Cargo'} haul for $${auc.currentBid.toLocaleString()}! Dispatch within 5 mins.`, {
-        title: 'CONTRACT AWARDED',
-        type: 'tender',
-        priority: 2
+      
+      const tpl = tenderWonTemplate(company?.name || 'Client', cargo?.name || 'Freight', auc.currentBid, 1);
+      pushNote(S, tpl.msg, {
+        title: tpl.title,
+        type: tpl.type,
+        priority: tpl.priority,
+        body: tpl.body
       });
     }
   }
