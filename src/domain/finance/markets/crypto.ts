@@ -9,8 +9,8 @@ export interface CryptoAsset {
 }
 
 export const CRYPTO_ASSETS: CryptoAsset[] = [
-  { id: 'flb', symbol: 'FLB', name: 'Fleet Logistics Bond', icon: '🪙', basePrice: 5000, volatility: 0.08, color: '#f59e0b' },
-  { id: 'btc', symbol: 'BTC', name: 'Bitcoin', icon: '₿', basePrice: 98500, volatility: 0.15, color: '#f59e0b' },
+  { id: 'flb', symbol: 'FLB', name: 'Fleet Logistics Bond', icon: '🪙', basePrice: 25000, volatility: 0.48, color: '#f59e0b' },
+  { id: 'btc', symbol: 'BTC', name: 'Bitcoin', icon: '₿', basePrice: 98500, volatility: 0.25, color: '#f59e0b' },
   { id: 'eth', symbol: 'ETH', name: 'Ethereum', icon: 'Ξ', basePrice: 2750, volatility: 0.25, color: '#6366f1' },
   { id: 'sol', symbol: 'SOL', name: 'Solana', icon: '◎', basePrice: 145, volatility: 0.45, color: '#14f195' },
   { id: 'xrp', symbol: 'XRP', name: 'Ripple', icon: '✕', basePrice: 2.45, volatility: 0.35, color: '#00aae4' },

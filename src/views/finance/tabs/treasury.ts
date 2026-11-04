@@ -85,7 +85,7 @@ export function renderTreasuryTab(S: any) {
         </div>
 
         <div style="display:flex; justify-content:space-between; font-size:11px;">
-          <span style="color:var(--gold);">Fleet Bonds (${bondsCount} FLB)</span>
+          <span style="color:var(--gold);">Fleet Bonds (${bondsCount % 1 === 0 ? bondsCount : bondsCount.toFixed(2)} FLB)</span>
           <span style="font-weight:700; color:var(--gold);">${fmt(Math.round(bondsValUsd))}</span>
         </div>
 

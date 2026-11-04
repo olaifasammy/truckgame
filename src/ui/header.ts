@@ -43,7 +43,7 @@ export function render(S: any) {
           </div>
           <div style="font-size:9px; font-weight:800; color:var(--gold); display:flex; align-items:center; justify-content:flex-end; gap:2px;" title="Fleet Bonds">
             <span style="color:var(--mu); font-size:8px;">BONDS:</span>
-            <span id="hdr-coin-val">${S.coins}</span>
+            <span id="hdr-coin-val">${(S.coins || 0) >= 1000 ? Math.round(S.coins || 0).toLocaleString() : (S.coins || 0) % 1 === 0 ? S.coins || 0 : (S.coins || 0).toFixed(2)}</span>
           </div>
         </div>
 

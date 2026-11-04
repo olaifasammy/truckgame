@@ -46,48 +46,84 @@ export const MINING_RIG_TYPES: MiningRigTypeDef[] = [
     name: 'Antminer S19 Pro (ASIC)',
     category: 'ASIC',
     base7dCash: 12000,
-    base7dBonds: 5,
+    base7dBonds: 2,
     powerKw: 3.25,
     dailyPowerCost: 20,
-    grossDailyUsdYield: 45,
+    grossDailyUsdYield: 95,
     hashrate: '110 TH/s',
-    requiredVipLevel: 2
+    requiredVipLevel: 1
   },
   {
     id: 'gpu_array_6',
     name: 'Octa-GPU Rig Cluster',
     category: 'GPU',
     base7dCash: 35000,
-    base7dBonds: 15,
+    base7dBonds: 5,
     powerKw: 8.50,
     dailyPowerCost: 55,
-    grossDailyUsdYield: 120,
+    grossDailyUsdYield: 280,
     hashrate: '650 MH/s',
-    requiredVipLevel: 5
+    requiredVipLevel: 2
   },
   {
     id: 'container_rig',
     name: 'Modular Hydro Container',
     category: 'Container',
     base7dCash: 110000,
-    base7dBonds: 35,
+    base7dBonds: 12,
     powerKw: 35.00,
     dailyPowerCost: 220,
-    grossDailyUsdYield: 480,
-    hashrate: '1,450 TH/s',
-    requiredVipLevel: 10
+    grossDailyUsdYield: 980,
+    hashrate: '1,850 TH/s',
+    requiredVipLevel: 4
   },
   {
     id: 'datacenter_hydro',
     name: 'MegaWatt Hydro Farm Pod',
     category: 'Hydro',
     base7dCash: 350000,
-    base7dBonds: 85,
+    base7dBonds: 25,
     powerKw: 120.00,
     dailyPowerCost: 750,
-    grossDailyUsdYield: 1650,
-    hashrate: '12,500 SOL/s',
-    requiredVipLevel: 15
+    grossDailyUsdYield: 3200,
+    hashrate: '12,500 TH/s',
+    requiredVipLevel: 6
+  },
+  {
+    id: 'quantum_hydro_pod',
+    name: 'Quantum Hydro-Pod X2000 Supercomputer',
+    category: 'Hydro',
+    base7dCash: 850000,
+    base7dBonds: 50,
+    powerKw: 280.00,
+    dailyPowerCost: 1800,
+    grossDailyUsdYield: 8500,
+    hashrate: '38,000 TH/s',
+    requiredVipLevel: 8
+  },
+  {
+    id: 'titan_neural_array',
+    name: 'Titan AI Neural Multi-Rack Server',
+    category: 'Container',
+    base7dCash: 2200000,
+    base7dBonds: 100,
+    powerKw: 650.00,
+    dailyPowerCost: 4500,
+    grossDailyUsdYield: 24000,
+    hashrate: '145,000 TH/s',
+    requiredVipLevel: 10
+  },
+  {
+    id: 'fusion_core_cluster',
+    name: 'Sovereign Quantum Fusion-Core Mega Farm',
+    category: 'Hydro',
+    base7dCash: 6500000,
+    base7dBonds: 250,
+    powerKw: 1800.00,
+    dailyPowerCost: 12000,
+    grossDailyUsdYield: 85000,
+    hashrate: '650,000 TH/s',
+    requiredVipLevel: 12
   }
 ];
 
@@ -183,9 +219,9 @@ export function getSubstationUpgradeCost(currentLevel: number) {
 }
 
 export function getSubstationPowerKw(currentLevel: number, S?: any): number {
-  let kw = 20 + (currentLevel || 0) * 50;
+  let kw = 150 + (currentLevel || 0) * 250;
   if (S?.mining?.upgrades?.['bess_storage']) {
-    kw += 30; // +30 kW industrial battery surge buffer
+    kw += 100; // +100 kW industrial battery surge buffer
   }
   return kw;
 }
@@ -347,8 +383,8 @@ export function calculateMiningStats(S: any) {
   const activeSubsCount = subscriptions.filter(s => s.active && now < s.expiresAt).length;
 
   // Staking metrics
-  const stakingApyPct = 18.5;
-  const dailyStakingYieldUsd = (stakedBonds * 5000 * (stakingApyPct / 100)) / 365;
+  const stakingApyPct = 28.5;
+  const dailyStakingYieldUsd = (stakedBonds * 25000 * (stakingApyPct / 100)) / 365;
   const dailyStakingYieldFlb = (stakedBonds * (stakingApyPct / 100)) / 365;
 
   return {

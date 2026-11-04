@@ -331,7 +331,7 @@ try {
             const formattedQty = q >= 100 ? q.toFixed(2) : q >= 1 ? q.toFixed(4) : q >= 0.001 ? q.toFixed(5) : q.toFixed(7);
             if (coinEl.textContent !== formattedQty) coinEl.textContent = formattedQty;
           }
-          const price = coinId === 'flb' ? 5000 : (getCryptoMarketData(coinId)?.sellPrice || 1);
+          const price = getCryptoMarketData(coinId)?.sellPrice || 1;
           pendingTotal += q * price;
         }
       }
@@ -344,8 +344,10 @@ try {
       if (cashEl.textContent !== formatted) cashEl.textContent = formatted;
     }
     const coinEl = document.getElementById('hdr-coin-val');
-    if (coinEl && coinEl.textContent !== String(st.coins)) {
-      coinEl.textContent = String(st.coins);
+    if (coinEl) {
+      const c = st.coins || 0;
+      const formattedCoins = c >= 1000 ? Math.round(c).toLocaleString() : c % 1 === 0 ? String(c) : c.toFixed(2);
+      if (coinEl.textContent !== formattedCoins) coinEl.textContent = formattedCoins;
     }
   }, 1000);
 } catch (e: any) {

@@ -23,6 +23,7 @@ export function renderExchangeTab(S: any) {
   // Mining Data
   const playerVip = getVipLevel(S);
   const userCoins = S.coins || 0;
+  const cryptoFlbQty = (S.cryptoHoldings && S.cryptoHoldings['flb']) || 0;
   const miningStats = calculateMiningStats(S);
   const nextSubstationCost = getSubstationUpgradeCost(miningStats.substationLevel);
   const activeSubscriptions: MiningSubscription[] = (S.mining?.subscriptions || []).filter((s: any) => s.active && Date.now() < s.expiresAt);
@@ -75,18 +76,44 @@ export function renderExchangeTab(S: any) {
           </div>
         </div>
 
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+        <div style="display:grid; grid-template-columns:${cryptoFlbQty > 0 ? '1fr 1fr 1fr' : '1fr 1fr'}; gap:8px; margin-bottom:12px;">
           <div style="background:rgba(255,255,255,0.03); padding:8px 10px; border-radius:6px; border:1px solid #1e293b;">
-            <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">LIQUID TREASURY</div>
-            <div style="font-size:13px; font-weight:900; color:var(--gold); font-family:monospace;">${userCoins} FLB</div>
-            <div style="font-size:8px; color:var(--mu); font-family:monospace;">$${(userCoins * goldMarket.sellPrice).toLocaleString()} USD</div>
+            <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">LIQUID BONDS</div>
+            <div style="font-size:13px; font-weight:900; color:var(--gold); font-family:monospace;">${formatCryptoQty(userCoins)} FLB</div>
+            <div style="font-size:8px; color:var(--mu); font-family:monospace;">$${Math.round(userCoins * goldMarket.sellPrice).toLocaleString()} USD</div>
           </div>
+          ${cryptoFlbQty > 0 ? `
+            <div style="background:rgba(255,255,255,0.03); padding:8px 10px; border-radius:6px; border:1px solid #1e293b;">
+              <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">CRYPTO WALLET FLB</div>
+              <div style="font-size:13px; font-weight:900; color:#38bdf8; font-family:monospace;">${formatCryptoQty(cryptoFlbQty)} FLB</div>
+              <div style="font-size:8px; color:var(--mu); font-family:monospace;">$${Math.round(cryptoFlbQty * goldMarket.sellPrice).toLocaleString()} USD</div>
+            </div>
+          ` : ''}
           <div style="background:rgba(255,255,255,0.03); padding:8px 10px; border-radius:6px; border:1px solid #1e293b;">
-            <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">STAKED IN CORPORATE POOL</div>
-            <div style="font-size:13px; font-weight:900; color:var(--grn); font-family:monospace;">${miningStats.stakedBonds} FLB</div>
-            <div style="font-size:8px; color:var(--mu); font-family:monospace;">$${(miningStats.stakedBonds * goldMarket.sellPrice).toLocaleString()} USD</div>
+            <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">STAKED IN POOL</div>
+            <div style="font-size:13px; font-weight:900; color:var(--grn); font-family:monospace;">${formatCryptoQty(miningStats.stakedBonds)} FLB</div>
+            <div style="font-size:8px; color:var(--mu); font-family:monospace;">$${Math.round(miningStats.stakedBonds * goldMarket.sellPrice).toLocaleString()} USD</div>
           </div>
         </div>
+
+        ${cryptoFlbQty > 0 ? `
+          <div style="background:#080c16; border:1px solid rgba(193,154,91,0.3); border-radius:8px; padding:10px; margin-bottom:12px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:9px; font-weight:900; color:var(--gold); text-transform:uppercase;">Withdraw FLB from Crypto Wallet to Company Bond Balance</span>
+              <span style="font-size:8px; color:var(--grn); font-family:monospace; font-weight:800;">${formatCryptoQty(cryptoFlbQty)} FLB Available</span>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <input type="number" id="flb-withdraw-input" placeholder="FLB Qty (e.g. ${Math.min(5, Math.ceil(cryptoFlbQty))})" min="0.0001" step="any"
+                style="flex:1; padding:6px 8px; background:#0b0f19; border:1px solid #1e293b; border-radius:6px; color:var(--tx); font-family:monospace; font-size:10px;" />
+              <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="withdraw-flb-to-bonds">
+                WITHDRAW
+              </button>
+              <button class="btn alt" style="padding:6px 10px; font-size:9px; font-weight:800; white-space:nowrap; color:var(--tx);" data-act="withdraw-flb-to-bonds" data-qty="${cryptoFlbQty}">
+                ALL
+              </button>
+            </div>
+          </div>
+        ` : ''}
 
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:14px;">
           <button class="btn gold" style="padding:8px; font-size:9px; font-weight:900;" data-act="exchange-buy-gold" data-qty="1">BUY 1 FLB ($${goldMarket.buyPrice.toLocaleString()})</button>
@@ -113,19 +140,19 @@ export function renderExchangeTab(S: any) {
           <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; margin-bottom:10px;">
             <div style="background:${miningStats.stakedBonds >= 5 ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.02)'}; border:1px solid ${miningStats.stakedBonds >= 5 ? 'var(--grn)' : '#1e293b'}; border-radius:4px; padding:6px 4px; text-align:center;">
               <div style="font-size:7px; color:var(--mu);">TIER 1 (5+ FLB)</div>
-              <div style="font-size:8px; font-weight:900; color:${miningStats.stakedBonds >= 5 ? 'var(--grn)' : 'var(--tx)'}; margin-top:2px;">-5% Fuel Cost</div>
+              <div style="font-size:8px; font-weight:900; color:${miningStats.stakedBonds >= 5 ? 'var(--grn)' : 'var(--tx)'}; margin-top:2px;">-10% Fuel Cost</div>
             </div>
             <div style="background:${miningStats.stakedBonds >= 15 ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.02)'}; border:1px solid ${miningStats.stakedBonds >= 15 ? 'var(--grn)' : '#1e293b'}; border-radius:4px; padding:6px 4px; text-align:center;">
               <div style="font-size:7px; color:var(--mu);">TIER 2 (15+ FLB)</div>
-              <div style="font-size:8px; font-weight:900; color:${miningStats.stakedBonds >= 15 ? 'var(--grn)' : 'var(--tx)'}; margin-top:2px;">+8% Freight Rate</div>
+              <div style="font-size:8px; font-weight:900; color:${miningStats.stakedBonds >= 15 ? 'var(--grn)' : 'var(--tx)'}; margin-top:2px;">+15% Freight Rate</div>
             </div>
             <div style="background:${miningStats.stakedBonds >= 35 ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.02)'}; border:1px solid ${miningStats.stakedBonds >= 35 ? 'var(--grn)' : '#1e293b'}; border-radius:4px; padding:6px 4px; text-align:center;">
               <div style="font-size:7px; color:var(--mu);">TIER 3 (35+ FLB)</div>
-              <div style="font-size:8px; font-weight:900; color:${miningStats.stakedBonds >= 35 ? 'var(--grn)' : 'var(--tx)'}; margin-top:2px;">-25% Bay Labor</div>
+              <div style="font-size:8px; font-weight:900; color:${miningStats.stakedBonds >= 35 ? 'var(--grn)' : 'var(--tx)'}; margin-top:2px;">-50% Bay Labor</div>
             </div>
             <div style="background:${miningStats.stakedBonds >= 75 ? 'rgba(34,197,94,0.1)' : 'rgba(255,255,255,0.02)'}; border:1px solid ${miningStats.stakedBonds >= 75 ? 'var(--grn)' : '#1e293b'}; border-radius:4px; padding:6px 4px; text-align:center;">
               <div style="font-size:7px; color:var(--mu);">TIER 4 (75+ FLB)</div>
-              <div style="font-size:8px; font-weight:900; color:${miningStats.stakedBonds >= 75 ? 'var(--grn)' : 'var(--tx)'}; margin-top:2px;">-50% Grid Power</div>
+              <div style="font-size:8px; font-weight:900; color:${miningStats.stakedBonds >= 75 ? 'var(--grn)' : 'var(--tx)'}; margin-top:2px;">-80% Power Grid</div>
             </div>
           </div>
 
@@ -231,11 +258,25 @@ export function renderExchangeTab(S: any) {
                 <span style="font-size:10px; font-weight:800; color:var(--grn); text-transform:uppercase;">BUY ${assetData.symbol}</span>
                 <span style="font-size:9px; color:var(--mu); font-family:monospace;">Ask: $${assetData.buyPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
               </div>
+
+              <!-- Custom USD Amount Input -->
+              <div style="display:flex; gap:6px; margin-bottom:8px;">
+                <div style="position:relative; flex:1;">
+                  <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--mu); font-family:monospace;">$</span>
+                  <input type="number" id="crypto-buy-amount-input" placeholder="Custom USD (e.g. 1200)" min="1" step="any"
+                    style="width:100%; box-sizing:border-box; padding:7px 8px 7px 22px; background:#0b0f19; border:1px solid #1e293b; border-radius:6px; color:var(--tx); font-family:monospace; font-size:11px; font-weight:700;" />
+                </div>
+                <button class="btn gold" style="padding:7px 14px; font-size:10px; font-weight:900; white-space:nowrap;" data-act="crypto-buy-usd" data-id="${assetData.id}">
+                  BUY ${assetData.symbol}
+                </button>
+              </div>
+
+              <!-- Quick Presets -->
               <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;">
-                <button class="btn gold" style="padding:8px 4px; font-size:9px; font-weight:900;" data-act="crypto-buy-usd" data-id="${assetData.id}" data-amount="1000">+$1k</button>
-                <button class="btn gold" style="padding:8px 4px; font-size:9px; font-weight:900;" data-act="crypto-buy-usd" data-id="${assetData.id}" data-amount="5000">+$5k</button>
-                <button class="btn gold" style="padding:8px 4px; font-size:9px; font-weight:900;" data-act="crypto-buy-usd" data-id="${assetData.id}" data-amount="25000">+$25k</button>
-                <button class="btn gold" style="padding:8px 4px; font-size:9px; font-weight:900;" data-act="crypto-buy-usd" data-id="${assetData.id}" data-amount="${Math.floor(S.money)}">MAX</button>
+                <button class="btn gold" style="padding:6px 4px; font-size:8px; font-weight:800;" data-act="crypto-buy-usd" data-id="${assetData.id}" data-amount="1000">+$1k</button>
+                <button class="btn gold" style="padding:6px 4px; font-size:8px; font-weight:800;" data-act="crypto-buy-usd" data-id="${assetData.id}" data-amount="5000">+$5k</button>
+                <button class="btn gold" style="padding:6px 4px; font-size:8px; font-weight:800;" data-act="crypto-buy-usd" data-id="${assetData.id}" data-amount="25000">+$25k</button>
+                <button class="btn gold" style="padding:6px 4px; font-size:8px; font-weight:800;" data-act="crypto-buy-usd" data-id="${assetData.id}" data-amount="${Math.floor(S.money)}">MAX</button>
               </div>
             </div>
 
@@ -245,13 +286,50 @@ export function renderExchangeTab(S: any) {
                 <span style="font-size:10px; font-weight:800; color:#ef4444; text-transform:uppercase;">SELL ${assetData.symbol}</span>
                 <span style="font-size:9px; color:var(--mu); font-family:monospace;">Bid: $${assetData.sellPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
               </div>
+
+              <!-- Custom USD Amount Input -->
+              <div style="display:flex; gap:6px; margin-bottom:8px;">
+                <div style="position:relative; flex:1;">
+                  <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--mu); font-family:monospace;">$</span>
+                  <input type="number" id="crypto-sell-amount-input" placeholder="Custom USD (e.g. 356)" min="1" step="any"
+                    style="width:100%; box-sizing:border-box; padding:7px 8px 7px 22px; background:#0b0f19; border:1px solid #1e293b; border-radius:6px; color:var(--tx); font-family:monospace; font-size:11px; font-weight:700;" />
+                </div>
+                <button class="btn alt" style="padding:7px 14px; font-size:10px; font-weight:900; color:#ef4444; border-color:#ef4444; white-space:nowrap;" data-act="crypto-sell-custom" data-id="${assetData.id}">
+                  SELL ${assetData.symbol}
+                </button>
+              </div>
+
+              <!-- Quick Presets -->
               <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;">
-                <button class="btn alt" style="padding:8px 4px; font-size:9px; font-weight:900; color:var(--tx);" data-act="crypto-sell-pct" data-id="${assetData.id}" data-pct="25">SELL 25%</button>
-                <button class="btn alt" style="padding:8px 4px; font-size:9px; font-weight:900; color:var(--tx);" data-act="crypto-sell-pct" data-id="${assetData.id}" data-pct="50">SELL 50%</button>
-                <button class="btn alt" style="padding:8px 4px; font-size:9px; font-weight:900; color:var(--tx);" data-act="crypto-sell-pct" data-id="${assetData.id}" data-pct="75">SELL 75%</button>
-                <button class="btn alt" style="padding:8px 4px; font-size:9px; font-weight:900; color:#ef4444; border-color:#ef4444;" data-act="crypto-sell-pct" data-id="${assetData.id}" data-pct="100">SELL ALL</button>
+                <button class="btn alt" style="padding:6px 4px; font-size:8px; font-weight:800; color:var(--tx);" data-act="crypto-sell-pct" data-id="${assetData.id}" data-pct="25">25%</button>
+                <button class="btn alt" style="padding:6px 4px; font-size:8px; font-weight:800; color:var(--tx);" data-act="crypto-sell-pct" data-id="${assetData.id}" data-pct="50">50%</button>
+                <button class="btn alt" style="padding:6px 4px; font-size:8px; font-weight:800; color:var(--tx);" data-act="crypto-sell-pct" data-id="${assetData.id}" data-pct="75">75%</button>
+                <button class="btn alt" style="padding:6px 4px; font-size:8px; font-weight:800; color:#ef4444; border-color:#ef4444;" data-act="crypto-sell-pct" data-id="${assetData.id}" data-pct="100">ALL</button>
               </div>
             </div>
+
+            ${assetData.id === 'flb' && cryptoFlbQty > 0 ? `
+              <!-- FLB Withdrawal Card when FLB selected -->
+              <div style="background:#080c16; border:1px solid var(--gold); border-radius:8px; padding:12px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                  <span style="font-size:10px; font-weight:900; color:var(--gold); text-transform:uppercase;">WITHDRAW FLB TO COMPANY BOND BALANCE</span>
+                  <span style="font-size:9px; color:var(--grn); font-family:monospace; font-weight:800;">${formatCryptoQty(cryptoFlbQty)} FLB in Wallet</span>
+                </div>
+                <div style="font-size:9px; color:var(--mu); margin-bottom:8px;">
+                  Transfer FLB directly to Company Bond balance for staking, substation power upgrades, and contract dispatch quotas:
+                </div>
+                <div style="display:flex; gap:6px;">
+                  <input type="number" id="flb-withdraw-input-term" placeholder="FLB Qty (e.g. ${Math.min(5, Math.ceil(cryptoFlbQty))})" min="0.0001" step="any"
+                    style="flex:1; padding:6px 8px; background:#0b0f19; border:1px solid #1e293b; border-radius:6px; color:var(--tx); font-family:monospace; font-size:10px;" />
+                  <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="withdraw-flb-to-bonds">
+                    WITHDRAW
+                  </button>
+                  <button class="btn alt" style="padding:6px 10px; font-size:9px; font-weight:800; white-space:nowrap; color:var(--tx);" data-act="withdraw-flb-to-bonds" data-qty="${cryptoFlbQty}">
+                    ALL
+                  </button>
+                </div>
+              </div>
+            ` : ''}
           </div>
         </div>
       </div>
@@ -271,15 +349,16 @@ export function renderExchangeTab(S: any) {
               MINING TELEMETRY TERMINAL
             </div>
           </div>
-          <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900;" data-act="claim-mining-rewards">
-            ⚡ CLAIM (<span data-mining-pending-usd>$${Math.round(totalPendingUsd).toLocaleString()}</span>)
+          <button class="btn gold" style="padding:6px 14px; font-size:10px; font-weight:900;" data-act="claim-mining-rewards">
+            Claim
           </button>
         </div>
 
         <!-- Live Pending Rewards Breakdown Screen -->
         <div style="padding:12px 16px; background:#0a0e17; border-bottom:1px solid #1e293b;">
-          <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase; margin-bottom:8px;">
-            Unclaimed Live Mined Yields (Accruing Live Every Second)
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+            <span style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase;">Unclaimed Live Mined Yields</span>
+            <span style="font-size:9px; color:var(--grn); font-family:monospace; font-weight:800;" data-mining-pending-usd>~$${Math.round(totalPendingUsd).toLocaleString()} USD</span>
           </div>
 
           <div style="display:flex; gap:8px; overflow-x:auto; padding-bottom:4px;">
@@ -499,8 +578,8 @@ export function renderExchangeTab(S: any) {
           ` : `
             <div style="display:flex; flex-direction:column; gap:8px;">
               ${activeSubscriptions.map(sub => {
-                const def = MINING_RIG_TYPES.find(t => t.id === sub.typeId)!;
-                const coin = CRYPTO_ASSETS.find(c => c.id === sub.targetAssetId)!;
+                const def = MINING_RIG_TYPES.find(t => t.id === sub.typeId) || MINING_RIG_TYPES[0];
+                const coin = CRYPTO_ASSETS.find(c => c.id === sub.targetAssetId) || CRYPTO_ASSETS[0];
                 const msRemaining = Math.max(0, sub.expiresAt - Date.now());
                 const hoursRemaining = Math.floor(msRemaining / (1000 * 60 * 60));
                 const daysRemaining = (hoursRemaining / 24).toFixed(1);

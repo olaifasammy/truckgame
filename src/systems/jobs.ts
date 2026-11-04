@@ -14,6 +14,7 @@ import { INSURANCE_POLICIES } from '../domain/finance/banking';
 
 import { Driver } from '../domain/drivers/drivers.types';
 import { TRAIT_REGISTRY } from '../domain/drivers/drivers.names';
+import { processScheduledRepair } from './maintenance';
 
 export const fuelCost = (j: any, t?: any) => {
   if (t) return Math.round(fuelCostForTrip(j.km, t, j.weight));
@@ -352,6 +353,7 @@ export function completeJobs(S: any, now: number) {
         const st = stats(S, t, a.weight || 0, a.env);
         t.status = 'idle';
         t.loc = a.to;
+        processScheduledRepair(S, t.id);
         syncUsage(t, km, st, a.env, S);
         applyWear(t, km, a.weight || 0, a.env, drv);
 

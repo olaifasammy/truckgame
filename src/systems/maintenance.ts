@@ -201,8 +201,17 @@ export function completeRepairs(S: any, now: number): number {
   let completedCount = 0;
   S.repairs.forEach((rep: any) => {
     if (rep.scheduled) {
-      remaining.push(rep);
-      return;
+      const truck = S.fleet.find((t: any) => t.id === rep.truckId);
+      if (truck && truck.status !== 'busy') {
+        rep.scheduled = false;
+        rep.start = now;
+        rep.end = now + (rep.durationMs || 10000);
+        truck.status = 'repair';
+        toast(`Unit #${truck.id} (${truck.name}) hoisted into Repair Bay for scheduled servicing!`, 'info');
+      } else {
+        remaining.push(rep);
+        return;
+      }
     }
     if (now >= rep.end) {
       completedCount++;

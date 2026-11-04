@@ -26,11 +26,22 @@ action('select-mining-duration', d => {
 
 action('crypto-buy-usd', d => {
   const assetId = (d as any).id || (window as any).selectedCryptoAsset || 'btc';
-  const usdAmount = +(d as any).amount || 0;
-  
+  let usdAmount = +(d as any).amount || 0;
+
+  if (!usdAmount || usdAmount <= 0) {
+    const inputEl = document.getElementById('crypto-buy-amount-input') as HTMLInputElement;
+    if (inputEl && inputEl.value) {
+      usdAmount = parseFloat(inputEl.value);
+    }
+  }
+
   set(S => {
-    if (usdAmount <= 0) return toast('Enter a valid purchase amount', 'err');
-    if (S.money < usdAmount) return toast(`Insufficient liquidity ($${S.money.toLocaleString()} available)`, 'err');
+    if (!usdAmount || isNaN(usdAmount) || usdAmount <= 0) {
+      return toast('Enter a valid purchase amount (e.g. 1200)', 'err');
+    }
+    if (S.money < usdAmount) {
+      return toast(`Insufficient liquidity ($${S.money.toLocaleString()} available)`, 'err');
+    }
 
     const marketData = getCryptoMarketData(assetId);
     if (!marketData) return;
@@ -42,6 +53,48 @@ action('crypto-buy-usd', d => {
 
     const formattedQty = cryptoQty < 1 ? cryptoQty.toFixed(4) : cryptoQty.toFixed(2);
     toast(`Purchased ${formattedQty} ${marketData.symbol} for $${usdAmount.toLocaleString()}`, 'success');
+  });
+});
+
+action('crypto-sell-custom', d => {
+  const assetId = (d as any).id || (window as any).selectedCryptoAsset || 'btc';
+  let usdAmount = +(d as any).amount || 0;
+
+  if (!usdAmount || usdAmount <= 0) {
+    const inputEl = document.getElementById('crypto-sell-amount-input') as HTMLInputElement;
+    if (inputEl && inputEl.value) {
+      usdAmount = parseFloat(inputEl.value);
+    }
+  }
+
+  set(S => {
+    if (!S.cryptoHoldings || !S.cryptoHoldings[assetId] || S.cryptoHoldings[assetId] <= 0) {
+      return toast('No holdings available to sell', 'err');
+    }
+
+    const currentQty = S.cryptoHoldings[assetId];
+    const marketData = getCryptoMarketData(assetId);
+    if (!marketData) return;
+
+    if (!usdAmount || isNaN(usdAmount) || usdAmount <= 0) {
+      return toast('Enter a valid USD amount to sell (e.g. 356)', 'err');
+    }
+
+    const qtyToSell = usdAmount / marketData.sellPrice;
+    if (qtyToSell > currentQty + 0.000001) {
+      const maxUsd = Math.floor(currentQty * marketData.sellPrice);
+      return toast(`Sell amount exceeds holding. Maximum available: $${maxUsd.toLocaleString()}`, 'err');
+    }
+
+    const actualQtyToSell = Math.min(qtyToSell, currentQty);
+    const usdPayout = actualQtyToSell * marketData.sellPrice;
+
+    S.cryptoHoldings[assetId] -= actualQtyToSell;
+    if (S.cryptoHoldings[assetId] <= 0.000001) delete S.cryptoHoldings[assetId];
+    S.money += usdPayout;
+
+    const formattedQty = actualQtyToSell < 1 ? actualQtyToSell.toFixed(4) : actualQtyToSell.toFixed(2);
+    toast(`Sold ${formattedQty} ${marketData.symbol} for $${Math.round(usdPayout).toLocaleString()}`, 'info');
   });
 });
 
@@ -189,6 +242,58 @@ action('upgrade-substation', () => {
   });
 });
 
+action('withdraw-flb-to-bonds', d => {
+  let rawQty = +(d as any)?.qty || 0;
+
+  if (!rawQty || rawQty <= 0) {
+    const inputEl = document.getElementById('flb-withdraw-input') as HTMLInputElement;
+    if (inputEl && inputEl.value) {
+      rawQty = parseFloat(inputEl.value);
+    }
+  }
+
+  set(S => {
+    const cryptoFlb = (S.cryptoHoldings && S.cryptoHoldings['flb']) || 0;
+    if (cryptoFlb <= 0) return toast('No FLB in Crypto Wallet to withdraw', 'err');
+
+    const amount = rawQty > 0 ? Math.min(rawQty, cryptoFlb) : cryptoFlb;
+    if (amount <= 0 || isNaN(amount)) return toast('Enter a valid FLB quantity to withdraw', 'err');
+
+    S.cryptoHoldings['flb'] -= amount;
+    if (S.cryptoHoldings['flb'] <= 0.000001) delete S.cryptoHoldings['flb'];
+    S.coins = (S.coins || 0) + amount;
+
+    const fmtAmt = amount < 1 ? amount.toFixed(4) : amount.toFixed(2);
+    toast(`Transferred ${fmtAmt} FLB from Crypto Wallet to Company Bond Balance!`, 'success');
+  });
+});
+
+action('deposit-bonds-to-crypto', d => {
+  let rawQty = +(d as any)?.qty || 0;
+
+  if (!rawQty || rawQty <= 0) {
+    const inputEl = document.getElementById('flb-deposit-input') as HTMLInputElement;
+    if (inputEl && inputEl.value) {
+      rawQty = parseFloat(inputEl.value);
+    }
+  }
+
+  set(S => {
+    const userCoins = S.coins || 0;
+    if (userCoins <= 0) return toast('No liquid FLB in Company Bond Balance to deposit', 'err');
+
+    const amount = rawQty > 0 ? Math.min(rawQty, userCoins) : userCoins;
+    if (amount <= 0 || isNaN(amount)) return toast('Enter a valid FLB quantity to deposit', 'err');
+
+    S.coins -= amount;
+    if (!S.cryptoHoldings) S.cryptoHoldings = {};
+    S.cryptoHoldings['flb'] = (S.cryptoHoldings['flb'] || 0) + amount;
+
+    const fmtAmt = amount < 1 ? amount.toFixed(4) : amount.toFixed(2);
+    toast(`Deposited ${fmtAmt} FLB from Company Bond Balance into Crypto Wallet!`, 'info');
+  });
+});
+
 action('claim-mining-rewards', () => {
   set(S => {
     if (!S.mining || !S.mining.pendingYield) return toast('No mined rewards to claim', 'err');
@@ -196,22 +301,25 @@ action('claim-mining-rewards', () => {
     let claimedCount = 0;
     if (!S.cryptoHoldings) S.cryptoHoldings = {};
 
+    const claimedList: string[] = [];
+
     for (const [assetId, qty] of Object.entries(S.mining.pendingYield)) {
       const amount = qty as number;
       if (amount > 0) {
-        if (assetId === 'flb') {
-          // FLB yield deposits directly into authoritative S.coins!
-          S.coins = (S.coins || 0) + amount;
-        } else {
-          S.cryptoHoldings[assetId] = (S.cryptoHoldings[assetId] || 0) + amount;
-        }
+        // Claim directly into crypto holdings in Crypto Wallet for ALL mined assets
+        S.cryptoHoldings[assetId] = (S.cryptoHoldings[assetId] || 0) + amount;
         S.mining.pendingYield[assetId] = 0;
+
+        const asset = CRYPTO_ASSETS.find(a => a.id === assetId);
+        const symbol = asset ? asset.symbol : assetId.toUpperCase();
+        const formatted = amount < 1 ? amount.toFixed(4) : amount.toFixed(2);
+        claimedList.push(`${formatted} ${symbol}`);
         claimedCount++;
       }
     }
 
     if (claimedCount === 0) return toast('No pending crypto yields to claim yet', 'info');
-    toast(`Claimed all pending mined crypto & FLB bond rewards!`, 'success');
+    toast(`Claimed Mined Crypto: ${claimedList.join(', ')} added to your Crypto Wallet!`, 'success');
   });
 });
 
