@@ -19,7 +19,7 @@ import { activeAuctionModalId, renderModalOverlay } from './views/home/auction-m
 import { tripMs } from './systems/calc';
 import { TRAIT_REGISTRY } from './domain/drivers/drivers.names';
 import { getTruckTelematics } from './domain/trucks/trucks.telematics';
-import { getCryptoMarketData } from './domain/finance/markets/crypto';
+import { getCryptoMarketData, processLimitOrders } from './domain/finance/markets/crypto';
 
 console.log('Main: Imports completed');
 
@@ -129,6 +129,7 @@ try {
     
     // 1. Silent Simulation Processing (No intrusive view teardown or reload)
     processEconomics(st, now);
+    processLimitOrders(st);
     const prevAuctionCount = (st.auctions || []).length;
     const { done = [], auctionChanged = false } = completeJobs(st, now) || {};
     if (done.length > 0) {

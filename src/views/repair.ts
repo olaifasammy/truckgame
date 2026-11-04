@@ -5,6 +5,7 @@ import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { PART_LABELS } from '../systems/calc';
 import { calculateRepairDurationMs, startRepair, getPartEffectiveCost } from '../systems/maintenance';
 import { LOCATIONS } from '../data/world';
+import { renderDiagnosticTable } from './repair/diagnostic-table';
 
 let selectedPartsSet = new Set<string>();
 let workshopTab: 'scan' | 'bay' | 'queue' = 'scan';
@@ -248,101 +249,7 @@ export default {
 
         <!-- TAB 1: FLEET DIAGNOSTIC SCAN VIEW -->
         ${workshopTab === 'scan' ? `
-          <div style="margin-bottom:10px; display:flex; justify-content:space-between; align-items:center;">
-            <div style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase; letter-spacing:0.5px;">
-              Diagnostic Health Overview · All Fleet Tractors (${fleet.length})
-            </div>
-            <div style="font-size:9px; color:var(--mu); font-family:monospace;">
-              Last Scan: ${new Date(lastScanTimestamp).toLocaleTimeString()}
-            </div>
-          </div>
-
-          ${fleet.length === 0 ? `
-            <div class="card" style="padding:28px; text-align:center; color:var(--mu); background:#0b1120; border-radius:10px;">
-              No vehicles registered in company fleet to inspect.
-            </div>
-          ` : `
-            <div style="display:flex; flex-direction:column; gap:10px;">
-              ${fleet.map((t: any) => {
-                const tm = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
-                const locInfo = LOCATIONS[t.loc];
-                const { avgHealth, minHealth, lowFluids, statusTier } = calculateTruckHealth(t);
-                const isUnderRepair = t.status === 'repair' || repairsQueue.some((r: any) => r.truckId === t.id && !r.scheduled);
-                const isScheduled = repairsQueue.some((r: any) => r.truckId === t.id && r.scheduled);
-                const isBusy = t.status === 'busy';
-
-                // Collect flagged worn components
-                const wornIssues: string[] = [];
-                Object.entries(t.components || {}).forEach(([compKey, compVal]: [string, any]) => {
-                  const h = typeof compVal === 'number' ? compVal : compVal?.health ?? 100;
-                  if (h < 50) {
-                    wornIssues.push(`<span style="color:#ef4444; font-weight:800;">🔴 ${PART_LABELS[compKey] || compKey} (${Math.round(h)}%)</span>`);
-                  } else if (h < 75) {
-                    wornIssues.push(`<span style="color:var(--gold); font-weight:700;">🟡 ${PART_LABELS[compKey] || compKey} (${Math.round(h)}%)</span>`);
-                  }
-                });
-
-                if ((t.fluids?.coolant || 100) < 30) wornIssues.push('<span style="color:#ef4444; font-weight:800;">🔴 Coolant Critical</span>');
-                else if ((t.fluids?.coolant || 100) < 60) wornIssues.push('<span style="color:var(--gold); font-weight:700;">🟡 Coolant Low</span>');
-                
-                if ((t.fluids?.adBlue || 100) < 30) wornIssues.push('<span style="color:var(--gold); font-weight:700;">🟡 DEF/AdBlue Low</span>');
-                if ((t.fluids?.oil || 40) < 15) wornIssues.push('<span style="color:#ef4444; font-weight:800;">🔴 Engine Oil Deficit</span>');
-
-                const statusColor = statusTier === 'critical' ? '#ef4444' : statusTier === 'warning' ? 'var(--gold)' : 'var(--grn)';
-                const statusBadgeText = isUnderRepair ? '🛠️ UNDER REPAIR' : statusTier === 'critical' ? '🔴 CRITICAL SERVICE' : statusTier === 'warning' ? '🟡 WEAR DETECTED' : '🟢 OPTIMAL MINT';
-
-                return `
-                  <div style="background:#0e1320; border:1px solid ${statusTier === 'critical' ? 'rgba(239,68,68,0.4)' : statusTier === 'warning' ? 'rgba(193,154,91,0.4)' : '#1f293d'}; border-radius:10px; padding:12px;">
-                    <!-- Vehicle Title & Status Row -->
-                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
-                      <div>
-                        <div style="display:flex; align-items:center; gap:8px;">
-                          <span style="font-size:10px; font-family:monospace; color:var(--gold); font-weight:900;">UNIT #${t.id}</span>
-                          <span style="font-size:13px; font-weight:900; color:var(--tx);">${t.name}</span>
-                          <span style="font-size:9px; font-weight:800; color:${statusColor}; background:${statusColor}18; border:1px solid ${statusColor}40; padding:1px 6px; border-radius:4px; font-family:monospace;">
-                            ${statusBadgeText}
-                          </span>
-                        </div>
-                        <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:2px;">
-                          ${tm.brand} ${tm.name} (${tm.axle} · ${tm.engine.hp} HP) · Base: <b>${locInfo?.name || t.loc}</b> · Odo: <span data-truck-odo="${t.id}">${Math.round(t.odometer).toLocaleString()} km</span>
-                        </div>
-                      </div>
-                      
-                      <div style="text-align:right;">
-                        <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">POWERTRAIN HEALTH</div>
-                        <div style="font-size:15px; font-weight:900; color:${statusColor}; font-family:monospace;">${avgHealth}%</div>
-                      </div>
-                    </div>
-
-                    <!-- Health Progress Bar -->
-                    <div style="height:6px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden; margin-bottom:8px;">
-                      <div style="width:${avgHealth}%; height:100%; background:${statusColor}; border-radius:3px; transition:width 0.4s ease;"></div>
-                    </div>
-
-                    <!-- Wear Flags Readout -->
-                    <div style="background:#080c16; border:1px solid #1a2336; border-radius:6px; padding:6px 10px; margin-bottom:10px; font-size:9px; font-family:monospace;">
-                      ${wornIssues.length > 0 
-                        ? `<div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
-                             <span style="color:var(--mu); font-weight:800;">DIAGNOSTIC FAULTS:</span>
-                             ${wornIssues.join(' · ')}
-                           </div>`
-                        : `<span style="color:var(--grn); font-weight:700;">✓ All powertrain, braking, suspension & fluids nominal. No servicing required.</span>`}
-                    </div>
-
-                    <!-- Action Button Row -->
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                      <div style="font-size:9px; color:var(--mu); font-family:monospace;">
-                        ${isUnderRepair ? '🛠️ Occupying hydraulic hoist bay' : isScheduled ? '🕒 Service scheduled for hub arrival' : isBusy ? '🛣️ Currently in active transit on highway' : '📍 Staged at depot berth, ready for hoist'}
-                      </div>
-                      <button class="btn ${statusTier === 'optimal' && !isScheduled ? 'alt' : 'gold'}" style="padding:6px 14px; font-size:10px; font-weight:900; letter-spacing:0.5px;" data-act="hoist-truck-to-bay" data-id="${t.id}">
-                        ${isUnderRepair ? 'VIEW BAY PROGRESS →' : isScheduled ? 'VIEW SCHEDULED QUEUE →' : isBusy ? 'PRE-PAY & SCHEDULE →' : statusTier === 'optimal' ? 'INSPECT SPECIFICATIONS' : 'HOIST TO REPAIR BAY →'}
-                      </button>
-                    </div>
-                  </div>
-                `;
-              }).join('')}
-            </div>
-          `}
+          ${renderDiagnosticTable(S, repairsQueue, lastScanTimestamp)}
         ` : workshopTab === 'bay' ? `
           <!-- TAB 2: ACTIVE HYDRAULIC LIFT & REPAIR BAY -->
           ${!truck ? `

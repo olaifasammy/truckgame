@@ -483,6 +483,16 @@ export function completeJobs(S: any, now: number) {
       if (!S.reputation) S.reputation = 0;
       S.reputation += repGain;
 
+      // Proof-of-Delivery (PoD) Cryptographic Smart Contract Reward
+      const podBonusFlb = parseFloat((0.05 + ((a.km || 300) / 1000) * 0.05).toFixed(2));
+      S.coins = (S.coins || 0) + podBonusFlb;
+      pushNote(S, `Proof-of-Delivery verified! Awarded +${podBonusFlb.toFixed(2)} FLB Smart-Contract PoD bonus for pristine delivery.`, {
+        title: 'SMART CONTRACT PoD REWARD',
+        type: 'finance',
+        priority: 2,
+        body: `Consignment: ${cargo?.name || 'Commercial Freight'}\nCarrier Seal: Intact · 0% Cargo Damage\nDestination: ${a.to}\nNetwork: FLB Proof-of-Delivery Protocol\nReward: +${podBonusFlb.toFixed(2)} FLB`
+      });
+
       // Corporate Tender Progress Tracking
       if (a.tenderId && S.corporateTenders) {
         const tender = S.corporateTenders.find((ct: any) => ct.id === a.tenderId);

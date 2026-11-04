@@ -374,6 +374,15 @@ action('exchange-sell-gold', d => {
   });
 });
 
+action('set-mining-tuning', d => {
+  const profile = (d as any).profile || 'balanced';
+  set(S => {
+    if (!S.mining) S.mining = { substationLevel: 0, subscriptions: [], upgrades: {}, pendingYield: {} };
+    S.mining.tuning = profile;
+    toast(`Mining Tuning Profile set to ${profile.toUpperCase()}`, 'info');
+  });
+});
+
 export function renderFinanceNav(activeTab: string) {
   const tabs = [
     { id: 'treasury', label: 'P&L' },

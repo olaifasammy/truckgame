@@ -1,7 +1,9 @@
 import { fmt } from '../../../core/ui';
 import { getGoldMarketData } from '../../../domain/finance/banking';
 import { CRYPTO_ASSETS, getCryptoMarketData, getTotalCryptoValue } from '../../../domain/finance/markets/crypto';
-import { MINING_RIG_TYPES, MINING_ADDITIONS, MINING_DURATIONS, calculateMiningStats, getSubstationUpgradeCost, getSubscriptionCost, calculateRigDailyCoinYield, getVipLevel, MiningSubscription, formatCryptoQty } from '../../../domain/finance/markets/mining';
+import { MINING_RIG_TYPES, MINING_ADDITIONS, MINING_DURATIONS, calculateMiningStats, getSubstationUpgradeCost, getSubscriptionCost, calculateRigDailyCoinYield, getVipLevel, MiningSubscription, formatCryptoQty, MINING_TUNING_PROFILES } from '../../../domain/finance/markets/mining';
+import { renderCandlestickChart, renderOrderBookDepth, renderLimitOrderDesk, renderCollateralLoanDesk } from './exchange-orderbook';
+import { renderNextGenHardwareShop, renderNextGenAestheticBay } from './nextgen-shop';
 
 export function renderExchangeTab(S: any) {
   const goldMarket = getGoldMarketData(S);
@@ -76,7 +78,7 @@ export function renderExchangeTab(S: any) {
           </div>
         </div>
 
-        <div style="display:grid; grid-template-columns:${cryptoFlbQty > 0 ? '1fr 1fr 1fr' : '1fr 1fr'}; gap:8px; margin-bottom:12px;">
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap:8px; margin-bottom:12px;">
           <div style="background:rgba(255,255,255,0.03); padding:8px 10px; border-radius:6px; border:1px solid #1e293b;">
             <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">LIQUID BONDS</div>
             <div style="font-size:13px; font-weight:900; color:var(--gold); font-family:monospace;">${formatCryptoQty(userCoins)} FLB</div>
@@ -194,7 +196,7 @@ export function renderExchangeTab(S: any) {
         <!-- Central Interactive Price Chart -->
         <div style="padding:16px; background:#0f172a; border-bottom:1px solid #1e293b;">
           
-          <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px; margin-bottom:10px;">
             <div>
               <div style="display:flex; align-items:center; gap:8px;">
                 <span style="font-size:18px; color:${assetData.color};">${assetData.icon}</span>
@@ -234,6 +236,8 @@ export function renderExchangeTab(S: any) {
               <polyline fill="none" stroke="${chartColor}" stroke-width="2.5" points="${pointsString}" stroke-linecap="round" stroke-linejoin="round" />
             </svg>
           </div>
+
+          ${renderCandlestickChart(assetData)}
         </div>
 
         <!-- Buy / Sell Central Order Desk -->
@@ -260,13 +264,13 @@ export function renderExchangeTab(S: any) {
               </div>
 
               <!-- Custom USD Amount Input -->
-              <div style="display:flex; gap:6px; margin-bottom:8px;">
-                <div style="position:relative; flex:1;">
+              <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+                <div style="position:relative; flex:1 1 140px; min-width:0;">
                   <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--mu); font-family:monospace;">$</span>
                   <input type="number" id="crypto-buy-amount-input" placeholder="Custom USD (e.g. 1200)" min="1" step="any"
                     style="width:100%; box-sizing:border-box; padding:7px 8px 7px 22px; background:#0b0f19; border:1px solid #1e293b; border-radius:6px; color:var(--tx); font-family:monospace; font-size:11px; font-weight:700;" />
                 </div>
-                <button class="btn gold" style="padding:7px 14px; font-size:10px; font-weight:900; white-space:nowrap;" data-act="crypto-buy-usd" data-id="${assetData.id}">
+                <button class="btn gold" style="flex:1 1 auto; padding:7px 14px; font-size:10px; font-weight:900; white-space:nowrap;" data-act="crypto-buy-usd" data-id="${assetData.id}">
                   BUY ${assetData.symbol}
                 </button>
               </div>
@@ -288,13 +292,13 @@ export function renderExchangeTab(S: any) {
               </div>
 
               <!-- Custom USD Amount Input -->
-              <div style="display:flex; gap:6px; margin-bottom:8px;">
-                <div style="position:relative; flex:1;">
+              <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
+                <div style="position:relative; flex:1 1 140px; min-width:0;">
                   <span style="position:absolute; left:8px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--mu); font-family:monospace;">$</span>
                   <input type="number" id="crypto-sell-amount-input" placeholder="Custom USD (e.g. 356)" min="1" step="any"
                     style="width:100%; box-sizing:border-box; padding:7px 8px 7px 22px; background:#0b0f19; border:1px solid #1e293b; border-radius:6px; color:var(--tx); font-family:monospace; font-size:11px; font-weight:700;" />
                 </div>
-                <button class="btn alt" style="padding:7px 14px; font-size:10px; font-weight:900; color:#ef4444; border-color:#ef4444; white-space:nowrap;" data-act="crypto-sell-custom" data-id="${assetData.id}">
+                <button class="btn alt" style="flex:1 1 auto; padding:7px 14px; font-size:10px; font-weight:900; color:#ef4444; border-color:#ef4444; white-space:nowrap;" data-act="crypto-sell-custom" data-id="${assetData.id}">
                   SELL ${assetData.symbol}
                 </button>
               </div>
@@ -330,6 +334,18 @@ export function renderExchangeTab(S: any) {
                 </div>
               </div>
             ` : ''}
+
+            <!-- Live Orderbook Depth Ladder & Automated Limit Order Desk -->
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap:10px; margin-top:8px;">
+              ${renderOrderBookDepth(selectedAssetId)}
+              ${renderLimitOrderDesk(S, selectedAssetId)}
+            </div>
+
+            <!-- Crypto-Collateralized Working Capital Line -->
+            <div style="margin-top:8px;">
+              ${renderCollateralLoanDesk(S, selectedAssetId)}
+            </div>
+
           </div>
         </div>
       </div>
@@ -390,7 +406,9 @@ export function renderExchangeTab(S: any) {
         <!-- Live Power Substation & Booster Telemetry Box -->
         <div style="padding:14px; background:#0b0f19; border-bottom:1px solid #1e293b; display:flex; flex-direction:column; gap:10px;">
           
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          ${renderNextGenAestheticBay(S)}
+
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:8px;">
             <div style="background:#111827; padding:10px; border-radius:8px; border:1px solid ${miningStats.isOverloaded ? '#ef4444' : '#1f293d'};">
               <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">SUBSTATION POWER (LVL ${miningStats.substationLevel})</div>
@@ -433,6 +451,29 @@ export function renderExchangeTab(S: any) {
             </div>
           ` : ''}
 
+          <!-- Industrial Rig Tuning Profile & Thermal Efficiency Controls -->
+          <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <div>
+              <div style="font-size:9px; font-weight:800; color:var(--tx); text-transform:uppercase;">
+                RIG TUNING PROFILE · PUE EFFICIENCY: <span style="color:var(--grn); font-family:monospace; font-weight:900;">${miningStats.pue}</span>
+              </div>
+              <div style="font-size:8px; color:var(--mu); font-family:monospace; margin-top:2px;">
+                ${miningStats.tuningDef?.description || ''}
+              </div>
+            </div>
+            <div style="display:flex; gap:6px;">
+              <button class="btn ${miningStats.tuning === 'eco' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:8px; font-weight:800;" data-act="set-mining-tuning" data-profile="eco">
+                🌱 ECO (-25% PWR)
+              </button>
+              <button class="btn ${miningStats.tuning === 'balanced' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:8px; font-weight:800;" data-act="set-mining-tuning" data-profile="balanced">
+                ⚖️ NOMINAL (100%)
+              </button>
+              <button class="btn ${miningStats.tuning === 'overclock' ? 'danger' : 'alt'}" style="padding:4px 8px; font-size:8px; font-weight:800; ${miningStats.tuning === 'overclock' ? 'color:#fff;' : 'color:#ef4444;'}" data-act="set-mining-tuning" data-profile="overclock">
+                ⚡ OVERCLOCK (+28%)
+              </button>
+            </div>
+          </div>
+
           <!-- Active Multi-Coin Mining Badges -->
           <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:9px;">
             <span style="color:var(--mu); font-weight:800;">ACTIVE MINING CURRENCIES:</span>
@@ -449,7 +490,7 @@ export function renderExchangeTab(S: any) {
           </div>
 
           <button class="btn alt" style="width:100%; padding:8px; font-size:9px; font-weight:800; color:var(--gold); border-color:var(--gold)40;" data-act="upgrade-substation">
-            UPGRADE SUBSTATION TRANSFORMER (+50 kW) — $${nextSubstationCost.cashCost.toLocaleString()} + ${nextSubstationCost.bondsCost} FLB
+            UPGRADE SUBSTATION TRANSFORMER (+350 kW) — ${nextSubstationCost.bondsCost > 0 ? `$${nextSubstationCost.cashCost.toLocaleString()} + ${nextSubstationCost.bondsCost} FLB` : `$${nextSubstationCost.cashCost.toLocaleString()}`}
           </button>
         </div>
 
@@ -459,7 +500,7 @@ export function renderExchangeTab(S: any) {
             System Additions & Hardware Boosters
           </div>
 
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:8px;">
             ${MINING_ADDITIONS.map(add => {
               const isInstalled = !!userUpgrades[add.id];
               const canAffordCash = S.money >= add.cashCost;
@@ -484,13 +525,18 @@ export function renderExchangeTab(S: any) {
 
                   ${!isInstalled ? `
                     <button class="btn ${canInstall ? 'gold' : 'alt'}" style="padding:6px; font-size:8px; font-weight:900; margin-top:8px; opacity:${canInstall ? 1 : 0.6};" data-act="buy-mining-addition" data-id="${add.id}">
-                      INSTALL ($${add.cashCost.toLocaleString()} + ${add.bondsCost} FLB)
+                      INSTALL (${add.bondsCost > 0 ? `$${add.cashCost.toLocaleString()} + ${add.bondsCost} FLB` : `$${add.cashCost.toLocaleString()}`})
                     </button>
                   ` : ''}
                 </div>
               `;
             }).join('')}
           </div>
+        </div>
+
+        <!-- Next-Gen Mining Hardware Upgrades Shop Component -->
+        <div style="padding:14px; background:#0f172a; border-bottom:1px solid #1e293b;">
+          ${renderNextGenHardwareShop(S)}
         </div>
 
         <!-- 5. Configure Hosting Contract -->
@@ -541,10 +587,18 @@ export function renderExchangeTab(S: any) {
               const targetSymbol = miningTargetCoin.toUpperCase();
 
               return `
-                <div style="background:#111827; border:1px solid ${hasVip ? '#1f293d' : '#331010'}; border-radius:8px; padding:10px;">
-                  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+                <div style="background:#111827; border:1px solid ${rig.category === 'NextGen' ? 'rgba(56,189,248,0.4)' : hasVip ? '#1f293d' : '#331010'}; border-radius:8px; padding:10px;">
+                  <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:6px; margin-bottom:6px;">
                     <div>
-                      <div style="font-size:11px; font-weight:900; color:${hasVip ? 'var(--tx)' : '#999'};">${rig.name} <span style="font-size:9px; color:var(--gold); font-family:monospace;">[${rig.hashrate}]</span></div>
+                      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                        <span style="font-size:11px; font-weight:900; color:${hasVip ? 'var(--tx)' : '#999'};">${rig.name}</span>
+                        <span style="font-size:9px; color:var(--gold); font-family:monospace;">[${rig.hashrate}]</span>
+                        ${rig.category === 'NextGen' ? `
+                          <span style="font-size:8px; font-weight:900; color:#38bdf8; background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.4); padding:1px 5px; border-radius:4px; font-family:monospace;">
+                            ⚡ NEXT-GEN
+                          </span>
+                        ` : ''}
+                      </div>
                       <div style="font-size:8px; color:var(--mu); margin-top:2px;">
                         Power: ${rig.powerKw} kW ($${rig.dailyPowerCost}/d) · Target: <b style="color:var(--grn);">${targetSymbol}</b> · Requires: <b style="color:${hasVip ? 'var(--grn)' : '#ef4444'};">VIP ${rig.requiredVipLevel}+</b>
                       </div>
@@ -557,7 +611,7 @@ export function renderExchangeTab(S: any) {
                   </div>
 
                   <button class="btn ${isEligible ? 'gold' : 'alt'}" style="width:100%; padding:8px; font-size:9px; font-weight:900; opacity:${isEligible ? 1 : 0.6}; margin-top:4px;" data-act="subscribe-mining-contract" data-type-id="${rig.id}" data-coin="${miningTargetCoin}" data-duration="${miningSelectedDuration}">
-                    SUBSCRIBE ${miningSelectedDuration} DAYS ($${costs.cashCost.toLocaleString()} + ${costs.bondsCost} FLB)
+                    SUBSCRIBE ${miningSelectedDuration} DAYS (${costs.bondsCost > 0 ? `$${costs.cashCost.toLocaleString()} + ${costs.bondsCost} FLB` : `$${costs.cashCost.toLocaleString()}`})
                   </button>
                 </div>
               `;
