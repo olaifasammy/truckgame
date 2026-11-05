@@ -19,4 +19,4 @@ export const GOLD: Record<string, any> = {
   xp: { label: 'XP boost', desc: '+400 experience', cost: 3, icon: 'up' }
 };
 
-export const EXCH = 15000;
+export const EXCH = 5000;

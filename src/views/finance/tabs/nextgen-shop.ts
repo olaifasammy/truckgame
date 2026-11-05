@@ -72,45 +72,42 @@ export function renderNextGenHardwareShop(S: any): string {
   const totalInstalled = NEXT_GEN_HARDWARE.filter(h => ownedHw[h.id]).length;
 
   return `
-    <div style="background:#0b0f19; border:1px solid #1e293b; border-radius:12px; overflow:hidden; margin-top:12px;">
+    <div style="background:#090d16; border:1px solid rgba(255,255,255,0.08); border-radius:10px; overflow:hidden;">
       
-      <!-- Header Banner -->
-      <div style="padding:16px; background:linear-gradient(135deg, #111827 0%, #0f172a 50%, #090d16 100%); border-bottom:1px solid #1e293b; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+      <!-- Sleek Header Banner -->
+      <div style="padding:12px 14px; background:linear-gradient(90deg, #0d1527 0%, #090d16 100%); border-bottom:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
         <div>
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span style="font-size:11px; font-weight:900; color:#38bdf8; background:rgba(56,189,248,0.15); border:1px solid rgba(56,189,248,0.4); padding:2px 8px; border-radius:4px; font-family:monospace; letter-spacing:0.5px;">
+          <div style="display:flex; align-items:center; gap:6px;">
+            <span style="font-size:9px; font-weight:900; color:#38bdf8; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.3); padding:1px 6px; border-radius:4px; font-family:monospace; letter-spacing:0.5px;">
               ⚡ QUANTUM & PHOTONIC DIVISION
             </span>
-            <span style="font-size:10px; color:var(--mu); font-family:monospace;">
-              ${totalInstalled} / ${NEXT_GEN_HARDWARE.length} Hardwares Online
+            <span style="font-size:9px; color:var(--mu); font-family:monospace;">
+              ${totalInstalled}/${NEXT_GEN_HARDWARE.length} Hardwares Online
             </span>
           </div>
-          <div style="font-size:17px; font-weight:900; color:var(--tx); margin-top:4px; letter-spacing:-0.2px;">
+          <div style="font-size:14px; font-weight:900; color:var(--tx); margin-top:2px;">
             Next-Gen Mining Hardware Upgrades
-          </div>
-          <div style="font-size:10px; color:var(--mu); margin-top:2px;">
-            Permanent datacenter compute nodes featuring room-temperature superconductors, neuromorphic AI nonces, and optical waveguides.
           </div>
         </div>
 
-        <div style="display:flex; gap:10px; align-items:center;">
-          <div style="background:#0a0e17; border:1px solid #1e293b; border-radius:8px; padding:6px 12px; text-align:right;">
-            <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">NEXT-GEN AUX POWER</div>
-            <div style="font-size:13px; font-weight:900; color:#10b981; font-family:monospace;">
+        <div style="display:flex; gap:8px; align-items:center;">
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:4px 8px; text-align:right;">
+            <div style="font-size:7px; color:var(--mu); text-transform:uppercase;">AUX POWER</div>
+            <div style="font-size:11px; font-weight:900; color:#10b981; font-family:monospace;">
               +${stats.nextGenCleanKw} kW
             </div>
           </div>
-          <div style="background:#0a0e17; border:1px solid #1e293b; border-radius:8px; padding:6px 12px; text-align:right;">
-            <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">HASH YIELD BOOST</div>
-            <div style="font-size:13px; font-weight:900; color:var(--gold); font-family:monospace;">
+          <div style="background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:4px 8px; text-align:right;">
+            <div style="font-size:7px; color:var(--mu); text-transform:uppercase;">YIELD BOOST</div>
+            <div style="font-size:11px; font-weight:900; color:var(--gold); font-family:monospace;">
               +${stats.nextGenBonusYieldPct}%
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Hardware Tiers Grid -->
-      <div style="padding:16px; display:grid; grid-template-columns:repeat(auto-fit, minmax(290px, 1fr)); gap:12px; background:#080c14;">
+      <!-- Horizontal Scrollable Hardware Carousel -->
+      <div style="display:flex; gap:10px; overflow-x:auto; padding:12px; background:#060911; scroll-snap-type:x mandatory; -webkit-overflow-scrolling:touch;">
         ${NEXT_GEN_HARDWARE.map(hw => {
           const isInstalled = !!ownedHw[hw.id];
           const hasVip = playerVip >= hw.requiredVipLevel;
@@ -119,89 +116,88 @@ export function renderNextGenHardwareShop(S: any): string {
           const canPurchase = !isInstalled && hasVip && canAffordCash && canAffordBonds;
 
           return `
-            <div style="background:#0f172a; border:1px solid ${isInstalled ? hw.accentColor : '#1e293b'}; border-radius:10px; padding:14px; display:flex; flex-direction:column; justify-content:space-between; position:relative; box-shadow:${isInstalled ? `0 0 16px ${hw.glowColor}` : 'none'};">
+            <div style="flex:0 0 260px; min-width:260px; scroll-snap-align:start; background:#0b0f1a; border:1px solid ${isInstalled ? hw.accentColor + '80' : 'rgba(255,255,255,0.08)'}; border-radius:8px; padding:10px; display:flex; flex-direction:column; justify-content:space-between; position:relative; box-shadow:${isInstalled ? `0 0 12px ${hw.glowColor}` : 'none'};">
               
-              <!-- Tier Badge & Top Tag -->
               <div>
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                  <div style="display:flex; align-items:center; gap:6px;">
-                    <span style="font-size:18px;">${hw.icon}</span>
-                    <span style="font-size:9px; font-weight:900; color:${hw.accentColor}; font-family:monospace; background:${hw.accentColor}18; border:1px solid ${hw.accentColor}40; padding:2px 6px; border-radius:4px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                  <div style="display:flex; align-items:center; gap:5px;">
+                    <span style="font-size:15px;">${hw.icon}</span>
+                    <span style="font-size:8px; font-weight:900; color:${hw.accentColor}; font-family:monospace; background:${hw.accentColor}18; border:1px solid ${hw.accentColor}30; padding:1px 5px; border-radius:3px;">
                       TIER ${hw.tier} · ${hw.codename}
                     </span>
                   </div>
                   ${isInstalled ? `
-                    <span style="font-size:8px; font-weight:900; color:var(--grn); background:rgba(34,197,94,0.15); border:1px solid rgba(34,197,94,0.4); padding:2px 6px; border-radius:4px; font-family:monospace; display:flex; align-items:center; gap:4px;">
-                      ● ACTIVE
+                    <span style="font-size:7px; font-weight:900; color:var(--grn); background:rgba(34,197,94,0.15); border:1px solid rgba(34,197,94,0.3); padding:1px 5px; border-radius:3px; font-family:monospace;">
+                      ● ONLINE
                     </span>
                   ` : `
-                    <span style="font-size:8px; font-weight:800; color:${hasVip ? 'var(--mu)' : '#ef4444'}; font-family:monospace;">
-                      ${hasVip ? `VIP ${hw.requiredVipLevel}+` : `🔒 REQUIRES VIP ${hw.requiredVipLevel}`}
+                    <span style="font-size:7px; font-weight:800; color:${hasVip ? 'var(--mu)' : '#ef4444'}; font-family:monospace;">
+                      VIP ${hw.requiredVipLevel}+
                     </span>
                   `}
                 </div>
 
-                <div style="font-size:13px; font-weight:900; color:var(--tx); margin-top:2px;">
+                <div style="font-size:11px; font-weight:900; color:var(--tx); margin-top:2px;">
                   ${hw.name}
                 </div>
-                <div style="font-size:9px; color:var(--mu); margin-top:4px; line-height:1.4;">
+                <div style="font-size:8px; color:var(--mu); margin-top:3px; line-height:1.3; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden;">
                   ${hw.aestheticDesc}
                 </div>
 
-                <!-- Technical Specs & Performance Matrix -->
-                <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:6px; margin-top:10px; padding:8px; background:#080c14; border-radius:6px; border:1px solid #192233;">
+                <!-- Technical Specs Matrix -->
+                <div style="display:grid; grid-template-columns:repeat(2, 1fr); gap:4px; margin-top:8px; padding:6px; background:rgba(0,0,0,0.3); border-radius:5px; border:1px solid rgba(255,255,255,0.05);">
                   <div>
-                    <div style="font-size:7px; color:var(--mu); text-transform:uppercase;">HASH YIELD</div>
-                    <div style="font-size:11px; font-weight:900; color:var(--gold); font-family:monospace;">
-                      +${hw.bonusYieldPct}% Speed
+                    <div style="font-size:6px; color:var(--mu); text-transform:uppercase;">HASH YIELD</div>
+                    <div style="font-size:9px; font-weight:900; color:var(--gold); font-family:monospace;">
+                      +${hw.bonusYieldPct}%
                     </div>
                   </div>
                   <div>
-                    <div style="font-size:7px; color:var(--mu); text-transform:uppercase;">POWER EFFICIENCY</div>
-                    <div style="font-size:11px; font-weight:900; color:#10b981; font-family:monospace;">
-                      -${hw.bonusPowerEfficiencyPct}% Bill
+                    <div style="font-size:6px; color:var(--mu); text-transform:uppercase;">POWER EFF.</div>
+                    <div style="font-size:9px; font-weight:900; color:#10b981; font-family:monospace;">
+                      -${hw.bonusPowerEfficiencyPct}%
                     </div>
                   </div>
                   <div>
-                    <div style="font-size:7px; color:var(--mu); text-transform:uppercase;">CLEAN AUX POWER</div>
-                    <div style="font-size:11px; font-weight:900; color:#38bdf8; font-family:monospace;">
-                      +${hw.auxiliaryPowerKw} kW Baseload
+                    <div style="font-size:6px; color:var(--mu); text-transform:uppercase;">AUX POWER</div>
+                    <div style="font-size:9px; font-weight:900; color:#38bdf8; font-family:monospace;">
+                      +${hw.auxiliaryPowerKw} kW
                     </div>
                   </div>
                   <div>
-                    <div style="font-size:7px; color:var(--mu); text-transform:uppercase;">PUE DROP</div>
-                    <div style="font-size:11px; font-weight:900; color:#a855f7; font-family:monospace;">
-                      -${hw.pueReduction.toFixed(2)} PUE
+                    <div style="font-size:6px; color:var(--mu); text-transform:uppercase;">PUE DROP</div>
+                    <div style="font-size:9px; font-weight:900; color:#a855f7; font-family:monospace;">
+                      -${hw.pueReduction.toFixed(2)}
                     </div>
                   </div>
                 </div>
 
                 <!-- Special Capability Pill -->
-                <div style="margin-top:8px; background:${hw.accentColor}12; border:1px solid ${hw.accentColor}30; border-radius:4px; padding:5px 8px; font-size:8px; color:${hw.accentColor}; font-weight:800; display:flex; align-items:center; gap:5px;">
+                <div style="margin-top:6px; background:${hw.accentColor}12; border:1px solid ${hw.accentColor}25; border-radius:4px; padding:4px 6px; font-size:7px; color:${hw.accentColor}; font-weight:800; display:flex; align-items:center; gap:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                   <span>✨</span>
-                  <span>${hw.specialCapability}</span>
+                  <span style="overflow:hidden; text-overflow:ellipsis;">${hw.specialCapability}</span>
                 </div>
               </div>
 
               <!-- Price & Purchase CTA -->
-              <div style="margin-top:12px; padding-top:10px; border-top:1px solid #1e293b;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                  <span style="font-size:8px; color:var(--mu); text-transform:uppercase;">PERMANENT HARDWARE FEE</span>
-                  <div style="font-size:11px; font-weight:900; color:var(--tx); font-family:monospace;">
+              <div style="margin-top:8px; padding-top:6px; border-top:1px solid rgba(255,255,255,0.06);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                  <span style="font-size:7px; color:var(--mu); text-transform:uppercase;">COST</span>
+                  <div style="font-size:9px; font-weight:900; color:var(--tx); font-family:monospace;">
                     $${hw.cashCost.toLocaleString()}${hw.bondsCost > 0 ? ` + ${hw.bondsCost} FLB` : ''}
                   </div>
                 </div>
 
                 ${isInstalled ? `
-                  <button class="btn alt" style="width:100%; padding:8px; font-size:9px; font-weight:900; color:var(--grn); border-color:rgba(34,197,94,0.4); background:rgba(34,197,94,0.06); cursor:default;" disabled>
-                    ✓ PERMANENTLY ONLINE IN RACK
+                  <button class="btn alt" style="width:100%; padding:5px; font-size:8px; font-weight:900; color:var(--grn); border-color:rgba(34,197,94,0.3); background:rgba(34,197,94,0.06); cursor:default;" disabled>
+                    ✓ DEPLOYED IN RACK
                   </button>
                 ` : `
                   <button class="btn ${canPurchase ? 'gold' : 'alt'}" 
-                    style="width:100%; padding:8px; font-size:9px; font-weight:900; opacity:${canPurchase ? 1 : 0.6};"
+                    style="width:100%; padding:5px; font-size:8px; font-weight:900; opacity:${canPurchase ? 1 : 0.6};"
                     data-act="buy-nextgen-hardware" 
                     data-hw="${hw.id}">
-                    ${!hasVip ? `LOCKED (VIP ${hw.requiredVipLevel} REQUIRED)` : !canAffordCash ? 'INSUFFICIENT FUNDS' : !canAffordBonds ? 'INSUFFICIENT FLB' : `PURCHASE & DEPLOY ${hw.codename}`}
+                    ${!hasVip ? `VIP ${hw.requiredVipLevel} REQ` : !canAffordCash ? 'NO CASH' : !canAffordBonds ? 'NO FLB' : `DEPLOY ${hw.codename}`}
                   </button>
                 `}
               </div>

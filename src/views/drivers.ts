@@ -1,11 +1,13 @@
 import { ic } from '../core/icons';
 import { action, fmt, dur, toast } from '../core/ui';
-import { refresh } from '../core/store';
-import { hire, fire, transferDriver, hireFee, transferFee, trainDriverSkill, certifyDriver, DRIVER_CERTIFICATIONS, skillUpgradeCost } from '../systems/drivers';
+import { refresh, set } from '../core/store';
 import { TRAIT_REGISTRY } from '../domain/drivers/drivers.names';
-import { Region } from '../domain/drivers/drivers.types';
+import { Region, Driver } from '../domain/drivers/drivers.types';
 import { sendDriverOnRest, awardDriverBonus, assignMentorship } from '../domain/regulations/hos';
-import { set } from '../core/store';
+import { DriverService } from '../application/services/drivers';
+import { DRIVER_CERTIFICATIONS } from '../domain/drivers/certifications';
+import { DriverManagement } from '../domain/drivers/management';
+import { GameState } from '../types/state';
 
 let activeTab: 'employed' | 'pool' = 'employed';
 let selectedRegion: Region | 'All' = 'All';
@@ -23,49 +25,50 @@ action('toggle-driver-expand', d => {
   refresh();
 });
 
-action('hire-driver', d => hire(+(d as any).id));
-action('fire-driver', d => fire(+(d as any).id));
+action('hire-driver', d => DriverService.hireDriver(+(d as any).id));
+action('fire-driver', d => DriverService.fireDriver(+(d as any).id));
 
 action('train-driver-skill', d => {
-  trainDriverSkill(+(d as any).id);
+  DriverService.upgradeSkill(+(d as any).id);
   refresh();
 });
 
 action('certify-driver', d => {
-  certifyDriver(+(d as any).id, (d as any).cert);
+  DriverService.addCertification(+(d as any).id, (d as any).cert);
   refresh();
 });
 
 action('send-driver-rest', d => {
-  set(S => {
-    const drv = S.drivers.find((x: any) => x.id === +(d as any).id);
+  set((S: GameState) => {
+    const drv = S.drivers.find(x => x.id === +(d as any).id);
     if (drv) {
-      const res = sendDriverOnRest(drv, S, true);
+      const res = sendDriverOnRest(drv as any, S as any, true);
       toast(res.message, res.success ? 'success' : 'err');
     }
   });
 });
 
 action('award-driver-bonus', d => {
-  set(S => {
-    const drv = S.drivers.find((x: any) => x.id === +(d as any).id);
+  set((S: GameState) => {
+    const drv = S.drivers.find(x => x.id === +(d as any).id);
     if (drv) {
-      const res = awardDriverBonus(drv, S, 500);
+      const res = awardDriverBonus(drv as any, S as any, 500);
       toast(res.message, res.success ? 'success' : 'err');
     }
   });
 });
 
 action('pair-mentor', d => {
-  set(S => {
-    const rookie = S.drivers.find((x: any) => x.id === +(d as any).rookieId);
-    const mentor = S.drivers.find((x: any) => x.id === +(d as any).mentorId);
+  set((S: GameState) => {
+    const rookie = S.drivers.find(x => x.id === +(d as any).rookieId);
+    const mentor = S.drivers.find(x => x.id === +(d as any).mentorId);
     if (rookie && mentor) {
-      const res = assignMentorship(mentor, rookie);
+      const res = assignMentorship(mentor as any, rookie as any);
       toast(res.message, res.success ? 'success' : 'err');
     }
   });
 });
+
 
 action('open-transfer-modal', d => {
   transferModalDriverId = +(d as any).id;
@@ -80,7 +83,7 @@ action('close-transfer-modal', () => {
 action('execute-transfer', d => {
   const driverId = +(d as any).driverId;
   const newRegion = (d as any).region as Region;
-  transferDriver(driverId, newRegion);
+  DriverService.transferRegion(driverId, newRegion);
   transferModalDriverId = null;
   refresh();
 });
@@ -90,12 +93,12 @@ export default {
   icon: 'user',
   label: 'Drivers',
   hidden: true,
-  render(S: any) {
-    const employed: any[] = S.drivers || [];
-    const pool: any[] = S.pool || [];
+  render(S: GameState) {
+    const employed: Driver[] = S.drivers || [];
+    const pool: Driver[] = (S as any).pool || [];
 
-    const filteredEmployed = selectedRegion === 'All' ? employed : employed.filter((d: any) => (d.region || 'Africa') === selectedRegion);
-    const filteredPool = selectedRegion === 'All' ? pool : pool.filter((d: any) => (d.region || 'Africa') === selectedRegion);
+    const filteredEmployed = selectedRegion === 'All' ? employed : employed.filter(d => (d.region || 'Africa') === selectedRegion);
+    const filteredPool = selectedRegion === 'All' ? pool : pool.filter(d => (d.region || 'Africa') === selectedRegion);
 
     const list = activeTab === 'employed' ? filteredEmployed : filteredPool;
     const totalPages = Math.ceil(list.length / DRIVERS_PER_PAGE) || 1;

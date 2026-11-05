@@ -1,119 +1,180 @@
 import { fmt } from '../../../core/ui';
-import { calculateCreditRating, INSURANCE_POLICIES, getGoldMarketData } from '../../../domain/finance/banking';
-import { getTotalCryptoValue } from '../../../domain/finance/markets/crypto';
+import { calculateCreditRating } from '../../../domain/finance/banking';
+import { calculateBalanceSheet, calculateIncomeStatement } from '../../../domain/finance/accounting';
 
 export function renderTreasuryTab(S: any) {
   const { rating, score } = calculateCreditRating(S);
-  const bunker = S.fuelBunker || { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
-  const cryptoVal = getTotalCryptoValue(S);
-  
-  // Fleet Bonds (FLB) valuation at current market bid price
-  const goldMarket = getGoldMarketData(S);
-  const bondsCount = S.coins || 0;
-  const bondsValUsd = bondsCount * goldMarket.sellPrice;
-
-  // Total Loan Liabilities
-  const totalLoanDebt = (S.loans || []).reduce((sum: number, l: any) => sum + (l.balance || 0), 0);
-
-  // Comprehensive Real Corporate Enterprise Value (Net Worth / Equity)
-  const totalLiquidCash = S.money || 0;
-  const fleetAssetsVal = (S.fleet || []).reduce((sum: number, t: any) => sum + (t.value || 125000), 0);
-  const terminalsVal = ((S.depots?.length || 1) * 85000) + Math.round(bunker.currentLiters * (bunker.avgCostPerLiter || 0.95));
-  
-  const enterpriseValue = totalLiquidCash + bondsValUsd + cryptoVal + fleetAssetsVal + terminalsVal - totalLoanDebt;
-
-  // Cashflow Calculations
-  const dailyWarehouseInflow = (S.warehouseUpgrades?.cross_docking ? 1200 : 0) + (S.warehouseUpgrades?.gantry_crane ? 600 : 0);
-  const subcontractCount = (S.subcontractedTrucks || []).length;
-  const dailySubcontractInflow = subcontractCount * 1800;
-  const totalDailyInflow = dailyWarehouseInflow + dailySubcontractInflow;
-
-  const dailyPayroll = (S.drivers || []).reduce((acc: number, d: any) => acc + (d.salary || 250), 0);
-  let dailyInsurance = 0;
-  if (S.insurance) {
-    if (S.insurance.liability) dailyInsurance += INSURANCE_POLICIES.liability?.dailyCost || 85;
-    if (S.insurance.collision) dailyInsurance += INSURANCE_POLICIES.collision?.dailyCost || 220;
-    if (S.insurance.cargo) dailyInsurance += INSURANCE_POLICIES.cargo?.dailyCost || 310;
-  }
-  const dailyDebtService = (S.loans || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0);
-  const dailyLeases = (S.leases || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0);
-  const totalDailyOutflow = dailyPayroll + dailyInsurance + dailyDebtService + dailyLeases;
-  const netDailyCashflow = totalDailyInflow - totalDailyOutflow;
-  const runwayDays = netDailyCashflow < 0 ? Math.floor(totalLiquidCash / Math.abs(netDailyCashflow)) : null;
+  const bs = calculateBalanceSheet(S);
+  const pnl = calculateIncomeStatement(S);
 
   return `
     <div style="display:flex; flex-direction:column; gap:14px;">
+      
+      <!-- TOP STAT SUMMARY -->
       <div class="grid2">
         <div class="stat-box" style="background:#111827; border:1px solid #1f293d; border-radius:10px; padding:12px;">
-          <span class="stat-lab" style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">TOTAL REVENUE</span>
-          <span class="stat-val" style="color:var(--grn); font-size:20px; font-weight:900; font-family:monospace;">${fmt(S.stats.earned)}</span>
+          <span class="stat-lab" style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">TOTAL FREIGHT REVENUE</span>
+          <span class="stat-val" style="color:var(--grn); font-size:18px; font-weight:900; font-family:monospace;">${fmt(pnl.freightRevenueUsd)}</span>
         </div>
+
         <div class="stat-box" style="background:#111827; border:1px solid #1f293d; border-radius:10px; padding:12px;">
-          <span class="stat-lab" style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">LIQUID CAPITAL</span>
-          <span class="stat-val" style="font-size:20px; font-weight:900; color:var(--tx); font-family:monospace;">${fmt(totalLiquidCash)}</span>
+          <span class="stat-lab" style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">NET ENTERPRISE EQUITY</span>
+          <span class="stat-val" style="color:var(--gold); font-size:18px; font-weight:900; font-family:monospace;">${fmt(bs.netEnterpriseValueUsd)}</span>
         </div>
       </div>
 
-      <div class="card" style="padding: 14px; background:#0f172a; border:1px solid #1e293b; border-radius:10px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-          <span style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase;">Recurring Daily P&L</span>
-          <span style="font-size:10px; color:${netDailyCashflow >= 0 ? 'var(--grn)' : '#ef4444'}; font-weight:800; font-family:monospace;">
-            ${netDailyCashflow >= 0 ? `+${fmt(netDailyCashflow)}` : `-${fmt(Math.abs(netDailyCashflow))}`}/DAY
+      <!-- RECURRING DAILY P&L (INCOME STATEMENT) -->
+      <div class="card" style="padding: 14px; background:#0f172a; border:1px solid #1e293b; border-radius:10px; display:flex; flex-direction:column; gap:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); padding-bottom:8px;">
+          <span style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase;">Corporate P&L & Income Statement</span>
+          <span style="font-size:10px; color:${pnl.netDailyCashflowUsd >= 0 ? 'var(--grn)' : '#ef4444'}; font-weight:800; font-family:monospace;">
+            NET: ${pnl.netDailyCashflowUsd >= 0 ? `+${fmt(pnl.netDailyCashflowUsd)}` : `-${fmt(Math.abs(pnl.netDailyCashflowUsd))}`}/DAY
           </span>
         </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:10px;">
-          <div>
-            <div style="font-size:8px; color:var(--mu); font-weight:800; text-transform:uppercase;">TOTAL INFLOW</div>
-            <div style="font-size:14px; font-weight:900; color:var(--grn); font-family:monospace;">+${fmt(totalDailyInflow)}</div>
+
+        <!-- REVENUE INFLOWS -->
+        <div style="display:flex; flex-direction:column; gap:4px; font-size:11px;">
+          <div style="font-size:9px; font-weight:800; color:var(--grn); text-transform:uppercase; margin-bottom:2px;">OPERATING REVENUE INFLOWS</div>
+          <div style="display:flex; justify-content:space-between; color:var(--mu);">
+            <span>Terminal & Warehouse Cross-Docking</span>
+            <span style="color:var(--tx); font-weight:700;">+${fmt(pnl.warehouseInflowUsd)}/day</span>
           </div>
-          <div>
-            <div style="font-size:8px; color:var(--mu); font-weight:800; text-transform:uppercase;">TOTAL OUTFLOW</div>
-            <div style="font-size:14px; font-weight:900; color:#ef4444; font-family:monospace;">-${fmt(totalDailyOutflow)}</div>
+          <div style="display:flex; justify-content:space-between; color:var(--mu);">
+            <span>Subcontract Fleet Charter Inflows</span>
+            <span style="color:var(--tx); font-weight:700;">+${fmt(pnl.subcontractInflowUsd)}/day</span>
           </div>
         </div>
-        <div style="font-size:9px; color:var(--mu);">
-          ${runwayDays === null ? 'Self-Sustaining Surplus' : `${runwayDays} Operating Days Runway Remaining`}
+
+        <!-- OPERATING EXPENSES (OPEX) -->
+        <div style="display:flex; flex-direction:column; gap:4px; font-size:11px; border-top:1px dashed var(--line); padding-top:8px;">
+          <div style="font-size:9px; font-weight:800; color:#ef4444; text-transform:uppercase; margin-bottom:2px;">OPERATING EXPENSES (OPEX)</div>
+          <div style="display:flex; justify-content:space-between; color:var(--mu);">
+            <span>CDL Driver Payroll & Wages</span>
+            <span style="color:#ef4444; font-weight:700;">-${fmt(pnl.driverPayrollUsd)}/day</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; color:var(--mu);">
+            <span>Insurance Policies (Liability/Collision/Cargo)</span>
+            <span style="color:#ef4444; font-weight:700;">-${fmt(pnl.insuranceExpenseUsd)}/day</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; color:var(--mu);">
+            <span>Debt Interest & Bank Servicing</span>
+            <span style="color:#ef4444; font-weight:700;">-${fmt(pnl.debtServiceUsd)}/day</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; color:var(--mu);">
+            <span>Tractor Equipment Leases</span>
+            <span style="color:#ef4444; font-weight:700;">-${fmt(pnl.leaseExpenseUsd)}/day</span>
+          </div>
+        </div>
+
+        <div style="border-top:1px solid rgba(255,255,255,0.08); padding-top:8px; display:flex; justify-content:space-between; font-size:10px; color:var(--mu);">
+          <span>RUNWAY SURPLUS STATUS</span>
+          <span style="font-weight:700; color:var(--tx);">
+            ${pnl.runwayDays === null ? 'Self-Sustaining Operating Surplus' : `${pnl.runwayDays} Days Cash Runway Remaining`}
+          </span>
         </div>
       </div>
 
+      <!-- ENTERPRISE BALANCE SHEET & ASSET VALUATION -->
       <div class="card" style="padding: 16px; background:#0f172a; border:1px solid #1e293b; border-radius:10px; display: flex; flex-direction: column; gap: 8px;">
-        <div style="font-size:10px; color:var(--mu); font-weight:800; text-transform:uppercase; margin-bottom:4px;">Enterprise Balance Sheet (Net Worth)</div>
+        <div style="font-size:10px; color:var(--gold); font-weight:800; text-transform:uppercase; margin-bottom:4px; border-bottom:1px solid var(--line); padding-bottom:6px;">
+          Enterprise Balance Sheet & Asset Valuation
+        </div>
+
+        <!-- LIQUID & TRADING ASSETS -->
+        <div style="font-size:9px; font-weight:800; color:var(--mu); text-transform:uppercase; margin-top:2px;">LIQUID & TRADING ASSETS</div>
         
         <div style="display:flex; justify-content:space-between; font-size:11px;">
           <span style="color:var(--mu);">Liquid Cash Reserve</span>
-          <span style="font-weight:700; color:var(--tx);">${fmt(totalLiquidCash)}</span>
+          <span style="font-weight:700; color:var(--tx);">${fmt(bs.liquidCash)}</span>
         </div>
 
         <div style="display:flex; justify-content:space-between; font-size:11px;">
-          <span style="color:var(--gold);">Fleet Bonds (${bondsCount % 1 === 0 ? bondsCount : bondsCount.toFixed(2)} FLB)</span>
-          <span style="font-weight:700; color:var(--gold);">${fmt(Math.round(bondsValUsd))}</span>
+          <span style="color:var(--gold);">Fleet Bonds (${bs.bondsCount % 1 === 0 ? bs.bondsCount : bs.bondsCount.toFixed(2)} FLB)</span>
+          <span style="font-weight:700; color:var(--gold);">${fmt(bs.bondsValueUsd)}</span>
         </div>
 
-        ${cryptoVal > 0 ? `
+        ${bs.cryptoValueUsd > 0 ? `
           <div style="display:flex; justify-content:space-between; font-size:11px;">
             <span style="color:var(--grn);">Digital Crypto Holdings</span>
-            <span style="font-weight:700; color:var(--grn);">${fmt(Math.round(cryptoVal))}</span>
+            <span style="font-weight:700; color:var(--grn);">${fmt(bs.cryptoValueUsd)}</span>
           </div>
         ` : ''}
 
-        <div style="display:flex; justify-content:space-between; font-size:11px;">
-          <span style="color:var(--mu);">Fleet Assets (${(S.fleet || []).length} Tractors)</span>
-          <span style="font-weight:700; color:var(--tx);">${fmt(fleetAssetsVal)}</span>
+        <!-- PHYSICAL ASSETS & INFRASTRUCTURE -->
+        <div style="font-size:9px; font-weight:800; color:var(--mu); text-transform:uppercase; margin-top:6px; border-top:1px dashed var(--line); padding-top:6px;">
+          PHYSICAL ASSETS & INFRASTRUCTURE
         </div>
 
         <div style="display:flex; justify-content:space-between; font-size:11px;">
-          <span style="color:var(--mu);">Terminals & Fuel Inventory</span>
-          <span style="font-weight:700; color:var(--tx);">${fmt(terminalsVal)}</span>
+          <span style="color:var(--mu);">Tractor Vehicle Fleet (${bs.fleetTractorsCount} Units)</span>
+          <span style="font-weight:700; color:var(--tx);">${fmt(bs.fleetTractorsValueUsd)}</span>
         </div>
 
         <div style="display:flex; justify-content:space-between; font-size:11px;">
-          <span style="color:#ef4444;">Commercial Bank Liabilities</span>
-          <span style="font-weight:700; color:#ef4444;">-${fmt(totalLoanDebt)}</span>
+          <span style="color:var(--mu);">Storage Yard Trailers (${bs.yardTrailersCount} Trailers)</span>
+          <span style="font-weight:700; color:var(--tx);">${fmt(bs.yardTrailersValueUsd)}</span>
         </div>
 
-        <div style="border-top: 1px solid rgba(255,255,255,0.08); padding-top: 8px; display: flex; justify-content: space-between; font-size:13px;">
-          <span style="font-weight: 900; color: var(--gold);">TOTAL NET ENTERPRISE VALUE</span>
-          <span style="font-weight: 900; color: var(--gold); font-family:monospace;">${fmt(Math.round(enterpriseValue))}</span>
+        <div style="display:flex; justify-content:space-between; font-size:11px;">
+          <span style="color:var(--mu);">Regional Hub Terminals (${bs.hubTerminalsCount} Depots)</span>
+          <span style="font-weight:700; color:var(--tx);">${fmt(bs.hubTerminalsValueUsd)}</span>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; font-size:11px;">
+          <span style="color:var(--mu);">Garage HQ Facility (Level ${bs.garageLevel})</span>
+          <span style="font-weight:700; color:var(--tx);">${fmt(bs.garageFacilityValueUsd)}</span>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; font-size:11px;">
+          <span style="color:var(--mu);">Warehouse Installations & Upgrades</span>
+          <span style="font-weight:700; color:var(--tx);">${fmt(bs.warehouseUpgradesValueUsd)}</span>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; font-size:11px;">
+          <span style="color:var(--mu);">Fuel Bunker Facility & Stored Diesel Inventory</span>
+          <span style="font-weight:700; color:var(--tx);">${fmt(bs.fuelBunkerFacilityValueUsd + bs.fuelInventoryValueUsd)}</span>
+        </div>
+
+        ${bs.sparePartsInventoryValueUsd > 0 ? `
+          <div style="display:flex; justify-content:space-between; font-size:11px;">
+            <span style="color:var(--mu);">Spare Parts & Components Inventory</span>
+            <span style="font-weight:700; color:var(--tx);">${fmt(bs.sparePartsInventoryValueUsd)}</span>
+          </div>
+        ` : ''}
+
+        ${bs.officesValueUsd > 0 ? `
+          <div style="display:flex; justify-content:space-between; font-size:11px;">
+            <span style="color:var(--mu);">Regional Commercial Offices</span>
+            <span style="font-weight:700; color:var(--tx);">${fmt(bs.officesValueUsd)}</span>
+          </div>
+        ` : ''}
+
+        <div style="display:flex; justify-content:space-between; font-size:11px; font-weight:800; color:var(--tx); border-top:1px solid rgba(255,255,255,0.08); padding-top:4px;">
+          <span>TOTAL GROSS ASSETS</span>
+          <span style="color:var(--grn);">${fmt(bs.totalAssetsUsd)}</span>
+        </div>
+
+        <!-- LIABILITIES -->
+        <div style="font-size:9px; font-weight:800; color:#ef4444; text-transform:uppercase; margin-top:6px; border-top:1px dashed var(--line); padding-top:6px;">
+          LIABILITIES & DEBT OBLIGATIONS
+        </div>
+
+        <div style="display:flex; justify-content:space-between; font-size:11px;">
+          <span style="color:var(--mu);">Commercial Bank Loan Principal</span>
+          <span style="font-weight:700; color:#ef4444;">-${fmt(bs.loanDebtUsd)}</span>
+        </div>
+
+        ${bs.leaseObligationsUsd > 0 ? `
+          <div style="display:flex; justify-content:space-between; font-size:11px;">
+            <span style="color:var(--mu);">Equipment Lease Obligations</span>
+            <span style="font-weight:700; color:#ef4444;">-${fmt(bs.leaseObligationsUsd)}</span>
+          </div>
+        ` : ''}
+
+        <!-- NET EQUITY -->
+        <div style="border-top: 1px solid var(--gold); padding-top: 8px; margin-top:4px; display: flex; justify-content: space-between; font-size:13px;">
+          <span style="font-weight: 900; color: var(--gold);">NET ENTERPRISE EQUITY VALUE</span>
+          <span style="font-weight: 900; color: var(--gold); font-family:monospace;">${fmt(bs.netEnterpriseValueUsd)}</span>
         </div>
       </div>
     </div>

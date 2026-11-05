@@ -14,6 +14,8 @@ let transitPage = 1;
 const TRANSIT_PER_PAGE = 6;
 let hubTab: 'regions' | 'hubs' | 'routes' = 'regions';
 
+let resetConfirm = false;
+
 action('transit-page', d => {
   transitPage = +(d as any).page;
   refresh();
@@ -21,6 +23,13 @@ action('transit-page', d => {
 
 action('set-hub-tab', d => {
   hubTab = (d as any).tab;
+  refresh();
+});
+
+action('open-ai-dispatch', () => {
+  set(S => {
+    S.tab = 'dispatch';
+  });
   refresh();
 });
 
@@ -39,12 +48,23 @@ action('unlock-region', d => {
   });
 });
 
-action('logout', () => {
-  set(S => {
-    S.isAuthenticated = false;
-  });
-  toast('Logged out successfully');
-  setTimeout(() => location.reload(), 500);
+action('reset-game', () => {
+  if (!resetConfirm) {
+    resetConfirm = true;
+    toast('⚠️ TAP AGAIN TO CONFIRM FULL RESET', 'err');
+    setTimeout(() => { 
+      resetConfirm = false; 
+      refresh(); 
+    }, 4000);
+    refresh();
+    return;
+  }
+  
+  toast('Wiping all carrier data...', 'info');
+  setTimeout(() => {
+    localStorage.clear();
+    location.reload();
+  }, 1000);
 });
 
 action('buy-regional-hub', d => {
@@ -150,6 +170,40 @@ export default {
           <span class="stat-lab" style="font-size:9px; color:var(--mu); text-transform:uppercase; font-weight:700;">Highway Logged</span>
         </div>
       </div>
+
+      <!-- NEURAL AI DISPATCHER ENTERPRISE CONSOLE -->
+      ${(() => {
+        const aiState = S.aiState || {};
+        const isSubActive = !!(aiState.subscriptionActive && Date.now() < (aiState.expiresTimestamp || 0));
+        return `
+          <div class="card" style="margin: 0 14px 14px; padding: 14px; background: linear-gradient(135deg, #111827 0%, #0d1627 100%); border: 1px solid var(--gold); border-radius: 12px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <div style="display:flex; align-items:center; gap:8px;">
+                <div style="width:34px; height:34px; border-radius:8px; background:rgba(59,130,246,0.15); border:1px solid rgba(59,130,246,0.3); color:var(--blu); display:grid; place-items:center;">
+                  ${ic('cpu')}
+                </div>
+                <div>
+                  <div style="font-size:13px; font-weight:800; color:var(--tx);">Neural AI Dispatcher</div>
+                  <div style="font-size:10px; color:var(--mu);">Autonomous Freight Operations Hub</div>
+                </div>
+              </div>
+              <span class="ai-badge ${isSubActive ? 'active' : 'inactive'}">
+                ${isSubActive ? 'ACTIVE' : 'LICENSE REQUIRED'}
+              </span>
+            </div>
+
+            <div style="font-size:11px; color:var(--mu); line-height:1.4;">
+              ${isSubActive
+                ? `Autonomous engine active (${aiState.filters?.profile || 'highest_payout'} strategy). Automated dispatch running.`
+                : 'Enterprise license required to enable autonomous freight dispatch & fleet maintenance.'}
+            </div>
+
+            <button data-act="open-ai-dispatch" class="btn gold" style="width:100%;">
+              ${ic('bolt')} Launch AI Operations Console
+            </button>
+          </div>
+        `;
+      })()}
 
       <!-- Active Transit Consignments & GPS Telematics (Paginated) -->
       <div style="padding:0 14px 14px;">
@@ -419,11 +473,16 @@ export default {
         </div>
       </div>
 
-      <!-- System Sign Out -->
-      <div style="padding:14px;">
-        <button class="btn alt" style="width:100%; padding:10px; font-size:11px; font-weight:800; letter-spacing:0.5px; border-radius:6px; text-transform:uppercase;" data-act="logout">
-          Sign Out of Carrier System
+      <!-- System Reset Option -->
+      <div style="padding:14px; margin-top:10px; border-top:1px solid rgba(255,255,255,0.05);">
+        <button class="btn ${resetConfirm ? 'red' : 'alt'}" 
+          style="width:100%; padding:12px; font-size:11px; font-weight:800; letter-spacing:1px; border-radius:10px; text-transform:uppercase; transition:all 0.3s;" 
+          data-act="reset-game">
+          ${resetConfirm ? '⚠️ CONFIRM PERMANENT ERASE' : 'Reset Carrier Data & Progress'}
         </button>
+        <div style="text-align:center; font-size:9px; color:var(--mu); margin-top:8px; font-family:monospace; opacity:0.6;">
+          NEXHAUL CORE v2.4.0 · STABLE BUILD
+        </div>
       </div>
 
       ${renderTelematicsOverlay(S)}

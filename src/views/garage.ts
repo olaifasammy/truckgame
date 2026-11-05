@@ -4,7 +4,7 @@ import { refresh, set } from '../core/store';
 import { TRUCK_MODELS, TRAILERS, getTrailerIcon } from '../domain/trucks/trucks.data';
 import { CITIES, LOCATIONS } from '../data/world';
 import { stats, distKm } from '../systems/calc';
-import { refuel, repair, inspect, assign, transport, refuelCost, repairCost, transportInfo, inspectCost, unhitchTrailer, hitchTrailer } from '../systems/fleet';
+import { refuel, repair, inspect, transport, refuelCost, repairCost, transportInfo, inspectCost } from '../systems/fleet';
 import { why } from '../systems/jobs';
 import { slots, upgradeGarage, upgradeGarageCost } from '../systems/offices';
 import { openJobSelector, renderJobSelectorOverlay, activeJobSelectorTruckId } from './garage/job-selector';
@@ -12,6 +12,9 @@ import { getTruckSilhouetteSvg } from '../domain/trucks/trucks.visuals';
 import { getManufacturerLogoSvg } from '../domain/trucks/trucks.logos';
 import { renderTelematicsOverlay } from './telematics-modal';
 import { getTruckTelematics, getDrivingStateBadge } from '../domain/trucks/trucks.telematics';
+import { FleetService } from '../application/services/fleet';
+import { Truck } from '../domain/trucks/trucks.types';
+import { GameState } from '../types/state';
 
 let openId: number | null = null, panel: string | null = null;
 let hitchModalTruckId: number | null = null;
@@ -41,66 +44,11 @@ action('truck-toggle', d => { openId = openId === +(d as any).id ? null : +(d as
 action('panel', d => { panel = panel === (d as any).kind ? null : (d as any).kind; refresh(); });
 action('refuel', d => refuel(+(d as any).id));
 
-action('set-powertrain-gearbox', d => {
-  set(S => {
-    const t = S.fleet.find((x: any) => x.id === +(d as any).id);
-    if (t) {
-      const type = (d as any).gearbox;
-      const cost = type === '16spd_crawler' ? 12500 : 0;
-      if (cost > 0 && S.money < cost) return toast('Insufficient funds for 16-speed crawler transmission ($12,500)', 'err');
-      S.money -= cost;
-      if (!t.upgrades) t.upgrades = {} as any;
-      t.upgrades.gearbox = type;
-      toast(`Installed ${type === '16spd_crawler' ? '16-Speed Heavy Crawler Transmission' : '12-Speed Automated Highway Transmission'}`, 'success');
-    }
-  });
-});
+action('set-powertrain-gearbox', d => FleetService.setGearbox(+(d as any).id, (d as any).gearbox));
+action('set-powertrain-axle', d => FleetService.setAxleRatio(+(d as any).id, (d as any).ratio));
+action('set-powertrain-tires', d => FleetService.setTires(+(d as any).id, (d as any).compound));
+action('top-up-consumables', d => FleetService.serviceConsumables(+(d as any).id));
 
-action('set-powertrain-axle', d => {
-  set(S => {
-    const t = S.fleet.find((x: any) => x.id === +(d as any).id);
-    if (t) {
-      const ratio = (d as any).ratio;
-      const cost = ratio === 'heavy_diff_lock' ? 8500 : 0;
-      if (cost > 0 && S.money < cost) return toast('Insufficient funds for 3.42:1 diff lock ratio ($8,500)', 'err');
-      S.money -= cost;
-      if (!t.upgrades) t.upgrades = {} as any;
-      t.upgrades.axleRatio = ratio;
-      toast(`Configured ${ratio === 'heavy_diff_lock' ? '3.42:1 Heavy Ratio with Inter-Axle Diff Lock' : '2.64:1 Long-Haul Highway Eco Ratio'}`, 'success');
-    }
-  });
-});
-
-action('set-powertrain-tires', d => {
-  set(S => {
-    const t = S.fleet.find((x: any) => x.id === +(d as any).id);
-    if (t) {
-      const compound = (d as any).compound;
-      const cost = compound === 'all_terrain_winter' ? 6000 : 4500;
-      if (S.money < cost) return toast(`Insufficient funds for tire compound upgrade ($${cost.toLocaleString()})`, 'err');
-      S.money -= cost;
-      if (!t.upgrades) t.upgrades = {} as any;
-      t.upgrades.tireCompound = compound;
-      t.components.tires.health = 100;
-      toast(`Mounted fresh ${compound === 'all_terrain_winter' ? 'All-Terrain Winter M+S Treads' : 'Low Rolling Resistance Eco Highway Tires'}`, 'success');
-    }
-  });
-});
-
-action('top-up-consumables', d => {
-  set(S => {
-    const t = S.fleet.find((x: any) => x.id === +(d as any).id);
-    if (t) {
-      const cost = 450;
-      if (S.money < cost) return toast(`Insufficient funds for consumables service ($${cost})`, 'err');
-      S.money -= cost;
-      t.fluids.adBlue = 100;
-      t.fluids.coolant = 100;
-      t.fluids.transmissionOil = 100;
-      toast(`Topped up AdBlue / DEF, flushed Coolant & refreshed Transmission Fluid ($${cost})`, 'success');
-    }
-  });
-});
 action('repair', d => {
   const S = (window as any).__getStore?.();
   if (S) {
@@ -130,12 +78,12 @@ action('hoist-truck-to-bay', d => {
 });
 action('inspect', d => inspect(+(d as any).id));
 action('dispatch', d => openJobSelector(+(d as any).id));
-action('assign', d => assign(+(d as any).id, (d as any).driver ? +(d as any).driver : null));
+action('assign', d => FleetService.assignDriver(+(d as any).id, (d as any).driver ? +(d as any).driver : null));
 action('move', d => transport(+(d as any).id, (d as any).city));
 action('upgrade-garage', () => upgradeGarage());
 
 action('unhitch-trailer', d => {
-  unhitchTrailer(+(d as any).id);
+  FleetService.hitchTrailer(+(d as any).id, null);
   refresh();
 });
 
@@ -150,10 +98,11 @@ action('close-hitch-modal', () => {
 });
 
 action('hitch-trailer', d => {
-  hitchTrailer(+(d as any).id, (d as any).trailer as any);
+  FleetService.hitchTrailer(+(d as any).id, (d as any).trailer as any);
   hitchModalTruckId = null;
   refresh();
 });
+
 
 const meter = (label: string, value: number, formattedText: string, alertThreshold = 30) => {
   const isAlert = value < alertThreshold;
@@ -180,7 +129,7 @@ const cell = (label: string, value: string, subvalue?: string) => `
   </div>
 `;
 
-function panelHtml(S: any, t: any, busy: boolean) {
+function panelHtml(S: GameState, t: Truck, busy: boolean) {
   if (panel === 'driver') {
     return `
       <div style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08); background:#0a0f1d; padding:12px; border-radius:8px; border:1px solid #1f293d;">
@@ -257,7 +206,7 @@ function panelHtml(S: any, t: any, busy: boolean) {
   return '';
 }
 
-function body(S: any, t: any, m: any, a: any, now: number) {
+function body(S: GameState, t: Truck, m: any, a: any, now: number) {
   if (t.status === 'delivering') {
     const totalTime = 15 * 60 * 1000;
     const remaining = Math.max(0, (t.availableAt || now) - now);
@@ -760,16 +709,16 @@ export default {
   id: 'garage',
   icon: 'garage',
   label: 'Garage',
-  render(S: any) {
+  render(S: GameState) {
     const busy = S.fleet.filter((t: any) => t.status === 'busy').length;
     const upCost = upgradeGarageCost(S.garageLevel);
     const canUp = S.money >= upCost;
     const readiness = S.fleet.length > 0 ? Math.round(((S.fleet.length - busy) / S.fleet.length) * 100) : 100;
 
     // Helper to check if truck needs servicing or is in repair
-    const truckNeedsRepair = (t: any) => {
+    const truckNeedsRepair = (t: Truck) => {
       if (t.status === 'repair') return true;
-      if (S.repairs?.some((r: any) => r.truckId === t.id)) return true;
+      if ((S as any).repairs?.some((r: any) => r.truckId === t.id)) return true;
       const compValues = Object.values(t.components || {}).map((c: any) => typeof c === 'number' ? c : c?.health ?? 100);
       const minHealth = compValues.length > 0 ? Math.min(...compValues) : 100;
       const avgHealth = compValues.length > 0 ? compValues.reduce((a: number, b: number) => a + b, 0) / compValues.length : 100;

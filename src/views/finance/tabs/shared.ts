@@ -2,7 +2,7 @@ import { fmt, action, toast } from '../../../core/ui';
 import { refresh, set } from '../../../core/store';
 import { getGoldMarketData } from '../../../domain/finance/banking';
 import { CRYPTO_ASSETS, getCryptoMarketData, getTotalCryptoValue } from '../../../domain/finance/markets/crypto';
-import { MINING_RIG_TYPES, MINING_ADDITIONS, MINING_DURATIONS, getSubscriptionCost, getSubstationUpgradeCost, getSubstationPowerKw, calculateMiningStats, getVipLevel, MiningSubscription } from '../../../domain/finance/markets/mining';
+import { MINING_RIG_TYPES, MINING_ADDITIONS, MINING_DURATIONS, getSubscriptionCost, getSubstationUpgradeCost, getSubstationPowerKw, calculateMiningStats, getVipLevel, MiningSubscription, formatCryptoQty } from '../../../domain/finance/markets/mining';
 
 // Initialize global state for selected crypto asset & mining configuration
 if (!(window as any).selectedCryptoAsset) (window as any).selectedCryptoAsset = 'btc';
@@ -351,26 +351,39 @@ action('finance-tab', d => {
 });
 
 action('exchange-buy-gold', d => {
-  const qty = +(d as any).qty || 1;
+  let qty = +(d as any).qty;
+  if (isNaN(qty) || qty <= 0) {
+    const input = document.getElementById('flb-buy-qty-input') as HTMLInputElement | null;
+    qty = input ? parseFloat(input.value) : 1;
+  }
+  if (isNaN(qty) || qty <= 0) return toast('Enter a valid FLB quantity', 'err');
+
   set(S => {
     const market = getGoldMarketData(S);
     const totalCost = market.buyPrice * qty;
-    if (S.money < totalCost) return toast(`Insufficient liquidity. Need $${totalCost.toLocaleString()}`, 'err');
+    if (S.money < totalCost) return toast(`Insufficient liquidity. Need $${Math.round(totalCost).toLocaleString()}`, 'err');
     S.money -= totalCost;
     S.coins = (S.coins || 0) + qty;
-    toast(`Currency Exchange: Acquired ${qty} Fleet Bonds`, 'success');
+    toast(`Currency Exchange: Acquired ${qty} Fleet Bonds (${formatCryptoQty(qty)} FLB)`, 'success');
   });
 });
 
 action('exchange-sell-gold', d => {
-  const qty = +(d as any).qty || 1;
+  let qty = +(d as any).qty;
+  if (isNaN(qty) || qty <= 0) {
+    const input = document.getElementById('flb-sell-qty-input') as HTMLInputElement | null;
+    qty = input ? parseFloat(input.value) : 1;
+  }
+  if (isNaN(qty) || qty <= 0) return toast('Enter a valid FLB quantity', 'err');
+
   set(S => {
-    if ((S.coins || 0) < qty) return toast(`Insufficient Fleet Bond reserves`, 'err');
+    const userCoins = S.coins || 0;
+    if (userCoins < qty) return toast(`Insufficient Fleet Bond reserves (${formatCryptoQty(userCoins)} FLB available)`, 'err');
     const market = getGoldMarketData(S);
     const totalCredit = market.sellPrice * qty;
     S.coins -= qty;
     S.money += totalCredit;
-    toast(`Liquidation Complete: Sold ${qty} Fleet Bonds`, 'info');
+    toast(`Liquidation Complete: Sold ${qty} Fleet Bonds for +$${Math.round(totalCredit).toLocaleString()}`, 'info');
   });
 });
 
@@ -381,6 +394,11 @@ action('set-mining-tuning', d => {
     S.mining.tuning = profile;
     toast(`Mining Tuning Profile set to ${profile.toUpperCase()}`, 'info');
   });
+});
+
+action('crypto-sub-tab', d => {
+  (window as any).cryptoSubTab = (d as any).tab || 'exchange';
+  refresh();
 });
 
 export function renderFinanceNav(activeTab: string) {

@@ -57,6 +57,53 @@ action('home-region', d => {
   refresh();
 });
 
+action('inspect-city', d => {
+  const city = (d as any).city;
+  homeState.inspectCity = homeState.inspectCity === city ? null : city;
+  refresh();
+});
+
+action('close-city-inspect', () => {
+  homeState.inspectCity = null;
+  refresh();
+});
+
+action('set-map-layer', d => {
+  homeState.mapLayer = (d as any).layer;
+  refresh();
+});
+
+action('map-zoom-in', () => {
+  homeState.zoomLevel = Math.min(4, +(homeState.zoomLevel + 0.5).toFixed(1));
+  refresh();
+});
+
+action('map-zoom-out', () => {
+  homeState.zoomLevel = Math.max(1, +(homeState.zoomLevel - 0.5).toFixed(1));
+  if (homeState.zoomLevel === 1) {
+    homeState.panX = 0;
+    homeState.panY = 0;
+  }
+  refresh();
+});
+
+action('map-zoom-reset', () => {
+  homeState.zoomLevel = 1;
+  homeState.panX = 0;
+  homeState.panY = 0;
+  refresh();
+});
+
+action('map-pan', d => {
+  const dir = (d as any).dir;
+  const step = 20 / (homeState.zoomLevel || 1);
+  if (dir === 'up') homeState.panY -= step;
+  if (dir === 'down') homeState.panY += step;
+  if (dir === 'left') homeState.panX -= step;
+  if (dir === 'right') homeState.panX += step;
+  refresh();
+});
+
 action('accept-tender', d => {
   const tenderId = (d as any).id;
   set(S => {
@@ -134,66 +181,31 @@ export default {
 
     const prog = getCompanyProgression(S);
     const quota = getDailyBidDispatchQuota(S);
-    const regions: (RegionName | 'All')[] = ['All', 'Africa', 'Europe', 'America', 'Asia'];
 
     return `
       ${renderMap(S)}
 
-      <!-- Compact Global Grid & Board Filter -->
-      <div style="background:#0a0f1d; border:1px solid #1f293d; border-radius:12px; padding:12px; margin-bottom:14px; box-shadow:0 4px 12px rgba(0,0,0,0.3);">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-          <div style="font-size:10px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">
-            Global Logistics Network
-          </div>
-          <div style="font-size:9px; color:var(--mu); font-family:monospace;">
-            ${homeBoardMode === 'spot' ? `${filteredJobs.length} Manifests` : homeBoardMode === 'tenders' ? `${SAMPLE_TENDERS.length} Tenders` : `${S.fleet.length} Units`}
-          </div>
-        </div>
-        
-        <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:8px; scrollbar-width:none; -ms-overflow-style:none;">
-          ${regions.map(r => {
-            const isUnlocked = r === 'All' || isRegionUnlocked(S, r as RegionName);
-            const label = r === 'All' ? 'Global Grid (All)' : isUnlocked ? r : `🔒 ${r}`;
-            return `
-              <button class="btn ${currentRegion === r ? 'gold' : 'alt'}" style="padding:5px 12px; font-size:10px; font-weight:800; white-space:nowrap; border-radius:6px; flex-shrink:0;" data-act="home-region" data-region="${r}">
-                ${label}
-              </button>
-            `;
-          }).join('')}
-        </div>
-
-        <div style="height:1px; background:rgba(255,255,255,0.06); margin:4px 0 10px;"></div>
-
-        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px;">
-          <button class="btn ${homeBoardMode === 'spot' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:10px; font-weight:800; border-radius:6px;" data-act="home-board-mode" data-mode="spot">
-            Spot Board (${filteredJobs.length})
+      <!-- Redesigned Mode Selector Navigation Bar -->
+      <div style="background: linear-gradient(180deg, #111827 0%, #0a0f1d 100%); border: 1px solid #1f293d; border-radius: 12px; padding: 6px; margin-bottom: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);">
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+          <button class="btn ${homeBoardMode === 'spot' ? 'gold' : 'alt'}" style="padding: 10px 4px; font-size: 10px; font-weight: 800; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 2px;" data-act="home-board-mode" data-mode="spot">
+            <span>SPOT BOARD</span>
+            <span style="font-size: 9px; opacity: 0.85; font-family: monospace;">(${allJobs.length} Manifests)</span>
           </button>
-          <button class="btn ${homeBoardMode === 'tenders' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:10px; font-weight:800; border-radius:6px;" data-act="home-board-mode" data-mode="tenders">
-            30-Day Tenders (${SAMPLE_TENDERS.length})
+
+          <button class="btn ${homeBoardMode === 'tenders' ? 'gold' : 'alt'}" style="padding: 10px 4px; font-size: 10px; font-weight: 800; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 2px;" data-act="home-board-mode" data-mode="tenders">
+            <span>30-DAY TENDERS</span>
+            <span style="font-size: 9px; opacity: 0.85; font-family: monospace;">(${SAMPLE_TENDERS.length} Contracts)</span>
           </button>
-          <button class="btn ${homeBoardMode === 'subcontract' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:10px; font-weight:800; border-radius:6px;" data-act="home-board-mode" data-mode="subcontract">
-            Sub-Contracting (${(S.subcontractedTrucks || []).length})
+
+          <button class="btn ${homeBoardMode === 'subcontract' ? 'gold' : 'alt'}" style="padding: 10px 4px; font-size: 10px; font-weight: 800; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 2px;" data-act="home-board-mode" data-mode="subcontract">
+            <span>SUB-CONTRACTING</span>
+            <span style="font-size: 9px; opacity: 0.85; font-family: monospace;">(${(S.subcontractedTrucks || []).length} Rigs)</span>
           </button>
         </div>
       </div>
 
-      <!-- Locked Region Prompt -->
-      ${currentRegion !== 'All' && !isRegionUnlocked(S, currentRegion as RegionName) ? `
-        <div style="background:#0e1320; border:1px solid rgba(193,154,91,0.3); border-radius:10px; padding:18px; text-align:center; margin-bottom:14px; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
-          <div style="font-size:28px; margin-bottom:6px;">🔒</div>
-          <div style="font-size:13px; font-weight:900; color:var(--tx); text-transform:uppercase;">
-            ${currentRegion} Regional Corridors Locked
-          </div>
-          <div style="font-size:10px; color:var(--mu); max-width:360px; margin:6px auto 14px; line-height:1.4;">
-            To receive freight contracts or purchase terminal hubs in ${currentRegion}, your carrier must obtain the <b>${REGION_AUTHORITIES[currentRegion as RegionName]?.name || currentRegion}</b> (${REGION_AUTHORITIES[currentRegion as RegionName]?.code || ''}).
-          </div>
-          <button class="btn gold" style="padding:8px 18px; font-size:10px; font-weight:900;" data-act="unlock-region" data-region="${currentRegion}" ${S.money < (REGION_AUTHORITIES[currentRegion as RegionName]?.cost || 0) ? 'disabled style="opacity:0.5;"' : ''}>
-            OBTAIN OPERATING AUTHORITY ($${((REGION_AUTHORITIES[currentRegion as RegionName]?.cost || 0)/1000).toFixed(0)}k)
-          </button>
-        </div>
-      ` : `
-        <!-- Mode 1: Standard Spot Board & Reverse Auctions -->
-        ${homeBoardMode === 'spot' ? `
+      ${homeBoardMode === 'spot' ? `
           <!-- Live Bidding & Reverse Freight Auctions Section -->
           ${filteredAuctions.length > 0 ? `
             <div class="sec" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
@@ -341,7 +353,6 @@ export default {
             }).join('')}
           </div>
         `}
-      `}
 
       ${renderTelematicsOverlay(S)}
       <div style="height:20px;"></div>

@@ -1,5 +1,6 @@
 import { createTruck } from '../domain/trucks/trucks.physics';
 import { LOCATIONS } from '../data/world';
+import { DEFAULT_AI_STATE } from '../domain/ai/ai.config';
 
 const KEY = 'sam.v3';
 
@@ -23,6 +24,7 @@ const DEF = () => ({
   perks: {} as Record<string, number>,
   offices: [] as string[],
   garageLevel: 0,
+  aiState: { ...DEFAULT_AI_STATE },
   stats: { earned: 0, km: 0 },
   repairs: [] as any[],
   repairTruckId: null as number | null,
@@ -245,6 +247,15 @@ function fix(state: any) {
     });
   }
   
+  if (!state.aiState) {
+    state.aiState = { ...DEFAULT_AI_STATE };
+  } else {
+    if (!state.aiState.filters) state.aiState.filters = { ...DEFAULT_AI_STATE.filters };
+    if (!state.aiState.logs) state.aiState.logs = [];
+    if (state.aiState.totalDispatchedCount === undefined) state.aiState.totalDispatchedCount = 0;
+    if (state.aiState.totalRevenueGeneratedUsd === undefined) state.aiState.totalRevenueGeneratedUsd = 0;
+  }
+
   if (!state.dailyStats) {
     state.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
   }

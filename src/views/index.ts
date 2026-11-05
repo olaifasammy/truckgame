@@ -10,6 +10,8 @@ import drivers from './drivers';
 import storage from './storage';
 import notifications from './notifications';
 import network from './network';
+import dispatch from './dispatch';
 
-[home, garage, company, network, finance, store, rankings, repair, drivers, storage, notifications].forEach(register);
+[home, garage, dispatch, company, network, finance, store, rankings, repair, drivers, storage, notifications].forEach(register);
+
 

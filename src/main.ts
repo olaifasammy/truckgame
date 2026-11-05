@@ -20,6 +20,7 @@ import { tripMs } from './systems/calc';
 import { TRAIT_REGISTRY } from './domain/drivers/drivers.names';
 import { getTruckTelematics } from './domain/trucks/trucks.telematics';
 import { getCryptoMarketData, processLimitOrders } from './domain/finance/markets/crypto';
+import { runAiAutoDispatch, runAiFleetMaintenance } from './domain/ai/ai.engine';
 
 console.log('Main: Imports completed');
 
@@ -41,13 +42,22 @@ try {
 
 (window as any).__getStore = get;
 
+let lastRenderedTab = '';
+let lastRenderTime = 0;
+
 function renderApp(st: any) {
   try {
     const viewEl = $('view');
     if (!viewEl) return;
 
+    // Throttle rendering to ~20fps to prevent extreme flickering and CPU load
+    const now = Date.now();
+    if (now - lastRenderTime < 50 && lastRenderedTab === st.tab) return;
+    lastRenderTime = now;
+
     if (!st.isAuthenticated) {
       viewEl.innerHTML = authView.render(st);
+      lastRenderedTab = 'auth';
       return;
     }
 
@@ -56,13 +66,30 @@ function renderApp(st: any) {
     if (headerEl) { headerEl.style.display = 'flex'; header.render(st); }
     if (navEl) { navEl.style.display = 'flex'; nav.render(st); }
 
-    const targetTab = 'company';
-    if (!st.tab || (st.tab === 'home' && !sessionStorage.getItem('init_tab_set'))) {
-      st.tab = 'company';
-      sessionStorage.setItem('init_tab_set', '1');
+    const targetTab = st.tab || 'company';
+    const view = find(targetTab && find(targetTab) ? targetTab : 'company');
+    
+    if (view) {
+      const newHtml = view.render(st);
+      // Simple optimization: only update DOM if HTML changed
+      // (Note: This is imperfect because Leaflet containers are often "empty" until hydrated)
+      if (viewEl.innerHTML !== newHtml || lastRenderedTab !== targetTab) {
+        // Special case: If we are on the same tab and there's a map, try to avoid wiping the map div
+        const mapContainer = document.getElementById('leaflet-map-container');
+        if (mapContainer && lastRenderedTab === targetTab) {
+          // If we are on the same tab, we might want to skip innerHTML if possible
+          // But since the render() function returns the whole view, this is tricky.
+          // For now, let's just use innerHTML but the map sync is already handled.
+          viewEl.innerHTML = newHtml;
+        } else {
+          viewEl.innerHTML = newHtml;
+        }
+      }
+    } else {
+      viewEl.innerHTML = 'View not found';
     }
-    const view = find(st.tab && find(st.tab) ? st.tab : 'company');
-    viewEl.innerHTML = view ? view.render(st) : 'View not found';
+    
+    lastRenderedTab = targetTab;
   } catch (e: any) {
     console.error('Main: Render crash', e);
     const viewEl = $('view');
@@ -116,6 +143,12 @@ try {
     processEconomics(st, now);
     completeJobs(st, now);
     completeRepairs(st, now);
+    if (st.aiState?.subscriptionActive && st.aiState?.filters?.enabled) {
+      runAiAutoDispatch(st);
+    }
+    if (st.aiState?.maintenanceAddonActive) {
+      runAiFleetMaintenance(st);
+    }
   });
 
   let lastReplenish = Date.now();
@@ -136,6 +169,14 @@ try {
       done.forEach((id: number) => onTruckArrival(st, id));
     }
     const repCount = completeRepairs(st, now) || 0;
+
+    // AI Automation Engine Processing
+    if (st.aiState?.subscriptionActive && st.aiState?.filters?.enabled) {
+      runAiAutoDispatch(st);
+    }
+    if (st.aiState?.maintenanceAddonActive) {
+      runAiFleetMaintenance(st);
+    }
 
     // Periodic freight replenishment (every 30s) or if contracts dry up
     if (now - lastReplenish > 30000 || (st.jobs && st.jobs.length < 3)) {

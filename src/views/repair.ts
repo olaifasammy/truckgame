@@ -1,11 +1,14 @@
 import { ic } from '../core/icons';
 import { action, fmt, dur, toast } from '../core/ui';
-import { refresh } from '../core/store';
+import { refresh, set } from '../core/store';
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { PART_LABELS } from '../systems/calc';
-import { calculateRepairDurationMs, startRepair, getPartEffectiveCost } from '../systems/maintenance';
 import { LOCATIONS } from '../data/world';
 import { renderDiagnosticTable } from './repair/diagnostic-table';
+import { VehicleMaintenance } from '../domain/trucks/maintenance';
+import { FleetService } from '../application/services/fleet';
+import { GameState } from '../types/state';
+import { Truck } from '../domain/trucks/trucks.types';
 
 let selectedPartsSet = new Set<string>();
 let workshopTab: 'scan' | 'bay' | 'queue' = 'scan';

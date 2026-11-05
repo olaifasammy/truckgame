@@ -191,18 +191,11 @@ export class BiddingEngine {
         wonAt: Date.now()
       };
 
+      // Silently add won job to board - No notification sent as per user request
       if (!S.jobs) S.jobs = [];
       if (!S.jobs.some((j: any) => j.id === wonJob.id)) {
         S.jobs.unshift(wonJob);
       }
-      
-      const tpl = tenderWonTemplate(company?.name || 'Client', cargo?.name || 'Freight', auc.currentBid, 1);
-      pushNote(S, tpl.msg, {
-        title: tpl.title,
-        type: tpl.type,
-        priority: tpl.priority,
-        body: tpl.body
-      });
     }
   }
 }
