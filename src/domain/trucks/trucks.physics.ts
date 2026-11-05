@@ -243,6 +243,19 @@ export function calculateUsage(truck: Truck, distanceKm: number, metrics: Perfor
 }
 
 /**
+ * Calculates fuel consumption (in liters) for a trip.
+ * @param km Distance in kilometers.
+ * @param truck Truck instance.
+ * @param payload Cargo weight in tonnes.
+ * @param env Environmental conditions.
+ * @returns Liters of fuel consumed.
+ */
+export function fuelCostForTrip(km: number, truck: Truck, payload = 0, env?: EnvironmentalConditions): number {
+  const metrics = calculatePerformance(truck, payload, undefined, env);
+  return (km / 100) * metrics.fuelConsumption;
+}
+
+/**
  * Initializes a new truck based on a model.
  */
 export function createTruck(id: number, modelId: string, name: string, loc: string, trailer: TrailerType | null = null): Truck {

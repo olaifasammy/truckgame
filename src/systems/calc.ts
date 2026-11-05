@@ -1,5 +1,5 @@
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
-import { calculatePerformance, calculateUsage, applyTripWear, EnvironmentalConditions } from '../domain/trucks/trucks.physics';
+import { calculatePerformance, calculateUsage, applyTripWear, EnvironmentalConditions, fuelCostForTrip } from '../domain/trucks/trucks.physics';
 import { CITIES, LOCATIONS } from '../data/world';
 import { pushNote } from './notify';
 
@@ -111,11 +111,6 @@ export function stats(S: any, t: any, payloadTonnes = 0, env?: EnvironmentalCond
   const d = S?.drivers?.find((x: any) => x.id === t?.driverId);
   return calculatePerformance(t, payloadTonnes, d, env);
 }
-
-export const fuelCostForTrip = (km: number, t: any, payload = 0, env?: EnvironmentalConditions) => {
-  const metrics = calculatePerformance(t, payload, undefined, env);
-  return (km / 100) * metrics.fuelConsumption;
-};
 
 /**
  * Calculates continuous physical transit duration for highway haulage.

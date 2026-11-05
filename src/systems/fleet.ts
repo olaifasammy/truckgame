@@ -3,7 +3,7 @@ import { set } from '../core/store';
 import { toast } from '../core/ui';
 import { TRUCK_MODELS, TRAILERS, TRAILER_PRICES } from '../domain/trucks/trucks.data';
 import { TrailerType } from '../domain/trucks/trucks.types';
-import { stats, distKm, fuelCostForTrip, tripMs, applyWear, syncUsage } from './calc';
+import { stats, distKm, tripMs, applyWear, syncUsage } from './calc';
 import { pushNote } from './notify';
 import { processScheduledRepair } from './maintenance';
 import { disc } from './perks';
