@@ -396,7 +396,6 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
 
       actionTaken = true;
       msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) BOUGHT THE DIP! Got ${tokensBought.toFixed(4)} ${asset.symbol} for $${tradeUsd.toLocaleString()} @ $${currentPrice.toLocaleString()} [Score: ${Math.round(buyUrgencyScore * 100)}% · Neural Conf: ${Math.round(neuralScore * 100)}%]`;
-      pushNote(S, msg, { title: 'AI QUANT BOT', type: 'finance' });
     }
   } else if ((dipRatio >= sellThreshold || holdingValueUsd > 15000) && holdings > 0) {
     // TAKE PROFIT ON PEAK
@@ -438,7 +437,6 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
 
     actionTaken = true;
     msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) TOOK PROFIT! Sold all ${asset.symbol} for $${sellUsd.toLocaleString()} (+$${realizedProfit.toLocaleString()} PnL · +${xpGain} Neural XP)`;
-    pushNote(S, msg, { title: 'AI QUANT BOT', type: 'finance' });
   }
 
   // Save updated neural weights
