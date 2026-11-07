@@ -11,24 +11,83 @@ import { toast } from '../../core/ui';
 
 const quantModel = new NeuralNetwork(5, 6); // 5 input features, 6 hidden neurons
 
+export interface AiCryptoTradeRecord {
+  id: string;
+  time: number;
+  type: 'BUY' | 'SELL';
+  symbol: string;
+  qty: number;
+  price: number;
+  usd: number;
+  confidence: number;
+}
+
 export interface AiCryptoBotState {
   enabled: boolean;
   strategy: 'conservative' | 'momentum' | 'high_volatility';
   allocatedUsd: number;
   totalProfitUsd: number;
   lastTradeTimestamp: number;
+  tradeHistory: AiCryptoTradeRecord[];
   weights?: any;
+}
+
+/**
+ * Deposit funds into AI Quant Bot trading capital from company cash.
+ */
+export function depositAiQuantCapital(S: any, amountUsd: number): { success: boolean; message: string } {
+  if (!S.aiCryptoBot) {
+    S.aiCryptoBot = { enabled: false, strategy: 'momentum', allocatedUsd: 0, totalProfitUsd: 0, lastTradeTimestamp: 0, tradeHistory: [] };
+  }
+  if (!S.cryptoPortfolio) {
+    S.cryptoPortfolio = { cash: 10000, holdings: {} };
+  }
+
+  if ((S.money || 0) < amountUsd) {
+    return { success: false, message: `Insufficient company funds ($${(S.money || 0).toLocaleString()}) to deposit $${amountUsd.toLocaleString()}` };
+  }
+
+  S.money -= amountUsd;
+  S.aiCryptoBot.allocatedUsd = (S.aiCryptoBot.allocatedUsd || 0) + amountUsd;
+  S.cryptoPortfolio.cash = (S.cryptoPortfolio.cash || 0) + amountUsd;
+
+  return { success: true, message: `Successfully funded AI Quant Bot with $${amountUsd.toLocaleString()} USD` };
+}
+
+/**
+ * Withdraw funds from AI Quant Bot capital back to company cash.
+ */
+export function withdrawAiQuantCapital(S: any, amountUsd: number): { success: boolean; message: string } {
+  if (!S.aiCryptoBot || !S.cryptoPortfolio) {
+    return { success: false, message: 'AI Bot portfolio uninitialized' };
+  }
+
+  const availableCash = S.cryptoPortfolio.cash || 0;
+  if (availableCash < amountUsd) {
+    return { success: false, message: `Cannot withdraw $${amountUsd.toLocaleString()}: Only $${availableCash.toLocaleString()} available in bot cash balance.` };
+  }
+
+  S.cryptoPortfolio.cash -= amountUsd;
+  S.aiCryptoBot.allocatedUsd = Math.max(0, (S.aiCryptoBot.allocatedUsd || 0) - amountUsd);
+  S.money = (S.money || 0) + amountUsd;
+
+  return { success: true, message: `Successfully withdrew $${amountUsd.toLocaleString()} USD back to company treasury` };
 }
 
 /**
  * Runs an automated trading cycle for the AI Crypto Bot.
  */
 export function runAiCryptoTradingTick(S: any): { executed: boolean; message: string } {
-  if (!S.aiCryptoBot || !S.aiCryptoBot.enabled) {
+  if (!S.aiCryptoBot) {
+    S.aiCryptoBot = { enabled: false, strategy: 'momentum', allocatedUsd: 10000, totalProfitUsd: 0, lastTradeTimestamp: 0, tradeHistory: [] };
+  }
+  if (!S.aiCryptoBot.tradeHistory) S.aiCryptoBot.tradeHistory = [];
+
+  const bot: AiCryptoBotState = S.aiCryptoBot;
+  if (!bot.enabled) {
     return { executed: false, message: 'AI Quant Bot is disabled' };
   }
 
-  const bot: AiCryptoBotState = S.aiCryptoBot;
   if (bot.weights) {
     quantModel.fromJSON(bot.weights);
   }
@@ -63,35 +122,66 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
 
   const prediction = quantModel.forward(features); // Score between 0.0 and 1.0
 
-  // Decision thresholds
-  const buyThreshold = bot.strategy === 'conservative' ? 0.75 : bot.strategy === 'momentum' ? 0.65 : 0.55;
-  const sellThreshold = 0.35;
+  // Decision thresholds (made responsive)
+  const buyThreshold = bot.strategy === 'conservative' ? 0.65 : bot.strategy === 'momentum' ? 0.55 : 0.45;
+  const sellThreshold = 0.40;
 
   let actionTaken = false;
   let msg = '';
 
-  if (prediction >= buyThreshold && S.cryptoPortfolio.cash >= 1000) {
+  const holdings = S.cryptoPortfolio.holdings[asset.id] || 0;
+  const holdingValueUsd = holdings * currentPrice;
+
+  if (prediction >= buyThreshold && S.cryptoPortfolio.cash >= 500) {
     // Buy signal
-    const tradeUsd = Math.min(S.cryptoPortfolio.cash, Math.min(2500, bot.allocatedUsd * 0.2));
-    if (tradeUsd >= 500) {
+    const tradeUsd = Math.min(S.cryptoPortfolio.cash, Math.min(5000, S.cryptoPortfolio.cash * 0.5));
+    if (tradeUsd >= 100) {
       S.cryptoPortfolio.cash -= tradeUsd;
       const tokensBought = tradeUsd / currentPrice;
-      S.cryptoPortfolio.holdings[asset.id] = (S.cryptoPortfolio.holdings[asset.id] || 0) + tokensBought;
+      S.cryptoPortfolio.holdings[asset.id] = holdings + tokensBought;
       bot.lastTradeTimestamp = Date.now();
+      
+      const record: AiCryptoTradeRecord = {
+        id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+        time: Date.now(),
+        type: 'BUY',
+        symbol: asset.symbol,
+        qty: tokensBought,
+        price: currentPrice,
+        usd: tradeUsd,
+        confidence: prediction
+      };
+      bot.tradeHistory.unshift(record);
+      if (bot.tradeHistory.length > 30) bot.tradeHistory.pop();
+
       actionTaken = true;
-      msg = `AI Quant Bot bought ${tokensBought.toFixed(4)} ${asset.symbol} for $${tradeUsd.toLocaleString()} (Confidence: ${(prediction * 100).toFixed(1)}%)`;
+      msg = `AI Quant Bot BOUGHT ${tokensBought.toFixed(4)} ${asset.symbol} for $${tradeUsd.toLocaleString()} @ $${currentPrice.toLocaleString()} (Conf: ${(prediction * 100).toFixed(1)}%)`;
       pushNote(S, msg, { title: 'AI QUANT BOT', type: 'finance' });
     }
-  } else if (prediction <= sellThreshold && S.cryptoPortfolio.holdings[asset.id] > 0) {
+  } else if ((prediction <= sellThreshold || holdingValueUsd > 10000) && holdings > 0) {
     // Sell signal
-    const tokensOwned = S.cryptoPortfolio.holdings[asset.id];
-    const sellUsd = tokensOwned * currentPrice;
+    const sellUsd = holdingValueUsd;
     S.cryptoPortfolio.cash += sellUsd;
     S.cryptoPortfolio.holdings[asset.id] = 0;
-    bot.totalProfitUsd += (sellUsd - (tokensOwned * (currentPrice * 0.95))); // approximate PnL
+    const profit = sellUsd * 0.03; // simulated profit estimate
+    bot.totalProfitUsd += profit;
     bot.lastTradeTimestamp = Date.now();
+
+    const record: AiCryptoTradeRecord = {
+      id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+      time: Date.now(),
+      type: 'SELL',
+      symbol: asset.symbol,
+      qty: holdings,
+      price: currentPrice,
+      usd: sellUsd,
+      confidence: prediction
+    };
+    bot.tradeHistory.unshift(record);
+    if (bot.tradeHistory.length > 30) bot.tradeHistory.pop();
+
     actionTaken = true;
-    msg = `AI Quant Bot sold all ${asset.symbol} holdings for $${sellUsd.toLocaleString()} (Confidence: ${(prediction * 100).toFixed(1)}%)`;
+    msg = `AI Quant Bot SOLD all ${asset.symbol} (${holdings.toFixed(4)}) for $${sellUsd.toLocaleString()} @ $${currentPrice.toLocaleString()} (Conf: ${(prediction * 100).toFixed(1)}%)`;
     pushNote(S, msg, { title: 'AI QUANT BOT', type: 'finance' });
   }
 

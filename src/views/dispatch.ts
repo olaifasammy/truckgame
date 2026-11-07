@@ -3,7 +3,7 @@ import { action, fmt, toast } from '../core/ui';
 import { refresh, get } from '../core/store';
 import { AI_SUBSCRIPTION_PLANS, AI_ADDON_PLANS, AI_STRATEGY_PROFILES } from '../domain/ai/ai.config';
 import { AiDispatchProfile } from '../domain/ai/ai.types';
-import { runAiCryptoTradingTick } from '../domain/ai/ai.quant';
+import { runAiCryptoTradingTick, depositAiQuantCapital, withdrawAiQuantCapital } from '../domain/ai/ai.quant';
 import {
   activateAiSuiteSystem,
   updateAiFiltersSystem,
@@ -29,14 +29,14 @@ action('ai-set-tab', d => {
 
 action('ai-toggle-quant', () => {
   const S = get();
-  if (!S.aiCryptoBot) S.aiCryptoBot = { enabled: false, strategy: 'momentum', allocatedUsd: 10000, totalProfitUsd: 0, lastTradeTimestamp: 0 };
+  if (!S.aiCryptoBot) S.aiCryptoBot = { enabled: false, strategy: 'momentum', allocatedUsd: 10000, totalProfitUsd: 0, lastTradeTimestamp: 0, tradeHistory: [] };
   S.aiCryptoBot.enabled = !S.aiCryptoBot.enabled;
   refresh();
 });
 
 action('ai-set-quant-strategy', d => {
   const S = get();
-  if (!S.aiCryptoBot) S.aiCryptoBot = { enabled: false, strategy: 'momentum', allocatedUsd: 10000, totalProfitUsd: 0, lastTradeTimestamp: 0 };
+  if (!S.aiCryptoBot) S.aiCryptoBot = { enabled: false, strategy: 'momentum', allocatedUsd: 10000, totalProfitUsd: 0, lastTradeTimestamp: 0, tradeHistory: [] };
   S.aiCryptoBot.strategy = (d as any).strategy;
   refresh();
 });
@@ -45,6 +45,20 @@ action('ai-run-quant-now', () => {
   const S = get();
   const result = runAiCryptoTradingTick(S);
   toast(result.message, result.executed ? 'success' : 'info');
+  refresh();
+});
+
+action('ai-deposit-capital', d => {
+  const amt = +(d as any).amount || 10000;
+  const res = depositAiQuantCapital(get(), amt);
+  toast(res.message, res.success ? 'success' : 'err');
+  refresh();
+});
+
+action('ai-withdraw-capital', d => {
+  const amt = +(d as any).amount || 10000;
+  const res = withdrawAiQuantCapital(get(), amt);
+  toast(res.message, res.success ? 'success' : 'err');
   refresh();
 });
 
@@ -376,6 +390,75 @@ export default {
                   </button>
                 `;
               }).join('')}
+            </div>
+          </div>
+
+          <div class="ai-card">
+            <div class="ai-card-title">
+              <span>Capital Funding & Treasury</span>
+              <span style="font-size:10px; color:var(--gold);">Treasury: $${(S.money || 0).toLocaleString()}</span>
+            </div>
+            <div style="font-size:11px; color:var(--mu); margin-bottom:10px;">
+              Allocate company cash to fund the AI Quant Bot trading portfolio.
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
+              <button data-act="ai-deposit-capital" data-amount="10000" class="btn gold" style="font-size:10px;">Deposit $10k USD</button>
+              <button data-act="ai-deposit-capital" data-amount="50000" class="btn gold" style="font-size:10px;">Deposit $50k USD</button>
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <button data-act="ai-withdraw-capital" data-amount="10000" class="btn alt" style="font-size:10px;">Withdraw $10k USD</button>
+              <button data-act="ai-withdraw-capital" data-amount="50000" class="btn alt" style="font-size:10px;">Withdraw $50k USD</button>
+            </div>
+          </div>
+
+          <div class="ai-card">
+            <div class="ai-card-title">
+              <span>Active Portfolio Holdings</span>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              ${!S.cryptoPortfolio?.holdings || Object.keys(S.cryptoPortfolio.holdings).filter(k => S.cryptoPortfolio.holdings[k] > 0).length === 0 ? `
+                <div style="text-align:center; padding:15px; font-size:11px; color:var(--mu);">
+                  No active token holdings. Bot is holding cash or searching for entry signals.
+                </div>
+              ` : Object.entries(S.cryptoPortfolio.holdings).filter(([id, qty]) => (qty as number) > 0).map(([id, qty]) => {
+                const q = qty as number;
+                return `
+                  <div class="ai-log-item" style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                      <span style="color:var(--tx); font-weight:800; text-transform:uppercase;">${id}</span>
+                      <div style="font-size:10px; color:var(--mu);">${q.toFixed(4)} tokens</div>
+                    </div>
+                    <span style="color:var(--grn); font-weight:800; font-family:monospace;">ACTIVE HOLDING</span>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
+          <div class="ai-card">
+            <div class="ai-card-title">
+              <span>Live AI Trade History Feed</span>
+              <span style="font-size:10px; color:var(--mu);">${(S.aiCryptoBot?.tradeHistory || []).length} trades</span>
+            </div>
+            <div class="ai-log-list" style="max-height:220px; overflow-y:auto;">
+              ${(!S.aiCryptoBot?.tradeHistory || S.aiCryptoBot.tradeHistory.length === 0) ? `
+                <div style="text-align:center; padding:20px; font-size:11px; color:var(--mu);">
+                  No trades executed yet. Start the bot and ensure AI subscription is active!
+                </div>
+              ` : S.aiCryptoBot.tradeHistory.map((tr: any) => `
+                <div class="ai-log-item">
+                  <div class="ai-log-top">
+                    <span style="color:${tr.type === 'BUY' ? 'var(--grn)' : 'var(--gold)'}; font-weight:800;">
+                      ${tr.type} ${tr.symbol}
+                    </span>
+                    <span style="color:var(--mu); font-size:10px;">${new Date(tr.time).toLocaleTimeString()}</span>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--mu);">
+                    <span>Qty: ${tr.qty.toFixed(4)} @ $${tr.price.toLocaleString()}</span>
+                    <span style="color:var(--tx); font-weight:700;">$${tr.usd.toLocaleString()} (Conf: ${(tr.confidence * 100).toFixed(1)}%)</span>
+                  </div>
+                </div>
+              `).join('')}
             </div>
           </div>
         ` : ''}
