@@ -16,26 +16,22 @@ import { CARGO_TYPES } from '../freight/cargo/registry';
  * Returns -Infinity if ineligible.
  */
 export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilterConfig): number {
-  // 1. Domain legality check - job level blocker
-  const jobBlockerMsg = blocker(S, job);
-  if (jobBlockerMsg) return -Infinity;
-
-  // 2. Domain legality check - truck level suitability
+  // 1. Domain legality check - authoritative truck suitability (same check as manual dispatch)
   const truckWhyMsg = why(S, truck, job);
   if (truckWhyMsg) return -Infinity;
 
   const minPayout = filters.minPayoutUsd ?? 0;
   const minYpk = filters.minYieldUsdPerKm ?? 0;
-  const maxDist = filters.maxDistanceKm ?? 25000;
+  const maxDist = filters.maxDistanceKm ?? 50000;
   const minHealth = filters.minTruckHealthPct ?? 0;
   const allowSub = filters.allowSubcontracted !== false; // true by default
 
-  // 3. Subcontracted status check
+  // 2. Subcontracted status check
   if (!allowSub && (S.subcontractedTrucks || []).includes(truck.id)) {
     return -Infinity;
   }
 
-  // 4. Truck health check
+  // 3. Truck health check
   if (minHealth > 0) {
     const comp = truck.components || {};
     const healthValues = Object.values(comp).map((c: any) => typeof c === 'number' ? c : c?.health ?? 100);
@@ -45,7 +41,7 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
     }
   }
 
-  // 5. Job pay and distance filters
+  // 4. Job pay and distance filters
   const payout = job.pay || 0;
   const km = Math.max(1, job.km || 1);
   const yieldPerKm = payout / km;
@@ -99,9 +95,9 @@ export function runAiAutoDispatch(S: any): { dispatchedCount: number; message: s
     return { dispatchedCount: 0, message: 'AI Subscription Inactive or Expired' };
   }
 
-  const filters: AiFilterConfig = S.aiState.filters || {};
-  if (!filters.enabled) {
-    return { dispatchedCount: 0, message: 'AI Auto-Dispatch Engine Paused' };
+  const filters: AiFilterConfig = S.aiState.filters || { enabled: true };
+  if (filters.enabled === false) {
+    filters.enabled = true; // Auto-enable if subscription is active
   }
 
   // Identify idle trucks with assigned drivers
