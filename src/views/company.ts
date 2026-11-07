@@ -51,7 +51,7 @@ action('unlock-region', d => {
 action('reset-game', () => {
   if (!resetConfirm) {
     resetConfirm = true;
-    toast('⚠️ TAP AGAIN TO CONFIRM FULL RESET', 'err');
+    toast('⚠️ Tap again within 4s to confirm permanent reset', 'err');
     setTimeout(() => { 
       resetConfirm = false; 
       refresh(); 
@@ -473,16 +473,14 @@ export default {
         </div>
       </div>
 
-      <!-- System Reset Option -->
-      <div style="padding:14px; margin-top:10px; border-top:1px solid rgba(255,255,255,0.05);">
-        <button class="btn ${resetConfirm ? 'red' : 'alt'}" 
-          style="width:100%; padding:12px; font-size:11px; font-weight:800; letter-spacing:1px; border-radius:10px; text-transform:uppercase; transition:all 0.3s;" 
+      <!-- System Footer & Reset Option -->
+      <div style="padding:10px 14px; margin-top:20px; border-top:1px dashed rgba(255,255,255,0.08); display:flex; justify-content:space-between; align-items:center;">
+        <span style="font-size:9px; color:var(--mu); font-family:monospace;">NEXHAUL CORE v2.4.0</span>
+        <button class="btn alt" 
+          style="padding:4px 8px; font-size:8px; font-weight:700; color:${resetConfirm ? '#ef4444' : 'var(--mu)'}; border-color:${resetConfirm ? 'rgba(239,68,68,0.4)' : 'rgba(255,255,255,0.08)'}; background:transparent; border-radius:4px; text-transform:uppercase;" 
           data-act="reset-game">
-          ${resetConfirm ? '⚠️ CONFIRM PERMANENT ERASE' : 'Reset Carrier Data & Progress'}
+          ${resetConfirm ? '⚠️ Confirm Reset' : 'Reset Carrier Data'}
         </button>
-        <div style="text-align:center; font-size:9px; color:var(--mu); margin-top:8px; font-family:monospace; opacity:0.6;">
-          NEXHAUL CORE v2.4.0 · STABLE BUILD
-        </div>
       </div>
 
       ${renderTelematicsOverlay(S)}

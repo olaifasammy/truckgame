@@ -13,8 +13,6 @@
   <meta property="og:type" content="website" />
   <meta name="twitter:card" content="summary_large_image" />
   <link rel="manifest" href="/manifest.json">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <title>NexHaul Logistics</title>
   <style>
     :root {
@@ -52,6 +50,17 @@
       window.addEventListener('load', function() {
         navigator.serviceWorker.register('/sw.js').then(function(reg) {
           console.log('ServiceWorker registration successful with scope: ', reg.scope);
+          reg.onupdatefound = function() {
+            var installingWorker = reg.installing;
+            if (installingWorker) {
+              installingWorker.onstatechange = function() {
+                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  console.log('New content available; reloading...');
+                  window.location.reload();
+                }
+              };
+            }
+          };
         }).catch(function(err) {
           console.log('ServiceWorker registration failed: ', err);
         });

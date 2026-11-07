@@ -1,75 +1,69 @@
-const CACHE_NAME = 'nexhaul-cache-v2';
-const ASSETS_TO_CACHE = [
+const CACHE_NAME = 'nexhaul-offline-v4';
+const MAP_TILE_CACHE = 'nexhaul-map-tiles';
+
+const STATIC_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json'
 ];
 
-self.addEventListener('install', (e) => {
-  e.waitUntil(
+self.addEventListener('install', (event) => {
+  event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(ASSETS_TO_CACHE);
-    }).then(() => self.skipWaiting())
+      return cache.addAll(STATIC_ASSETS);
+    })
   );
+  self.skipWaiting();
 });
 
-self.addEventListener('activate', (e) => {
-  e.waitUntil(
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
     caches.keys().then((keys) => {
       return Promise.all(
-        keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
-        })
+        keys.filter((key) => key !== CACHE_NAME && key !== MAP_TILE_CACHE).map((key) => caches.delete(key))
       );
-    }).then(() => self.clients.claim())
+    })
   );
+  self.clients.claim();
 });
 
-self.addEventListener('fetch', (e) => {
-  // Skip non-GET requests
-  if (e.request.method !== 'GET') return;
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
 
-  const url = new URL(e.request.url);
-
-  // For navigation (HTML), try network first, fall back to cached index.html
-  if (e.request.mode === 'navigate' || url.pathname.endsWith('.html') || url.pathname === '/') {
-    e.respondWith(
-      fetch(e.request)
-        .then((response) => {
-          const clone = response.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
-          return response;
-        })
-        .catch(() => caches.match('/index.html') || caches.match('/'))
+  // Map tiles cache (offline map support)
+  if (url.hostname.includes('tile.openstreetmap.org')) {
+    event.respondWith(
+      caches.open(MAP_TILE_CACHE).then((cache) => {
+        return cache.match(event.request).then((response) => {
+          return response || fetch(event.request).then((networkResponse) => {
+            cache.put(event.request, networkResponse.clone());
+            return networkResponse;
+          }).catch(() => {
+            return new Response('', { status: 404, statusText: 'Offline' });
+          });
+        });
+      })
     );
     return;
   }
 
-  // For static assets (JS, CSS, images, JSON), cache first, fall back to network
-  e.respondWith(
-    caches.match(e.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        // Fetch in background to update cache
-        fetch(e.request).then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
-            caches.open(CACHE_NAME).then((cache) => cache.put(e.request, networkResponse));
-          }
-        }).catch(() => {});
-        return cachedResponse;
-      }
-      return fetch(e.request).then((networkResponse) => {
-        if (networkResponse && networkResponse.status === 200) {
-          const clone = networkResponse.clone();
-          caches.open(CACHE_NAME).then((cache) => cache.put(e.request, clone));
+  // Stale-While-Revalidate strategy for 100% offline capability + automatic background updates
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      const fetchPromise = fetch(event.request).then((networkResponse) => {
+        if (networkResponse && networkResponse.status === 200 && networkResponse.type === 'basic') {
+          const responseToCache = networkResponse.clone();
+          caches.open(CACHE_NAME).then((cache) => {
+            cache.put(event.request, responseToCache);
+          });
         }
         return networkResponse;
       }).catch(() => {
-        if (e.request.headers.get('accept')?.includes('text/html')) {
-          return caches.match('/index.html');
-        }
-        return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+        // Network failed (offline), safe to ignore as long as we have cachedResponse
+      });
+
+      return cachedResponse || fetchPromise.then((netRes) => {
+        return netRes || caches.match('/index.html');
       });
     })
   );

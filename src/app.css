@@ -183,6 +183,10 @@ body {
   display: grid; place-items: center; font-size: 18px; color: var(--mu); flex-shrink: 0; 
 }
 
+.dark-map-tiles {
+  filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+
 /* Redesigned Tactical World Map Styling */
 .map-pulse {
   animation: mapPulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;

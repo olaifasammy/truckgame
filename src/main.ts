@@ -11,7 +11,11 @@ import * as header from './ui/header';
 import * as nav from './ui/nav';
 import { replenish, completeJobs, processEconomics } from './systems/jobs';
 import { onTruckArrival } from './systems/fleet';
-import { fillPool } from './systems/drivers';
+import { fillPool, hireFee, transferFee, skillUpgradeCost } from './systems/drivers';
+
+(window as any).hireFee = hireFee;
+(window as any).transferFee = transferFee;
+(window as any).skillUpgradeCost = skillUpgradeCost;
 import { syncProgressionAudit } from './domain/company/progression';
 import { completeRepairs } from './systems/maintenance';
 import { pushNote } from './systems/notify';
@@ -71,16 +75,22 @@ function renderApp(st: any) {
     
     if (view) {
       const newHtml = view.render(st);
-      // Simple optimization: only update DOM if HTML changed
-      // (Note: This is imperfect because Leaflet containers are often "empty" until hydrated)
+      
       if (viewEl.innerHTML !== newHtml || lastRenderedTab !== targetTab) {
-        // Special case: If we are on the same tab and there's a map, try to avoid wiping the map div
-        const mapContainer = document.getElementById('leaflet-map-container');
-        if (mapContainer && lastRenderedTab === targetTab) {
-          // If we are on the same tab, we might want to skip innerHTML if possible
-          // But since the render() function returns the whole view, this is tricky.
-          // For now, let's just use innerHTML but the map sync is already handled.
-          viewEl.innerHTML = newHtml;
+        const oldMap = document.getElementById('leaflet-map-container');
+        
+        if (oldMap && lastRenderedTab === targetTab) {
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = newHtml;
+          const newMapPlaceholder = tempDiv.querySelector('#leaflet-map-container');
+          
+          if (newMapPlaceholder) {
+            newMapPlaceholder.replaceWith(oldMap);
+            viewEl.innerHTML = '';
+            while (tempDiv.firstChild) viewEl.appendChild(tempDiv.firstChild);
+          } else {
+            viewEl.innerHTML = newHtml;
+          }
         } else {
           viewEl.innerHTML = newHtml;
         }
