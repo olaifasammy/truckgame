@@ -1,8 +1,9 @@
 import { ic } from '../core/icons';
-import { action, fmt } from '../core/ui';
-import { refresh } from '../core/store';
+import { action, fmt, toast } from '../core/ui';
+import { refresh, get } from '../core/store';
 import { AI_SUBSCRIPTION_PLANS, AI_ADDON_PLANS, AI_STRATEGY_PROFILES } from '../domain/ai/ai.config';
 import { AiDispatchProfile } from '../domain/ai/ai.types';
+import { runAiCryptoTradingTick } from '../domain/ai/ai.quant';
 import {
   activateAiSuiteSystem,
   updateAiFiltersSystem,
@@ -13,7 +14,7 @@ import {
 import { blocker } from '../systems/jobs';
 
 // View state
-let activeSubTab: 'dashboard' | 'strategy' | 'plans' | 'telemetry' = 'dashboard';
+let activeSubTab: 'dashboard' | 'strategy' | 'brain' | 'plans' | 'telemetry' = 'dashboard';
 let selectedPlan: '7d' | '1m' | 'auto' | 'year' = '1m';
 let includeMaintenance: boolean = true;
 let includeOfflineDispatch: boolean = true;
@@ -23,6 +24,27 @@ let allowExtension: boolean = false;
 // Action Bindings
 action('ai-set-tab', d => {
   activeSubTab = (d as any).tab;
+  refresh();
+});
+
+action('ai-toggle-quant', () => {
+  const S = get();
+  if (!S.aiCryptoBot) S.aiCryptoBot = { enabled: false, strategy: 'momentum', allocatedUsd: 10000, totalProfitUsd: 0, lastTradeTimestamp: 0 };
+  S.aiCryptoBot.enabled = !S.aiCryptoBot.enabled;
+  refresh();
+});
+
+action('ai-set-quant-strategy', d => {
+  const S = get();
+  if (!S.aiCryptoBot) S.aiCryptoBot = { enabled: false, strategy: 'momentum', allocatedUsd: 10000, totalProfitUsd: 0, lastTradeTimestamp: 0 };
+  S.aiCryptoBot.strategy = (d as any).strategy;
+  refresh();
+});
+
+action('ai-run-quant-now', () => {
+  const S = get();
+  const result = runAiCryptoTradingTick(S);
+  toast(result.message, result.executed ? 'success' : 'info');
   refresh();
 });
 
@@ -185,7 +207,7 @@ export default {
           </div>
         </div>
 
-        <!-- 4-WAY SUB NAVIGATION BAR -->
+        <!-- 5-WAY SUB NAVIGATION BAR -->
         <div class="ai-subnav">
           <button data-act="ai-set-tab" data-tab="dashboard" class="ai-tab-btn ${activeSubTab === 'dashboard' ? 'on' : ''}">
             ${ic('bolt')} CONTROL
@@ -193,6 +215,10 @@ export default {
           
           <button data-act="ai-set-tab" data-tab="strategy" class="ai-tab-btn ${activeSubTab === 'strategy' ? 'on' : ''}">
             ${ic('route')} STRATEGY
+          </button>
+
+          <button data-act="ai-set-tab" data-tab="brain" class="ai-tab-btn ${activeSubTab === 'brain' ? 'on' : ''}">
+            🧠 BRAIN & BOT
           </button>
 
           <button data-act="ai-set-tab" data-tab="plans" class="ai-tab-btn ${activeSubTab === 'plans' ? 'on' : ''}">
@@ -269,6 +295,85 @@ export default {
                       </span>
                     </div>
                   </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
+
+        <!-- SUB TAB: NEURAL BRAIN & CRYPTO QUANT BOT -->
+        ${activeSubTab === 'brain' ? `
+          <div class="ai-card" style="border-color:var(--gold);">
+            <div class="ai-card-title">
+              <span>🧠 Neural Network Brain Inspector</span>
+              <span class="ai-badge ${isSubActive ? 'active' : 'inactive'}">${isSubActive ? 'ACTIVE' : 'STANDBY'}</span>
+            </div>
+            <div style="font-size:11px; color:var(--mu); line-height:1.4; margin-bottom:12px;">
+              Inspect live Multi-Layer Perceptron (MLP) weights, inputs, activation functions, and control the AI Crypto Quant Trading Bot.
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px;">
+              <div class="ai-stat-box">
+                <span class="ai-stat-lbl">Architecture</span>
+                <span class="ai-stat-val" style="font-size:10px;">5 Inputs → 6 Hidden (ReLU) → Output (Sigmoid)</span>
+              </div>
+              <div class="ai-stat-box">
+                <span class="ai-stat-lbl">Execution Speed</span>
+                <span class="ai-stat-val" style="color:var(--grn);">0.42 ms (Mobile Optimized)</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="ai-card">
+            <div class="ai-card-title">
+              <span>🪙 AI Crypto Quant Trading Bot</span>
+              <span class="ai-badge ${S.aiCryptoBot?.enabled ? 'active' : 'inactive'}">
+                ${S.aiCryptoBot?.enabled ? 'RUNNING' : 'PAUSED'}
+              </span>
+            </div>
+
+            <div style="font-size:11px; color:var(--mu); line-height:1.4; margin-bottom:12px;">
+              Automated crypto trading bot powered by neural network candle sentiment analysis. Trades virtual assets (BTC, ETH, SOL, FLB) autonomously.
+            </div>
+
+            <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px;">
+              <div style="display:flex; justify-content:space-between; font-size:11px;">
+                <span style="color:var(--mu);">Bot Status:</span>
+                <span style="color:${S.aiCryptoBot?.enabled ? 'var(--grn)' : 'var(--red)'}; font-weight:800;">
+                  ${S.aiCryptoBot?.enabled ? 'Active & Trading' : 'Paused'}
+                </span>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:11px;">
+                <span style="color:var(--mu);">Total Bot PnL:</span>
+                <span style="color:${(S.aiCryptoBot?.totalProfitUsd || 0) >= 0 ? 'var(--grn)' : 'var(--red)'}; font-weight:800;">
+                  $${(S.aiCryptoBot?.totalProfitUsd || 0).toLocaleString()} USD
+                </span>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:11px;">
+                <span style="color:var(--mu);">Crypto Cash Portfolio:</span>
+                <span style="color:var(--gold); font-weight:800;">
+                  $${(S.cryptoPortfolio?.cash || 10000).toLocaleString()} USD
+                </span>
+              </div>
+            </div>
+
+            <div style="display:flex; gap:8px; margin-bottom:12px;">
+              <button data-act="ai-toggle-quant" class="btn ${S.aiCryptoBot?.enabled ? 'alt' : 'gold'}" style="flex:1;">
+                ${S.aiCryptoBot?.enabled ? 'Pause Bot' : 'Start Quant Bot'}
+              </button>
+              <button data-act="ai-run-quant-now" class="btn gold" style="flex:1;" ${!isSubActive ? 'disabled' : ''}>
+                Execute AI Trade Now
+              </button>
+            </div>
+
+            <div style="font-size:10px; font-weight:800; color:var(--tx); margin-bottom:6px;">TRADING STRATEGY PROFILE</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;">
+              ${['conservative', 'momentum', 'high_volatility'].map(strat => {
+                const isSelected = (S.aiCryptoBot?.strategy || 'momentum') === strat;
+                return `
+                  <button data-act="ai-set-quant-strategy" data-strategy="${strat}" class="btn ${isSelected ? 'gold' : 'alt'}" style="font-size:9px; padding:6px; text-transform:uppercase;">
+                    ${strat.replace('_', ' ')}
+                  </button>
                 `;
               }).join('')}
             </div>
