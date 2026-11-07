@@ -18,6 +18,7 @@ import { fillPool, hireFee, transferFee, skillUpgradeCost } from './systems/driv
 (window as any).skillUpgradeCost = skillUpgradeCost;
 import { syncProgressionAudit } from './domain/company/progression';
 import { completeRepairs } from './systems/maintenance';
+import { renderAiFloatingWidget } from './components/AiFloatingWidget';
 import { pushNote } from './systems/notify';
 import { activeAuctionModalId, renderModalOverlay } from './views/home/auction-modal';
 import { tripMs } from './systems/calc';
@@ -101,6 +102,15 @@ function renderApp(st: any) {
     }
     
     lastRenderedTab = targetTab;
+
+    // Render or update smart AI floating widget
+    let widgetContainer = document.getElementById('ai-widget-root');
+    if (!widgetContainer) {
+      widgetContainer = document.createElement('div');
+      widgetContainer.id = 'ai-widget-root';
+      document.body.appendChild(widgetContainer);
+    }
+    widgetContainer.innerHTML = renderAiFloatingWidget(st);
   } catch (e: any) {
     console.error('Main: Render crash', e);
     const viewEl = $('view');
