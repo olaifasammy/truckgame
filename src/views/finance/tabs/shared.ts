@@ -401,6 +401,11 @@ action('crypto-sub-tab', d => {
   refresh();
 });
 
+action('open-ai-dispatch', () => {
+  set(S => { S.tab = 'dispatch'; });
+  refresh();
+});
+
 export function renderFinanceNav(activeTab: string) {
   const tabs = [
     { id: 'treasury', label: 'P&L' },

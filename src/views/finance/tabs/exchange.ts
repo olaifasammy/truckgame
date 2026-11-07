@@ -4,12 +4,14 @@ import { CRYPTO_ASSETS, getCryptoMarketData, getTotalCryptoValue } from '../../.
 import { MINING_RIG_TYPES, MINING_ADDITIONS, MINING_DURATIONS, calculateMiningStats, getSubstationUpgradeCost, getSubscriptionCost, calculateRigDailyCoinYield, getVipLevel, MiningSubscription, formatCryptoQty, MINING_TUNING_PROFILES } from '../../../domain/finance/markets/mining';
 import { renderCandlestickChart, renderOrderBookDepth, renderLimitOrderDesk, renderCollateralLoanDesk } from './exchange-orderbook';
 import { renderNextGenHardwareShop, renderNextGenAestheticBay } from './nextgen-shop';
+import { getQuantSmartLevelInfo } from '../../../domain/ai/ai.quant';
 
 export function renderExchangeTab(S: any) {
   const goldMarket = getGoldMarketData(S);
   const trendColor = goldMarket.trend === 'bullish' ? 'var(--grn)' : '#ef4444';
 
-  const activeSubTab = (window as any).cryptoSubTab || 'exchange';
+  const activeSubTab = (window as any).cryptoSubTab || 'spot';
+  const currentSubTab = (activeSubTab === 'exchange' || activeSubTab === 'spot') ? 'spot' : activeSubTab;
   const selectedAssetId = (window as any).selectedCryptoAsset || 'btc';
   const miningTargetCoin = (window as any).miningTargetCoin || 'btc';
   const miningSelectedDuration = (window as any).miningSelectedDuration || 7;
@@ -22,6 +24,7 @@ export function renderExchangeTab(S: any) {
   const currentAssetQty = userCryptoHoldings[selectedAssetId] || 0;
   const currentAssetUsdVal = currentAssetQty * assetData.sellPrice;
   const totalCryptoPortfolioVal = getTotalCryptoValue(S);
+  const quantSmart = getQuantSmartLevelInfo(S.aiCryptoBot);
 
   // Mining Data
   const playerVip = getVipLevel(S);
@@ -93,24 +96,52 @@ export function renderExchangeTab(S: any) {
           </button>
         </div>
 
-        <!-- Sleek Sub-Tab Nav Controls -->
-        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:4px; background:#05080f; padding:3px; border-radius:8px; border:1px solid rgba(255,255,255,0.05);">
-          <button class="btn ${activeSubTab === 'exchange' ? 'gold' : 'alt'}" style="padding:6px 4px; font-size:9px; font-weight:900;" data-act="crypto-sub-tab" data-tab="exchange">
-            📈 SPOT & BONDS
+        <!-- Sleek Sub-Tab Nav Controls (4 clear modern categories) -->
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; background:#05080f; padding:3px; border-radius:8px; border:1px solid rgba(255,255,255,0.05);">
+          <button class="btn ${currentSubTab === 'spot' ? 'gold' : 'alt'}" style="padding:6px 2px; font-size:8px; font-weight:900;" data-act="crypto-sub-tab" data-tab="spot">
+            📈 SPOT TRADE
           </button>
-          <button class="btn ${activeSubTab === 'orderbook' ? 'gold' : 'alt'}" style="padding:6px 4px; font-size:9px; font-weight:900;" data-act="crypto-sub-tab" data-tab="orderbook">
-            📊 ORDERBOOK & CREDIT
+          <button class="btn ${currentSubTab === 'flb' ? 'gold' : 'alt'}" style="padding:6px 2px; font-size:8px; font-weight:900;" data-act="crypto-sub-tab" data-tab="flb">
+            🏛️ FLB TREASURY
           </button>
-          <button class="btn ${activeSubTab === 'mining' ? 'gold' : 'alt'}" style="padding:6px 4px; font-size:9px; font-weight:900;" data-act="crypto-sub-tab" data-tab="mining">
-            ⛏️ MINING DATACENTER
+          <button class="btn ${currentSubTab === 'orderbook' ? 'gold' : 'alt'}" style="padding:6px 2px; font-size:8px; font-weight:900;" data-act="crypto-sub-tab" data-tab="orderbook">
+            📊 ORDERBOOK
+          </button>
+          <button class="btn ${currentSubTab === 'mining' ? 'gold' : 'alt'}" style="padding:6px 2px; font-size:8px; font-weight:900;" data-act="crypto-sub-tab" data-tab="mining">
+            ⛏️ MINING
+          </button>
+        </div>
+
+        <!-- AI Quant Trading Bot Smart Level Status Banner -->
+        <div style="background:linear-gradient(135deg, rgba(15,23,42,0.95), rgba(8,12,24,0.95)); border:1px solid rgba(193,154,91,0.25); border-radius:8px; padding:8px 12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:16px;">🧠</span>
+            <div>
+              <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                <span style="font-size:11px; font-weight:800; color:var(--tx);">AI Quant Trading Bot</span>
+                <span style="font-size:9px; font-weight:800; background:rgba(193,154,91,0.2); color:var(--gold); padding:1px 6px; border-radius:3px; border:1px solid rgba(193,154,91,0.3);">
+                  Lv. ${quantSmart.level} · ${quantSmart.title}
+                </span>
+                <span style="font-size:8px; font-weight:800; color:${S.aiCryptoBot?.enabled ? 'var(--grn)' : 'var(--mu)'};">
+                  ${S.aiCryptoBot?.enabled ? '● RUNNING' : '○ PAUSED'}
+                </span>
+              </div>
+              <div style="font-size:9px; color:var(--mu); margin-top:2px;">
+                Neural Precision: <strong style="color:var(--grn);">${quantSmart.accuracyPct}%</strong> · Loss: <strong style="color:#38bdf8; font-family:monospace;">${quantSmart.loss.toFixed(4)}</strong> · Win Rate: <strong style="color:var(--gold);">${quantSmart.winRatePct}%</strong> · Realized PnL: <strong style="color:var(--grn); font-family:monospace;">+$${(S.aiCryptoBot?.totalProfitUsd || 0).toLocaleString()} USD</strong> · <span style="color:var(--mu); font-family:monospace;">IQ ${quantSmart.iqScore} · Autonomous</span>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn gold" style="padding:4px 10px; font-size:9px; font-weight:800;" data-act="open-ai-dispatch">
+            OPEN BOT CONSOLE →
           </button>
         </div>
 
       </div>
 
-      ${activeSubTab === 'exchange' ? `
-        <!-- ==================== SUB-TAB 1: SPOT TRADING & FLEET BONDS ==================== -->
-        <div style="display:flex; flex-direction:column; gap:12px;">
+      ${currentSubTab === 'flb' ? `
+        <!-- ==================== SUB-TAB: FLEET BOND TREASURY & STAKING ==================== -->
+        <div style="display:flex; flex-direction:column; gap:10px;">
 
           <!-- 1. Carrier Reserve Market & Corporate Staking Pool -->
           <div style="background:#090d16; border:1px solid rgba(193,154,91,0.25); border-radius:10px; padding:12px;">
@@ -249,8 +280,12 @@ export function renderExchangeTab(S: any) {
             </div>
 
           </div>
+        </div>
+      ` : currentSubTab === 'spot' ? `
+        <!-- ==================== SUB-TAB: SPOT CRYPTO TRADING TERMINAL ==================== -->
+        <div style="display:flex; flex-direction:column; gap:10px;">
 
-          <!-- 2. Institutional Crypto Terminal -->
+          <!-- Institutional Crypto Terminal -->
           <div style="background:#090d16; border:1px solid rgba(255,255,255,0.08); border-radius:10px; overflow:hidden;">
             
             <!-- Coin Selector Horizontal Scroll Bar -->
@@ -405,7 +440,7 @@ export function renderExchangeTab(S: any) {
           </div>
 
         </div>
-      ` : activeSubTab === 'orderbook' ? `
+      ` : currentSubTab === 'orderbook' ? `
         <!-- ==================== SUB-TAB 2: ORDERBOOK DEPTH, LIMIT DESK & CREDIT ==================== -->
         <div style="display:flex; flex-direction:column; gap:12px;">
           

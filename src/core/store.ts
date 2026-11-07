@@ -261,6 +261,19 @@ function fix(state: any) {
     if (!state.aiState.logs) state.aiState.logs = [];
     if (state.aiState.totalDispatchedCount === undefined) state.aiState.totalDispatchedCount = 0;
     if (state.aiState.totalRevenueGeneratedUsd === undefined) state.aiState.totalRevenueGeneratedUsd = 0;
+    if (state.aiState.neuralWeights) {
+      const w = state.aiState.neuralWeights;
+      if ((w.wih && w.wih.length !== 8) || (w.inputSize && w.inputSize !== 8)) {
+        delete state.aiState.neuralWeights;
+      }
+    }
+  }
+
+  if (state.aiCryptoBot?.weights) {
+    const w = state.aiCryptoBot.weights;
+    if ((w.wih && w.wih.length !== 6) || (w.inputSize && w.inputSize !== 6)) {
+      delete state.aiCryptoBot.weights;
+    }
   }
 
   if (!state.dailyStats) {

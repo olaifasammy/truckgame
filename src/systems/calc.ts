@@ -3,6 +3,8 @@ import { calculatePerformance, calculateUsage, applyTripWear, EnvironmentalCondi
 import { CITIES, LOCATIONS } from '../data/world';
 import { pushNote } from './notify';
 
+export { fuelCostForTrip };
+
 export const PART_LABELS: Record<string, string> = { 
   engine: 'Engine Core', 
   transmission: 'Transmission & Gearbox', 

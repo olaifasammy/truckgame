@@ -89,6 +89,14 @@ export function activateAiSuiteSystem(
 
     S.aiState.filters.enabled = true;
 
+    // Immediately trigger auto-dispatch for any idle fleet units upon activation
+    try {
+      const immediateResult = runAiAutoDispatch(S);
+      if (immediateResult.dispatchedCount > 0) {
+        pushNote(S, `Initial dispatch active: ${immediateResult.dispatchedCount} truck(s) assigned immediately upon licensing.`, { title: 'IMMEDIATE DISPATCH', type: 'ops' });
+      }
+    } catch (e) {}
+
     const paymentText = useFlb ? `${totalFlb} Fleet Bonds (FLB)` : `$${totalUsd.toLocaleString()} USD`;
     const actionTitle = isAlreadyActive ? '🤖 AI SUITE EXTENDED' : '🤖 AI SUITE ACTIVATED';
     

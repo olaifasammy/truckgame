@@ -144,7 +144,7 @@ export function renderCandlestickChart(assetData: any): string {
   const candleWidth = Math.max(4, Math.floor((svgWidth - paddingX * 2) / candles.length) - 2);
 
   return `
-    <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:10px; margin-bottom:12px;">
+    <div style="border-top:1px solid rgba(255,255,255,0.06); padding-top:10px; margin-top:8px;">
       <!-- Timeframe selector -->
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">

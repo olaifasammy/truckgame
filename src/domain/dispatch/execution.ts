@@ -12,6 +12,8 @@ import { processScheduledRepair } from '../../systems/maintenance';
 import { vehicleDeliveryTemplate } from '../notifications/templates';
 import { getDispatchEligibilityError } from './validation';
 
+import { getDispatchNeuralNetwork } from '../ai/neuralNetwork';
+
 /**
  * Authoritative engine for dispatch lifecycle.
  * Following Engineering Constitution Section 6.4 (Logistics and Dispatch).
@@ -20,31 +22,40 @@ export const DispatchExecution = {
   /**
    * Executes the dispatch of a truck for a specific job.
    */
-  takeJob(state: GameState, jobId: number, truckId?: number): void {
+  takeJob(state: GameState, jobId: number, truckId?: number, silent: boolean = false): { success: boolean; reason?: string } {
     const S = state as any;
     const j = S.jobs.find((x: any) => x.id === jobId);
-    if (!j) return;
+    if (!j) return { success: false, reason: 'Job not found' };
 
     // VIP Eligibility Check
     const prog = getCompanyProgression(S);
     const isEligible = j.isAuctionWon || !j.vip || prog.tier >= 3;
     if (!isEligible) {
-      return toast(`VIP Exclusive Contract: Requires VIP Rank (Tier 3+). Current: ${prog.title}`, 'err');
+      const err = `VIP Exclusive Contract: Requires VIP Rank (Tier 3+). Current: ${prog.title}`;
+      if (!silent) toast(err, 'err');
+      return { success: false, reason: err };
     }
     
     // Find/Validate Truck
-    let t;
+    let t: any;
     if (truckId) {
       t = S.fleet.find((x: any) => x.id === truckId);
       const err = t && getDispatchEligibilityError(S, t, j, S.drivers.find((d: any) => d.id === t.driverId));
-      if (!t || err) return toast(err || 'No truck');
+      if (!t || err) {
+        if (!silent) toast(err || 'No truck', 'err');
+        return { success: false, reason: err || 'Truck ineligible' };
+      }
     } else {
       // Find nearest eligible truck (Legacy blocker/findTruck logic simplified)
       t = S.fleet
         .filter((truck: any) => !getDispatchEligibilityError(S, truck, j, S.drivers.find((d: any) => d.id === truck.driverId)))
         .sort((a: any, b: any) => distKm(a.loc, j.from) - distKm(b.loc, j.from))[0];
       
-      if (!t) return toast('No eligible idle truck found with required trailer/endorsements.');
+      if (!t) {
+        const err = 'No eligible idle truck found with required trailer/endorsements.';
+        if (!silent) toast(err, 'err');
+        return { success: false, reason: err };
+      }
     }
     
     const cargo = CARGO_TYPES.find(c => c.id === j.cargoId);
@@ -56,7 +67,10 @@ export const DispatchExecution = {
     let quotaNote = '';
     if (j.isAuctionWon) {
       const quotaRes = consumeBidDispatchQuota(S);
-      if (!quotaRes.success) return toast(quotaRes.message, 'err');
+      if (!quotaRes.success) {
+        if (!silent) toast(quotaRes.message, 'err');
+        return { success: false, reason: quotaRes.message };
+      }
       if (quotaRes.costPaid > 0) {
         quotaNote = ' (Paid 4 Gold Coins)';
         pushNote(S, `4 Gold Coins paid for bidded consignment #${j.id}.`, { title: 'EXPEDITED DISPATCH', type: 'finance' });
@@ -97,7 +111,8 @@ export const DispatchExecution = {
     
     t.status = 'busy';
     pushNote(S, `Consignment Dispatched: ${cargo?.name || 'Cargo'} · ${j.from} → ${j.to}${quotaNote}`, { title: 'DISPATCH CONFIRMATION', type: 'ops' });
-    toast('Dispatched: ' + (cargo?.name || 'Load'), 'success');
+    if (!silent) toast('Dispatched: ' + (cargo?.name || 'Load'), 'success');
+    return { success: true };
   },
 
   /**
@@ -219,5 +234,34 @@ export const DispatchExecution = {
     addCompanyXp(S, 25 + Math.round(a.km * 0.02), `Delivery: ${cargo?.name || 'Freight'}`);
     
     pushNote(S, `Payment for ${cargo?.name || 'Freight'}: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });
+
+    // Neural Network Reinforcement Learning (Experience Feedback)
+    try {
+      const net = getDispatchNeuralNetwork(S.aiState?.neuralWeights);
+      const deadheadKm = a.dh || 0;
+      const totalKm = a.km + deadheadKm;
+      const fuelCostEst = totalKm * 0.42 * 1.25;
+      const netProfit = finalPay - fuelCostEst;
+      const profitRatio = Math.max(0, Math.min(1, netProfit / Math.max(1, finalPay)));
+      const dhEfficiency = Math.max(0, 1 - (deadheadKm / Math.max(1, totalKm)));
+      const targetReward = (profitRatio * 0.65) + (dhEfficiency * 0.35);
+
+      const features = [
+        Math.min(1, finalPay / 40000),
+        Math.min(1, (finalPay / Math.max(1, a.km)) / 30),
+        dhEfficiency,
+        Math.min(1, (a.weight || 10) / 44),
+        0.85,
+        profitRatio,
+        0.8,
+        Math.min(1, (a.isAuctionWon ? 45 : 15) / 50)
+      ];
+
+      net.train(features, targetReward, 0.05);
+      if (S.aiState) {
+        S.aiState.neuralWeights = net.toJSON();
+        S.aiState.neuralTrainingEpochs = (S.aiState.neuralTrainingEpochs || 0) + 1;
+      }
+    } catch (e) {}
   }
 };

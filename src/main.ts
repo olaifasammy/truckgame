@@ -25,7 +25,7 @@ import { tripMs } from './systems/calc';
 import { TRAIT_REGISTRY } from './domain/drivers/drivers.names';
 import { getTruckTelematics } from './domain/trucks/trucks.telematics';
 import { getCryptoMarketData, processLimitOrders } from './domain/finance/markets/crypto';
-import { runAiAutoDispatch, runAiFleetMaintenance } from './domain/ai/ai.engine';
+import { runAiAutoDispatch, runAiFleetMaintenance, processOfflineAiDispatch } from './domain/ai/ai.engine';
 import { runAiCryptoTradingTick } from './domain/ai/ai.quant';
 
 console.log('Main: Imports completed');
@@ -135,9 +135,17 @@ try {
        toast('Welcome to NexHaul!', 'success');
     } else {
        const lastActive = parseInt(lastActiveStr);
-       if (now - lastActive > 1000 * 60 * 5) { // 5 minutes away
+       const elapsed = now - lastActive;
+       if (elapsed > 1000 * 60 * 5) { // 5 minutes away
           toast('Welcome back, Director', 'success');
           toast('Operations synchronized');
+       }
+       if (S.aiState?.offlineDispatchActive && now < (S.aiState?.offlineExpiresTimestamp || 0) && elapsed > 15000) {
+          const offRes = processOfflineAiDispatch(S, elapsed);
+          if (offRes.dispatches > 0) {
+             pushNote(S, `Autonomous Offline AI Dispatcher executed ${offRes.dispatches} consignments while you were away.`, { title: 'OFFLINE DISPATCH', type: 'ops' });
+             toast(`Offline AI Dispatcher: ${offRes.dispatches} loads processed`, 'success');
+          }
        }
     }
     
@@ -164,11 +172,15 @@ try {
     processEconomics(st, now);
     completeJobs(st, now);
     completeRepairs(st, now);
-    if (st.aiState?.subscriptionActive && st.aiState?.filters?.enabled) {
+    if (st.aiState?.subscriptionActive && now < (st.aiState?.expiresTimestamp || 0) && st.aiState?.filters?.enabled !== false) {
       runAiAutoDispatch(st);
     }
     if (st.aiCryptoBot?.enabled) {
-      runAiCryptoTradingTick(st);
+      try {
+        runAiCryptoTradingTick(st);
+      } catch (e) {
+        console.error('AI Bot startup tick error:', e);
+      }
     }
     if (st.aiState?.maintenanceAddonActive) {
       runAiFleetMaintenance(st);
@@ -194,15 +206,29 @@ try {
     }
     const repCount = completeRepairs(st, now) || 0;
 
-    // AI Automation Engine Processing
-    if (st.aiState?.subscriptionActive && st.aiState?.filters?.enabled) {
-      runAiAutoDispatch(st);
+    // AI Automation Engine Processing (Guaranteed dispatch execution when subscribed)
+    const isAiSubscribed = !!(st.aiState?.subscriptionActive && now < (st.aiState?.expiresTimestamp || 0));
+    if (isAiSubscribed && st.aiState?.filters?.enabled !== false) {
+      const { dispatchedCount } = runAiAutoDispatch(st);
+      if (dispatchedCount > 0) {
+        set(() => {}); // Persist dispatch state and trigger reactive subscribers
+      }
     }
     if (st.aiCryptoBot?.enabled) {
-      runAiCryptoTradingTick(st);
+      try {
+        const botResult = runAiCryptoTradingTick(st);
+        if (botResult.executed) {
+          set(() => {}); // Persist trading state and trigger reactive subscribers
+        }
+      } catch (e) {
+        console.error('AI Bot interval tick error:', e);
+      }
     }
-    if (st.aiState?.maintenanceAddonActive) {
-      runAiFleetMaintenance(st);
+    if (st.aiState?.maintenanceAddonActive && now < (st.aiState?.maintenanceExpiresTimestamp || 0)) {
+      const rep = runAiFleetMaintenance(st);
+      if (rep > 0) {
+        set(() => {}); // Persist maintenance state and trigger reactive subscribers
+      }
     }
 
     // Periodic freight replenishment (every 30s) or if contracts dry up
