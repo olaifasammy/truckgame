@@ -16,7 +16,7 @@ const card = (s: any) => `<div class="card row" style="cursor:pointer; ${s.soon 
 export default {
   id: 'store',
   icon: 'store',
-  label: 'Marketplace',
+  label: 'Store',
   render(S: any) {
     const s = S.storeSec && find(S.storeSec);
     if (s) return `<div class="top" style="background:var(--bg);border:none;"><div class="row" data-act="store-back" style="cursor:pointer;">${ic('back')} <span style="font-weight:800;font-size:16px;">${s.label}</span></div></div>` + s.render(S);
