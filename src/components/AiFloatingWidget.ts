@@ -1,7 +1,7 @@
 /**
  * Smart AI Floating Icon Component
- * Draggable anywhere on the screen, displays when AI subscription is active.
- * Tapping opens the AI Dispatch operations console.
+ * Draggable anywhere on the screen, displays when any AI feature is active.
+ * Tapping opens the AI Dispatch & Operations console.
  */
 
 import { ic } from '../core/icons';
@@ -17,8 +17,11 @@ let hasDragged = false;
 export function renderAiFloatingWidget(S: any): string {
   const aiState = S.aiState || {};
   const isSubActive = !!(aiState.subscriptionActive && Date.now() < (aiState.expiresTimestamp || 0));
+  const isMaintActive = !!aiState.maintenanceAddonActive;
+  const isCryptoActive = !!S.aiCryptoBot?.enabled;
   
-  if (!isSubActive || S.tab === 'dispatch') return '';
+  const isAnyActive = isSubActive || isMaintActive || isCryptoActive;
+  if (!isAnyActive || S.tab === 'dispatch') return '';
 
   return `
     <div id="ai-floating-widget" 

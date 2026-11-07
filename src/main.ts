@@ -167,7 +167,7 @@ try {
     if (st.aiState?.subscriptionActive && st.aiState?.filters?.enabled) {
       runAiAutoDispatch(st);
     }
-    if (st.aiState?.subscriptionActive) {
+    if (st.aiCryptoBot?.enabled) {
       runAiCryptoTradingTick(st);
     }
     if (st.aiState?.maintenanceAddonActive) {
@@ -198,7 +198,7 @@ try {
     if (st.aiState?.subscriptionActive && st.aiState?.filters?.enabled) {
       runAiAutoDispatch(st);
     }
-    if (st.aiState?.subscriptionActive) {
+    if (st.aiCryptoBot?.enabled) {
       runAiCryptoTradingTick(st);
     }
     if (st.aiState?.maintenanceAddonActive) {
