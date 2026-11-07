@@ -119,7 +119,7 @@ function formatExpiryDate(expiresTimestamp: number): string {
 
 export default {
   id: 'dispatch',
-  hidden: true,
+  hidden: false,
   label: 'AI DISPATCH',
   icon: 'cpu',
   render(S: any) {
