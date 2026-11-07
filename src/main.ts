@@ -25,6 +25,7 @@ import { TRAIT_REGISTRY } from './domain/drivers/drivers.names';
 import { getTruckTelematics } from './domain/trucks/trucks.telematics';
 import { getCryptoMarketData, processLimitOrders } from './domain/finance/markets/crypto';
 import { runAiAutoDispatch, runAiFleetMaintenance } from './domain/ai/ai.engine';
+import { runAiCryptoTradingTick } from './domain/ai/ai.quant';
 
 console.log('Main: Imports completed');
 
@@ -156,6 +157,9 @@ try {
     if (st.aiState?.subscriptionActive && st.aiState?.filters?.enabled) {
       runAiAutoDispatch(st);
     }
+    if (st.aiState?.subscriptionActive) {
+      runAiCryptoTradingTick(st);
+    }
     if (st.aiState?.maintenanceAddonActive) {
       runAiFleetMaintenance(st);
     }
@@ -183,6 +187,9 @@ try {
     // AI Automation Engine Processing
     if (st.aiState?.subscriptionActive && st.aiState?.filters?.enabled) {
       runAiAutoDispatch(st);
+    }
+    if (st.aiState?.subscriptionActive) {
+      runAiCryptoTradingTick(st);
     }
     if (st.aiState?.maintenanceAddonActive) {
       runAiFleetMaintenance(st);

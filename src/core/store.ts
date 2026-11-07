@@ -25,6 +25,13 @@ const DEF = () => ({
   offices: [] as string[],
   garageLevel: 0,
   aiState: { ...DEFAULT_AI_STATE },
+  aiCryptoBot: {
+    enabled: false,
+    strategy: 'momentum',
+    allocatedUsd: 10000,
+    totalProfitUsd: 0,
+    lastTradeTimestamp: 0
+  },
   stats: { earned: 0, km: 0 },
   repairs: [] as any[],
   repairTruckId: null as number | null,
