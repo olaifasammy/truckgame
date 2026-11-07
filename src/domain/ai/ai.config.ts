@@ -161,11 +161,11 @@ export const DEFAULT_AI_FILTERS: AiFilterConfig = {
   profile: 'highest_payout',
   minPayoutUsd: 0,
   minYieldUsdPerKm: 0,
-  maxDistanceKm: 10000,
-  minTruckHealthPct: 30,
+  maxDistanceKm: 25000,
+  minTruckHealthPct: 0,
   autoRefuel: true,
   requireHazmatCert: false,
-  allowSubcontracted: false,
+  allowSubcontracted: true,
   priorityCargoTypes: []
 };
 

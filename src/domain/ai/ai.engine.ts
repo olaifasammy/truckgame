@@ -24,17 +24,25 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
   const truckWhyMsg = why(S, truck, job);
   if (truckWhyMsg) return -Infinity;
 
+  const minPayout = filters.minPayoutUsd ?? 0;
+  const minYpk = filters.minYieldUsdPerKm ?? 0;
+  const maxDist = filters.maxDistanceKm ?? 25000;
+  const minHealth = filters.minTruckHealthPct ?? 0;
+  const allowSub = filters.allowSubcontracted !== false; // true by default
+
   // 3. Subcontracted status check
-  if (!filters.allowSubcontracted && (S.subcontractedTrucks || []).includes(truck.id)) {
+  if (!allowSub && (S.subcontractedTrucks || []).includes(truck.id)) {
     return -Infinity;
   }
 
   // 4. Truck health check
-  const comp = truck.components || {};
-  const healthValues = Object.values(comp).map((c: any) => typeof c === 'number' ? c : c?.health ?? 100);
-  const avgHealth = healthValues.length > 0 ? (healthValues.reduce((a, b) => a + b, 0) / healthValues.length) : 100;
-  if (avgHealth < filters.minTruckHealthPct) {
-    return -Infinity;
+  if (minHealth > 0) {
+    const comp = truck.components || {};
+    const healthValues = Object.values(comp).map((c: any) => typeof c === 'number' ? c : c?.health ?? 100);
+    const avgHealth = healthValues.length > 0 ? (healthValues.reduce((a, b) => a + b, 0) / healthValues.length) : 100;
+    if (avgHealth < minHealth) {
+      return -Infinity;
+    }
   }
 
   // 5. Job pay and distance filters
@@ -42,9 +50,9 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
   const km = Math.max(1, job.km || 1);
   const yieldPerKm = payout / km;
 
-  if (payout < filters.minPayoutUsd) return -Infinity;
-  if (yieldPerKm < filters.minYieldUsdPerKm) return -Infinity;
-  if (km > filters.maxDistanceKm) return -Infinity;
+  if (payout < minPayout) return -Infinity;
+  if (yieldPerKm < minYpk) return -Infinity;
+  if (km > maxDist) return -Infinity;
 
   // 6. Hazmat preference filter
   const cargo = CARGO_TYPES.find(c => c.id === job.cargoId);
