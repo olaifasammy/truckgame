@@ -159,6 +159,7 @@ export const AI_STRATEGY_PROFILES: AiStrategyMeta[] = [
 export const DEFAULT_AI_FILTERS: AiFilterConfig = {
   enabled: true,
   profile: 'highest_payout',
+  intensity: 'balanced',
   minPayoutUsd: 0,
   minYieldUsdPerKm: 0,
   maxDistanceKm: 25000,

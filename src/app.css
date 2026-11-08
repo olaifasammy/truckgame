@@ -285,7 +285,7 @@ svg { width: 100%; height: auto; display: block; }
 /* Company */
 .profile-wrap { padding: 32px 16px; text-align: center; border-bottom: 1px solid var(--line); background: linear-gradient(to bottom, var(--s1), var(--bg)); }
 .avatar { width: 80px; height: 80px; background: var(--gold); border-radius: 24px; margin: 0 auto 16px; display: grid; place-items: center; font-size: 40px; color: var(--bg); font-weight: 900; }
-.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 16px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; padding: 12px; }
 .stat-box { background: var(--s1); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
 .stat-val { font-size: 18px; font-weight: 800; color: var(--tx); display: block; }
 .stat-lab { font-size: 10px; color: var(--mu); text-transform: uppercase; margin-top: 4px; font-weight: 700; letter-spacing: 0.5px; }
@@ -395,7 +395,7 @@ svg { width: 100%; height: auto; display: block; }
 
 .ai-stat-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
   gap: 8px;
 }
 
@@ -475,7 +475,7 @@ svg { width: 100%; height: auto; display: block; }
 
 .ai-strategy-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
 }
 
@@ -512,7 +512,7 @@ svg { width: 100%; height: auto; display: block; }
 
 .ai-filter-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 10px;
 }
 
@@ -546,7 +546,7 @@ svg { width: 100%; height: auto; display: block; }
 
 .ai-plan-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 8px;
 }
 

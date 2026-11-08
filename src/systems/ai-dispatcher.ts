@@ -151,3 +151,14 @@ export function clearAiLogsSystem(): void {
     }
   });
 }
+
+export function updateAiIntensitySystem(intensity: 'conservative' | 'balanced' | 'aggressive'): void {
+  set((S: any) => {
+    if (!S.aiState) S.aiState = { ...DEFAULT_AI_STATE };
+    S.aiState.filters.intensity = intensity;
+    if (S.aiCryptoBot) {
+      S.aiCryptoBot.intensity = intensity;
+    }
+    toast(`AI Intensity set to ${intensity.toUpperCase()}`, 'success');
+  });
+}

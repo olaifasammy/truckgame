@@ -39,12 +39,25 @@ export function getDispatchEligibilityError(
     return 'Driver critically fatigued (Send to Motel in Drivers)';
   }
 
-  // 3. Physical Compatibility (Constitution 6.1)
+  // 3. Physical Compatibility & Trailer Certification (Constitution 6.1 & 6.4)
   const cargo = CARGO_TYPES.find(c => c.id === job.cargoId);
   const trailerType = cargo?.trailer || (job as any).trailer || 'curtain';
   const truckModel = TRUCK_MODELS[truck.modelId];
 
   if (!truckModel) return 'Unknown truck model configuration';
+
+  if (truckModel.haul && !truckModel.haul.includes(trailerType)) {
+    return `Tractor chassis (${truckModel.name}) cannot haul this trailer type (${trailerType})`;
+  }
+
+  // Trailer Coupling & Ownership Check:
+  const isShipperSupplied = trailerType === 'hazmat' || trailerType === 'tanker';
+  const isHitched = truck.trailer === trailerType;
+  const hasInStorage = (state as any).trailers && (state as any).trailers.includes(trailerType);
+
+  if (!isHitched && !hasInStorage && !isShipperSupplied) {
+    return `Required trailer (${trailerType}) not hitched and none available in HQ storage`;
+  }
 
   // Gross Axle Rating Verification (Gross Vehicle Weight)
   const grossTonnes = (truckModel.baseWeight || 8) + (job.weight || 0);

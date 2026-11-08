@@ -75,10 +75,24 @@ function renderApp(st: any) {
     const targetTab = st.tab || 'company';
     const view = find(targetTab && find(targetTab) ? targetTab : 'company');
     
+    // Prevent view re-render disruption if user is actively typing in an input, textarea, or select
+    const activeEl = document.activeElement;
+    const isInputFocused = activeEl && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName);
+    if (isInputFocused && lastRenderedTab === targetTab) {
+      return;
+    }
+
     if (view) {
       const newHtml = view.render(st);
       
       if (viewEl.innerHTML !== newHtml || lastRenderedTab !== targetTab) {
+        const scrollY = window.scrollY;
+        const scrollableElements = viewEl.querySelectorAll('[style*="overflow"], [class*="scroll"]');
+        const scrollStates: { scrollTop: number; scrollLeft: number }[] = [];
+        scrollableElements.forEach(el => {
+          scrollStates.push({ scrollTop: el.scrollTop, scrollLeft: el.scrollLeft });
+        });
+
         const oldMap = document.getElementById('leaflet-map-container');
         
         if (oldMap && lastRenderedTab === targetTab) {
@@ -96,6 +110,16 @@ function renderApp(st: any) {
         } else {
           viewEl.innerHTML = newHtml;
         }
+
+        window.scrollTo(0, scrollY);
+
+        const newScrollableElements = viewEl.querySelectorAll('[style*="overflow"], [class*="scroll"]');
+        newScrollableElements.forEach((el, idx) => {
+          if (scrollStates[idx]) {
+            el.scrollTop = scrollStates[idx].scrollTop;
+            el.scrollLeft = scrollStates[idx].scrollLeft;
+          }
+        });
       }
     } else {
       viewEl.innerHTML = 'View not found';
@@ -443,6 +467,40 @@ try {
       const c = st.coins || 0;
       const formattedCoins = c >= 1000 ? Math.round(c).toLocaleString() : c % 1 === 0 ? String(c) : c.toFixed(2);
       if (coinEl.textContent !== formattedCoins) coinEl.textContent = formattedCoins;
+    }
+
+    // Surgical updates for AI Quant Bot tab telemetry without re-rendering view
+    const aiBotStatusEl = document.querySelector('[data-ai-bot-status-val]');
+    if (aiBotStatusEl) {
+      const active = !!st.aiCryptoBot?.enabled;
+      aiBotStatusEl.textContent = active ? 'Active & Trading' : 'Paused';
+      (aiBotStatusEl as HTMLElement).style.color = active ? 'var(--grn)' : 'var(--red)';
+    }
+    const aiDailyPnlEl = document.querySelector('[data-ai-daily-pnl-val]');
+    if (aiDailyPnlEl) {
+      const pnl = st.aiCryptoBot?.dailyProfitUsd || 0;
+      const text = `${pnl >= 0 ? '+' : ''}$${Math.round(pnl).toLocaleString()} USD`;
+      if (aiDailyPnlEl.textContent?.trim() !== text) {
+        aiDailyPnlEl.textContent = text;
+        (aiDailyPnlEl as HTMLElement).style.color = pnl >= 0 ? 'var(--grn)' : 'var(--red)';
+      }
+    }
+    const aiTotalPnlEl = document.querySelector('[data-ai-total-pnl-val]');
+    if (aiTotalPnlEl) {
+      const pnl = st.aiCryptoBot?.totalProfitUsd || 0;
+      const text = `${pnl >= 0 ? '+' : ''}$${Math.round(pnl).toLocaleString()} USD`;
+      if (aiTotalPnlEl.textContent?.trim() !== text) {
+        aiTotalPnlEl.textContent = text;
+        (aiTotalPnlEl as HTMLElement).style.color = pnl >= 0 ? 'var(--grn)' : 'var(--red)';
+      }
+    }
+    const aiPortfolioCashEl = document.querySelector('[data-ai-portfolio-cash-val]');
+    if (aiPortfolioCashEl) {
+      const cash = st.cryptoPortfolio?.cash || 10000;
+      const text = `$${Math.round(cash).toLocaleString()} USD`;
+      if (aiPortfolioCashEl.textContent?.trim() !== text) {
+        aiPortfolioCashEl.textContent = text;
+      }
     }
   }, 1000);
 } catch (e: any) {

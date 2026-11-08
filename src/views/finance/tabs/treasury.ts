@@ -36,6 +36,10 @@ export function renderTreasuryTab(S: any) {
         <div style="display:flex; flex-direction:column; gap:4px; font-size:11px;">
           <div style="font-size:9px; font-weight:800; color:var(--grn); text-transform:uppercase; margin-bottom:2px;">OPERATING REVENUE INFLOWS</div>
           <div style="display:flex; justify-content:space-between; color:var(--mu);">
+            <span>Expected Fleet Freight Operations</span>
+            <span style="color:var(--grn); font-weight:700;">+${fmt(pnl.expectedFreightInflowUsd)}/day</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; color:var(--mu);">
             <span>Terminal & Warehouse Cross-Docking</span>
             <span style="color:var(--tx); font-weight:700;">+${fmt(pnl.warehouseInflowUsd)}/day</span>
           </div>

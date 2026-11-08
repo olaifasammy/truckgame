@@ -34,6 +34,8 @@ export interface AiCryptoBotState {
   strategy: 'conservative' | 'momentum' | 'high_volatility';
   allocatedUsd: number;
   totalProfitUsd: number;
+  dailyProfitUsd: number;
+  lastResetTime?: number;
   lastTradeTimestamp: number;
   tradeHistory: AiCryptoTradeRecord[];
   smartXp: number;
@@ -91,15 +93,16 @@ export function getQuantSmartLevelInfo(botState?: any): QuantSmartLevelInfo {
   const profitable = sells.filter((t: any) => (t.profitUsd || 0) > 0);
   const winRatePct = sells.length > 0 ? Math.round((profitable.length / sells.length) * 100) : 100;
   
-  // Mathematical Convergence Loss from Neural Network
-  let loss = quantModel.totalLoss;
-  if (!Number.isFinite(loss) || loss <= 0) {
-    loss = botState?.weights?.totalLoss || 0.038;
-  }
-  loss = Math.max(0.002, Math.min(0.48, loss));
-
   // Total training iterations completed autonomously
   const epochs = (quantModel.trainingIterations || botState?.weights?.trainingIterations || 42) + (botState?.smartXp || 50);
+
+  // Mathematical Convergence Loss: Dynamically decays as training epochs accumulate and trades succeed
+  let loss = quantModel.totalLoss;
+  const dynamicDecayLoss = Math.max(0.003, 0.25 / (1 + (epochs / 30) + (winRatePct / 15)));
+  if (!Number.isFinite(loss) || loss <= 0 || loss > dynamicDecayLoss) {
+    loss = dynamicDecayLoss;
+  }
+  loss = Math.max(0.002, Math.min(0.48, loss));
 
   // Precision derived directly from loss convergence and historical accuracy
   const accuracyPct = Math.min(99.6, Math.max(65.0, Math.round((100 - (loss * 115) + (winRatePct * 0.04)) * 10) / 10));
@@ -195,16 +198,60 @@ export function withdrawAiQuantCapital(S: any, amountUsd: number): { success: bo
     return { success: false, message: 'AI Bot portfolio uninitialized' };
   }
 
-  const availableCash = S.cryptoPortfolio.cash || 0;
-  if (availableCash < amountUsd) {
-    return { success: false, message: `Cannot withdraw $${amountUsd.toLocaleString()}: Only $${availableCash.toLocaleString()} available in bot cash balance.` };
+  // 1. Calculate total portfolio net worth (Cash + Holdings USD)
+  let cash = S.cryptoPortfolio.cash || 0;
+  let holdingsValue = 0;
+  const holdings = S.cryptoPortfolio.holdings || {};
+
+  for (const [assetId, qty] of Object.entries(holdings)) {
+    const q = qty as number;
+    if (q > 0) {
+      const market = getCryptoMarketData(assetId, '15m');
+      const price = market?.sellPrice || market?.price || 1;
+      holdingsValue += q * price;
+    }
   }
 
-  S.cryptoPortfolio.cash -= amountUsd;
+  const totalPortfolioNetWorth = cash + holdingsValue;
+  if (totalPortfolioNetWorth < amountUsd) {
+    return { success: false, message: `Cannot withdraw $${amountUsd.toLocaleString()}: Total portfolio value is only $${Math.round(totalPortfolioNetWorth).toLocaleString()}` };
+  }
+
+  // 2. If cash is insufficient, auto-liquidate holdings to free up cash for withdrawal
+  if (cash < amountUsd) {
+    let needed = amountUsd - cash;
+    for (const [assetId, qty] of Object.entries(holdings)) {
+      if (needed <= 0) break;
+      const q = qty as number;
+      if (q > 0) {
+        const market = getCryptoMarketData(assetId, '15m');
+        const price = market?.sellPrice || market?.price || 1;
+        const holdingUsd = q * price;
+        const takeUsd = Math.min(needed, holdingUsd);
+        const tokensToSell = takeUsd / price;
+
+        holdings[assetId] = Math.max(0, q - tokensToSell);
+        if (holdings[assetId] <= 0.000001) {
+          delete holdings[assetId];
+          if (S.aiCryptoBot.openPositions) delete S.aiCryptoBot.openPositions[assetId];
+        }
+
+        cash += takeUsd;
+        needed -= takeUsd;
+      }
+    }
+  }
+
+  // 3. Final verification and transfer
+  if (cash < amountUsd) {
+    return { success: false, message: 'Insufficient liquidity after liquidation' };
+  }
+
+  S.cryptoPortfolio.cash = cash - amountUsd;
   S.aiCryptoBot.allocatedUsd = Math.max(0, (S.aiCryptoBot.allocatedUsd || 0) - amountUsd);
   S.money = (S.money || 0) + amountUsd;
 
-  return { success: true, message: `Successfully withdrew $${amountUsd.toLocaleString()} USD back to company treasury` };
+  return { success: true, message: `Successfully withdrew $${amountUsd.toLocaleString()} USD back to company treasury (with auto-liquidation)` };
 }
 
 /**
@@ -276,8 +323,17 @@ function checkAutonomousLevelEvolution(S: any, bot: AiCryptoBotState, previousLe
  */
 export function runAiCryptoTradingTick(S: any): { executed: boolean; message: string } {
   if (!S.aiCryptoBot) {
-    S.aiCryptoBot = { enabled: false, strategy: 'momentum', allocatedUsd: 10000, totalProfitUsd: 0, lastTradeTimestamp: 0, tradeHistory: [], smartXp: 50, smartLevel: 1 };
+    S.aiCryptoBot = { enabled: false, strategy: 'momentum', allocatedUsd: 10000, totalProfitUsd: 0, dailyProfitUsd: 0, lastTradeTimestamp: 0, tradeHistory: [], smartXp: 50, smartLevel: 1, lastResetTime: Date.now() };
   }
+  if (S.aiCryptoBot.dailyProfitUsd === undefined) S.aiCryptoBot.dailyProfitUsd = 0;
+  if (!S.aiCryptoBot.lastResetTime) S.aiCryptoBot.lastResetTime = Date.now();
+
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  if (Date.now() - S.aiCryptoBot.lastResetTime >= MS_PER_DAY) {
+    S.aiCryptoBot.dailyProfitUsd = 0;
+    S.aiCryptoBot.lastResetTime = Date.now();
+  }
+
   if (!S.aiCryptoBot.tradeHistory) S.aiCryptoBot.tradeHistory = [];
   if (!S.aiCryptoBot.openPositions) S.aiCryptoBot.openPositions = {};
 
@@ -357,15 +413,28 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
   const baseThreshold = bot.strategy === 'conservative' ? 0.55 : bot.strategy === 'momentum' ? 0.45 : 0.35;
   const smartDiscount = (smartInfo.level - 1) * 0.015;
   const buyThreshold = Math.max(0.25, baseThreshold - smartDiscount);
-  const sellThreshold = 0.65;
+  const sellThreshold = 0.58; // Balanced sell threshold so bot actively takes profit and keeps trading
+
+  // Long-Term Value HODL / Appreciation Strategy Check:
+  // If coin is in strong uptrend and position is very fresh (< 5 mins), AI holds briefly; otherwise takes profit
+  const openPos = bot.openPositions[asset.id];
+  const positionAgeMs = openPos ? Date.now() - openPos.time : 0;
+  const isStrongUptrend = market.change24h > 3.0;
+  const shouldHoldForAppreciation = isStrongUptrend && positionAgeMs < 300000 && dipRatio < 0.70;
+
+  // Auto-liquidity rebalance: If cash is very low (< $300) and we have holdings, prioritize taking profit to keep trading active
+  const needsLiquidity = (S.cryptoPortfolio.cash || 0) < 300 && holdings > 0;
 
   let actionTaken = false;
   let msg = '';
 
-  if (buyUrgencyScore >= buyThreshold && S.cryptoPortfolio.cash >= 500) {
-    // BUY ON DIP
-    const tradeUsd = Math.min(S.cryptoPortfolio.cash, Math.min(12000, S.cryptoPortfolio.cash * 0.6));
-    if (tradeUsd >= 200) {
+  if (buyUrgencyScore >= buyThreshold && S.cryptoPortfolio.cash >= 300) {
+    // BUY ON DIP (Aggressive high-conviction capital allocation scaled by Smart Level & Intensity)
+    const intensity = bot.intensity || S.aiState?.filters?.intensity || 'balanced';
+    const capitalMultiplier = intensity === 'conservative' ? 0.45 : intensity === 'aggressive' ? 0.95 : 0.70;
+    const maxTradeAlloc = 25000 + (smartInfo.level * 4000);
+    const tradeUsd = Math.min(S.cryptoPortfolio.cash, Math.min(maxTradeAlloc, S.cryptoPortfolio.cash * capitalMultiplier));
+    if (tradeUsd >= 150) {
       S.cryptoPortfolio.cash -= tradeUsd;
       const tokensBought = tradeUsd / currentPrice;
       S.cryptoPortfolio.holdings[asset.id] = holdings + tokensBought;
@@ -395,21 +464,27 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
       if (bot.tradeHistory.length > 50) bot.tradeHistory.pop();
 
       actionTaken = true;
-      msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) BOUGHT THE DIP! Got ${tokensBought.toFixed(4)} ${asset.symbol} for $${tradeUsd.toLocaleString()} @ $${currentPrice.toLocaleString()} [Score: ${Math.round(buyUrgencyScore * 100)}% · Neural Conf: ${Math.round(neuralScore * 100)}%]`;
+      msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) ACCUMULATED ${asset.symbol}: Bought ${tokensBought.toFixed(4)} tokens for $${tradeUsd.toLocaleString()} @ $${currentPrice.toLocaleString()} [HODL Strategy Enabled]`;
     }
-  } else if ((dipRatio >= sellThreshold || holdingValueUsd > 15000) && holdings > 0) {
-    // TAKE PROFIT ON PEAK
-    const openPos = bot.openPositions[asset.id];
+  } else if ((needsLiquidity || (!shouldHoldForAppreciation && (dipRatio >= sellThreshold || holdingValueUsd > 8000))) && holdings > 0) {
+    // TAKE PROFIT ON PEAK (With smart level profit amplification & arbitrage alpha)
     const buyPrice = openPos?.buyPrice || (currentPrice * 0.95);
     const sellUsd = holdingValueUsd;
     const costBasis = holdings * buyPrice;
-    const realizedProfit = Math.max(10, sellUsd - costBasis);
+    const rawProfit = Math.max(50, sellUsd - costBasis);
+    
+    // Neural Alpha Multiplier: Higher smart levels & aggressive intensity leverage arbitrage precision for larger payouts
+    const intensity = bot.intensity || S.aiState?.filters?.intensity || 'balanced';
+    const intensityAlphaBonus = intensity === 'conservative' ? 0.0 : intensity === 'aggressive' ? 0.35 : 0.15;
+    const alphaMultiplier = 1.0 + ((smartInfo.level - 1) * 0.22) + (asset.id === 'flb' ? 0.35 : 0.1) + intensityAlphaBonus;
+    const realizedProfit = Math.round(rawProfit * alphaMultiplier);
 
-    S.cryptoPortfolio.cash += sellUsd;
+    S.cryptoPortfolio.cash += sellUsd + (realizedProfit - rawProfit); // Add arbitrage alpha to cash
     S.cryptoPortfolio.holdings[asset.id] = 0;
     delete bot.openPositions[asset.id];
 
     bot.totalProfitUsd += realizedProfit;
+    bot.dailyProfitUsd = (bot.dailyProfitUsd || 0) + realizedProfit;
     bot.lastTradeTimestamp = Date.now();
 
     // ONLINE REINFORCEMENT LEARNING VIA BACKPROPAGATION:
@@ -436,8 +511,14 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
     if (bot.tradeHistory.length > 50) bot.tradeHistory.pop();
 
     actionTaken = true;
-    msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) TOOK PROFIT! Sold all ${asset.symbol} for $${sellUsd.toLocaleString()} (+$${realizedProfit.toLocaleString()} PnL · +${xpGain} Neural XP)`;
+    msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) REALIZED GAINS: Sold ${asset.symbol} for $${sellUsd.toLocaleString()} (+$${realizedProfit.toLocaleString()} PnL)`;
+  } else if (holdings > 0 && shouldHoldForAppreciation) {
+    // HODL Logging or silence for clean telemetry
+    msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) HODLing ${asset.symbol}: Strong uptrend detected (+${market.change24h}%). Holding for long-term compounding value.`;
   }
+
+  // Continuous training epoch advancement per tick
+  bot.smartXp = (bot.smartXp || 50) + 1;
 
   // Save updated neural weights
   bot.weights = quantModel.toJSON();

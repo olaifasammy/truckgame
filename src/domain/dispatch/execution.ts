@@ -85,15 +85,23 @@ export const DispatchExecution = {
     const duration = tripMs(totalKm, st.topSpeed, routeEnv);
 
     const isHazmatJob = cargo?.isHazmat || (cargo?.trailer === 'tanker') || (cargo?.trailer === 'hazmat');
+    const trailerType = cargo?.trailer || (j as any).trailer || 'curtain';
     let previousTrailer = null;
-    if (isHazmatJob) {
-      if (t.trailer && t.trailer !== cargo?.trailer) {
+
+    if (t.trailer !== trailerType) {
+      if (t.trailer) {
         if (!S.trailers) S.trailers = [];
         S.trailers.push(t.trailer);
         previousTrailer = t.trailer;
-        pushNote(S, `Unhitched ${TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer} for Shipper Tanker manifest.`, { title: 'DEPOT STORAGE', type: 'ops' });
       }
-      t.trailer = (cargo?.trailer as any) || 'hazmat';
+      const storageIdx = (S.trailers || []).indexOf(trailerType);
+      if (storageIdx >= 0) {
+        S.trailers.splice(storageIdx, 1);
+      }
+      t.trailer = trailerType;
+      pushNote(S, `Coupled ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType} for dispatch manifest.`, { title: 'TRAILER COUPLED', type: 'ops' });
+    } else {
+      previousTrailer = t.trailer;
     }
 
     S.jobs = S.jobs.filter((x: any) => x.id !== jobId);

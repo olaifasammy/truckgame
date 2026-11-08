@@ -236,18 +236,24 @@ export class FreightEngine {
     if (!S.jobs) S.jobs = [];
     if (!S.auctions) S.auctions = [];
 
-    // Ensure 2 to 3 live auctions
+    const unlockedRegions: RegionName[] = (S?.unlockedRegions && S.unlockedRegions.length > 0)
+      ? S.unlockedRegions
+      : ['Africa'];
+
+    // Ensure 2 to 3 live auctions, distributed across unlocked regions
     const targetAuctions = 2 + Math.floor(Math.random() * 2); 
     while (S.auctions.length < targetAuctions) {
       const customDuration = (75 + Math.floor(Math.random() * 60)) * 1000;
+      const forceRegion = unlockedRegions[Math.floor(Math.random() * unlockedRegions.length)];
       this.generate(S, { 
         isAuction: true, 
         vip: Math.random() < 0.25,
-        auctionDuration: customDuration 
+        auctionDuration: customDuration,
+        forceRegion
       });
     }
 
-    // Ensure jobs board has enough contracts
+    // Ensure jobs board has enough contracts, guaranteeing fair multi-region representation
     const prog = S ? getCompanyProgression(S) : { tier: 0 };
     const isVipCarrier = prog.tier >= 3;
     
@@ -261,8 +267,21 @@ export class FreightEngine {
       }
     }
 
+    // Ensure each unlocked region has balanced jobs on the board simultaneously
+    for (const region of unlockedRegions) {
+      const regionJobsCount = S.jobs.filter((j: any) => {
+        const loc = LOCATIONS[j.from];
+        return loc && loc.region === region;
+      }).length;
+
+      if (regionJobsCount < 2) {
+        S.jobs.push(this.generate(S, { vip: isVipCarrier && Math.random() < 0.15, forceRegion: region }));
+      }
+    }
+
     while (S.jobs.length < count) {
-      S.jobs.push(this.generate(S, { vip: isVipCarrier && Math.random() < 0.15 }));
+      const forceRegion = unlockedRegions[Math.floor(Math.random() * unlockedRegions.length)];
+      S.jobs.push(this.generate(S, { vip: isVipCarrier && Math.random() < 0.15, forceRegion }));
     }
   }
 

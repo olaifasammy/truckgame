@@ -30,6 +30,7 @@ export interface AiAddonPlan {
 export interface AiFilterConfig {
   enabled: boolean;
   profile: AiDispatchProfile;
+  intensity: 'conservative' | 'balanced' | 'aggressive';
   minPayoutUsd: number;
   minYieldUsdPerKm: number;
   maxDistanceKm: number;

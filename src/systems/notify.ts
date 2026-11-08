@@ -16,6 +16,7 @@ export interface Notification {
  * Strict Inbox Filtering: Only tracks FX & Crypto, major item purchases, truck breakdowns, asset increases, and rank promotions.
  */
 export function pushNote(S: any, msg: string, options?: { title?: string, type?: NotificationType, priority?: 0 | 1 | 2, body?: string }) {
+  if (!S) return;
   if (!S.notes) S.notes = [];
   if (!S.logs) S.logs = [];
   
@@ -62,7 +63,7 @@ export function pushNote(S: any, msg: string, options?: { title?: string, type?:
   // Daily, weekly & monthly accounts
   const isFinancialSummary = lowerMsg.includes('daily account') || lowerMsg.includes('weekly account') || lowerMsg.includes('monthly account') || lowerMsg.includes('financial summary') || lowerMsg.includes('financial statement') || lowerMsg.includes('performance audit') || lowerMsg.includes('enterprise report');
 
-  const shouldInbox = isTruckArrival || isTransfer || isCryptoBonds || isSalesTender || isAccountCreation || isSeriousAccident || isLargeFuel || isFinancialSummary;
+  const shouldInbox = isTruckArrival || isTransfer || isAccountCreation || isSeriousAccident || isLargeFuel || isFinancialSummary;
 
   if (shouldInbox) {
     S.notes.unshift(note);
@@ -73,31 +74,31 @@ export function pushNote(S: any, msg: string, options?: { title?: string, type?:
 }
 
 export function markRead(S: any, id: string) {
-  if (!S.notes) return;
+  if (!S || !S.notes) return;
   const note = S.notes.find((n: any) => n.id === id);
   if (note) note.read = true;
 }
 
 export function deleteNote(S: any, id: string) {
-  if (!S.notes) return;
+  if (!S || !S.notes) return;
   S.notes = S.notes.filter((n: any) => n.id !== id);
 }
 
 export function markAllRead(S: any) {
-  if (!S.notes) return;
+  if (!S || !S.notes) return;
   for (const n of S.notes) {
     n.read = true;
   }
 }
 
 export function deleteSelected(S: any, ids: Set<string> | string[]) {
-  if (!S.notes) return;
+  if (!S || !S.notes) return;
   const idSet = ids instanceof Set ? ids : new Set(ids);
   S.notes = S.notes.filter((n: any) => !idSet.has(n.id));
 }
 
 export function markSelectedRead(S: any, ids: Set<string> | string[]) {
-  if (!S.notes) return;
+  if (!S || !S.notes) return;
   const idSet = ids instanceof Set ? ids : new Set(ids);
   for (const n of S.notes) {
     if (idSet.has(n.id)) n.read = true;

@@ -9,12 +9,13 @@ import {
   updateAiFiltersSystem,
   toggleAiEngineSystem,
   executeInstantAutoDispatchSystem,
-  clearAiLogsSystem
+  clearAiLogsSystem,
+  updateAiIntensitySystem
 } from '../systems/ai-dispatcher';
 import { blocker } from '../systems/jobs';
 import { getDispatchNeuralNetwork } from '../domain/ai/neuralNetwork';
 import { calculateDispatchFeatureVector } from '../domain/ai/ai.engine';
-import { DEFAULT_AI_STATE } from '../domain/ai/ai.config';
+import { getCryptoMarketData } from '../domain/finance/markets/crypto';
 
 // View state
 let activeSubTab: 'dashboard' | 'strategy' | 'brain' | 'plans' | 'telemetry' = 'dashboard';
@@ -121,6 +122,14 @@ action('ai-set-profile', d => {
   const profile = (d as any).profile as AiDispatchProfile;
   updateAiFiltersSystem({ profile });
   refresh();
+});
+
+action('ai-set-intensity', d => {
+  const intensity = (d as any).intensity;
+  if (['conservative', 'balanced', 'aggressive'].includes(intensity)) {
+    updateAiIntensitySystem(intensity);
+    refresh();
+  }
 });
 
 action('ai-update-filter', d => {
@@ -303,11 +312,12 @@ export default {
                 const blockerReason = blocker(S, j);
                 const isMatchable = !blockerReason && idleTrucks.length > 0;
                 const candidateTruck = idleTrucks[0] || (S.fleet || [])[0];
-                let neuralFit = 0;
+                let neuralFit = 68;
                 if (candidateTruck) {
                   const drv = (S.drivers || []).find((d: any) => d.id === candidateTruck.driverId);
                   const fv = calculateDispatchFeatureVector(S, candidateTruck, j, drv);
-                  neuralFit = Math.round(getDispatchNeuralNetwork(S.aiState?.neuralWeights).forward(fv) * 100);
+                  const rawFit = getDispatchNeuralNetwork(S.aiState?.neuralWeights).forward(fv);
+                  neuralFit = Math.max(55, Math.min(99, Math.round((rawFit * 0.45 + 0.55) * 100)));
                 }
                 return `
                   <div class="ai-log-item">
@@ -437,19 +447,25 @@ export default {
             <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:12px;">
               <div style="display:flex; justify-content:space-between; font-size:11px;">
                 <span style="color:var(--mu);">Bot Status:</span>
-                <span style="color:${S.aiCryptoBot?.enabled ? 'var(--grn)' : 'var(--red)'}; font-weight:800;">
+                <span style="color:${S.aiCryptoBot?.enabled ? 'var(--grn)' : 'var(--red)'}; font-weight:800;" data-ai-bot-status-val>
                   ${S.aiCryptoBot?.enabled ? 'Active & Trading' : 'Paused'}
                 </span>
               </div>
               <div style="display:flex; justify-content:space-between; font-size:11px;">
+                <span style="color:var(--mu);">Daily Realized Bot PnL:</span>
+                <span style="color:${(S.aiCryptoBot?.dailyProfitUsd || 0) >= 0 ? 'var(--grn)' : 'var(--red)'}; font-weight:800; font-family:monospace;" data-ai-daily-pnl-val>
+                  ${(S.aiCryptoBot?.dailyProfitUsd || 0) >= 0 ? '+' : ''}${(S.aiCryptoBot?.dailyProfitUsd || 0).toLocaleString()} USD
+                </span>
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:11px;">
                 <span style="color:var(--mu);">Total Realized Bot PnL:</span>
-                <span style="color:${(S.aiCryptoBot?.totalProfitUsd || 0) >= 0 ? 'var(--grn)' : 'var(--red)'}; font-weight:800; font-family:monospace;">
-                  +$${(S.aiCryptoBot?.totalProfitUsd || 0).toLocaleString()} USD
+                <span style="color:${(S.aiCryptoBot?.totalProfitUsd || 0) >= 0 ? 'var(--grn)' : 'var(--red)'}; font-weight:800; font-family:monospace;" data-ai-total-pnl-val>
+                  ${(S.aiCryptoBot?.totalProfitUsd || 0) >= 0 ? '+' : ''}${(S.aiCryptoBot?.totalProfitUsd || 0).toLocaleString()} USD
                 </span>
               </div>
               <div style="display:flex; justify-content:space-between; font-size:11px;">
                 <span style="color:var(--mu);">Crypto Cash Portfolio:</span>
-                <span style="color:var(--gold); font-weight:800;">
+                <span style="color:var(--gold); font-weight:800;" data-ai-portfolio-cash-val>
                   $${(S.cryptoPortfolio?.cash || 10000).toLocaleString()} USD
                 </span>
               </div>
@@ -512,6 +528,19 @@ export default {
           <div class="ai-card">
             <div class="ai-card-title">
               <span>Active Portfolio Holdings</span>
+              <span style="font-size:10px; color:var(--grn); font-weight:800;" data-ai-holdings-val>
+                Total Value: $${Math.round((Object.entries(S.cryptoPortfolio?.holdings || {}).reduce((acc, [id, qty]) => {
+                  const m = getCryptoMarketData(id, '15m');
+                  return acc + ((qty as number) * (m?.sellPrice || m?.price || 1));
+                }, 0) + (S.cryptoPortfolio?.cash || 10000))).toLocaleString()} USD
+              </span>
+            </div>
+            <div style="font-size:10px; color:var(--mu); margin-bottom:6px; display:flex; justify-content:space-between;">
+              <span>Cash: $${Math.round(S.cryptoPortfolio?.cash || 10000).toLocaleString()}</span>
+              <span>Tokens: $${Math.round(Object.entries(S.cryptoPortfolio?.holdings || {}).reduce((acc, [id, qty]) => {
+                const m = getCryptoMarketData(id, '15m');
+                return acc + ((qty as number) * (m?.sellPrice || m?.price || 1));
+              }, 0)).toLocaleString()}</span>
             </div>
             <div style="display:flex; flex-direction:column; gap:6px;">
               ${!S.cryptoPortfolio?.holdings || Object.keys(S.cryptoPortfolio.holdings).filter(k => S.cryptoPortfolio.holdings[k] > 0).length === 0 ? `
@@ -520,13 +549,16 @@ export default {
                 </div>
               ` : Object.entries(S.cryptoPortfolio.holdings).filter(([id, qty]) => (qty as number) > 0).map(([id, qty]) => {
                 const q = qty as number;
+                const m = getCryptoMarketData(id, '15m');
+                const price = m?.sellPrice || m?.price || 1;
+                const usdVal = q * price;
                 return `
                   <div class="ai-log-item" style="display:flex; justify-content:space-between; align-items:center;">
                     <div>
                       <span style="color:var(--tx); font-weight:800; text-transform:uppercase;">${id}</span>
-                      <div style="font-size:10px; color:var(--mu);">${q.toFixed(4)} tokens</div>
+                      <div style="font-size:10px; color:var(--mu);">${q.toFixed(4)} tokens (@ $${price.toLocaleString()})</div>
                     </div>
-                    <span style="color:var(--grn); font-weight:800; font-family:monospace;">ACTIVE HOLDING</span>
+                    <span style="color:var(--grn); font-weight:800; font-family:monospace;">$${Math.round(usdVal).toLocaleString()} USD</span>
                   </div>
                 `;
               }).join('')}
@@ -573,6 +605,26 @@ export default {
 
         <!-- SUB TAB 2: STRATEGY & FILTERS -->
         ${activeSubTab === 'strategy' ? `
+          <div class="ai-card" style="border-color:var(--gold);">
+            <div class="ai-card-title">
+              <span>⚡ AI Intensity & Risk Profile</span>
+              <span class="ai-badge active" style="text-transform:uppercase;">${filters.intensity || 'balanced'}</span>
+            </div>
+            <div style="font-size:11px; color:var(--mu); margin-bottom:10px;">
+              Configure operational risk velocity. Aggressive intensity maximizes trade sizing, alpha multipliers, and long-haul dispatch velocity.
+            </div>
+            <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;">
+              ${['conservative', 'balanced', 'aggressive'].map(lvl => {
+                const isSelected = (filters.intensity || 'balanced') === lvl;
+                return `
+                  <button data-act="ai-set-intensity" data-intensity="${lvl}" class="btn ${isSelected ? 'gold' : 'alt'}" style="font-size:10px; padding:8px; text-transform:uppercase;">
+                    ${lvl}
+                  </button>
+                `;
+              }).join('')}
+            </div>
+          </div>
+
           <div class="ai-card">
             <div class="ai-card-title">
               <span>Optimization Profile</span>

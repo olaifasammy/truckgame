@@ -127,7 +127,7 @@ export function renderExchangeTab(S: any) {
                 </span>
               </div>
               <div style="font-size:9px; color:var(--mu); margin-top:2px;">
-                Neural Precision: <strong style="color:var(--grn);">${quantSmart.accuracyPct}%</strong> · Loss: <strong style="color:#38bdf8; font-family:monospace;">${quantSmart.loss.toFixed(4)}</strong> · Win Rate: <strong style="color:var(--gold);">${quantSmart.winRatePct}%</strong> · Realized PnL: <strong style="color:var(--grn); font-family:monospace;">+$${(S.aiCryptoBot?.totalProfitUsd || 0).toLocaleString()} USD</strong> · <span style="color:var(--mu); font-family:monospace;">IQ ${quantSmart.iqScore} · Autonomous</span>
+                Neural Precision: <strong style="color:var(--grn);">${quantSmart.accuracyPct}%</strong> · Loss: <strong style="color:#38bdf8; font-family:monospace;">${quantSmart.loss.toFixed(4)}</strong> · Win Rate: <strong style="color:var(--gold);">${quantSmart.winRatePct}%</strong> · Daily PnL: <strong style="color:${(S.aiCryptoBot?.dailyProfitUsd || 0) >= 0 ? 'var(--grn)' : 'var(--red)'}; font-family:monospace;">+$${(S.aiCryptoBot?.dailyProfitUsd || 0).toLocaleString()}</strong> · Total PnL: <strong style="color:var(--grn); font-family:monospace;">+$${(S.aiCryptoBot?.totalProfitUsd || 0).toLocaleString()} USD</strong> · <span style="color:var(--mu); font-family:monospace;">IQ ${quantSmart.iqScore} · Autonomous</span>
               </div>
             </div>
           </div>

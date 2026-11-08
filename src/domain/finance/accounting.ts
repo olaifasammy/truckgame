@@ -67,6 +67,7 @@ export interface IncomeStatementMetrics {
   freightRevenueUsd: number;
   warehouseInflowUsd: number;
   subcontractInflowUsd: number;
+  expectedFreightInflowUsd: number;
   totalGrossRevenueUsd: number;
   
   driverPayrollUsd: number;
@@ -285,7 +286,12 @@ export function calculateIncomeStatement(S: any): IncomeStatementMetrics {
   const warehouseInflowUsd = (wh.cross_docking ? 1200 : 0) + (wh.gantry_crane ? 600 : 0);
   const subcontractCount = (S.subcontractedTrucks || []).length;
   const subcontractInflowUsd = subcontractCount * 1800;
-  const totalGrossRevenueUsd = freightRevenueUsd + warehouseInflowUsd + subcontractInflowUsd;
+  
+  // Expected daily freight operations revenue based on active fleet size (~$3,500/day per operating rig)
+  const activeFleetCount = (S.fleet || []).filter((t: any) => t.status !== 'expired').length;
+  const expectedFreightInflowUsd = activeFleetCount * 3500;
+
+  const totalGrossRevenueUsd = freightRevenueUsd + warehouseInflowUsd + subcontractInflowUsd + expectedFreightInflowUsd;
 
   // Daily recurring outflows & expenses
   const driverPayrollUsd = (S.drivers || []).reduce((acc: number, d: any) => acc + (d.salary || 250), 0);
@@ -307,8 +313,8 @@ export function calculateIncomeStatement(S: any): IncomeStatementMetrics {
   const operatingMarginPct = totalGrossRevenueUsd > 0 ? (netOperatingIncomeUsd / totalGrossRevenueUsd) * 100 : 0;
 
   // Daily Cashflow Runway
-  const dailyInflow = warehouseInflowUsd + subcontractInflowUsd;
-  const dailyOutflow = driverPayrollUsd + insuranceExpenseUsd + debtServiceUsd + leaseExpenseUsd;
+  const dailyInflow = warehouseInflowUsd + subcontractInflowUsd + expectedFreightInflowUsd;
+  const dailyOutflow = driverPayrollUsd + insuranceExpenseUsd + debtServiceUsd + leaseExpenseUsd + fuelExpenseUsd + maintenanceExpenseUsd;
   const netDailyCashflowUsd = dailyInflow - dailyOutflow;
   const runwayDays = netDailyCashflowUsd < 0 ? Math.floor((S.money || 0) / Math.abs(netDailyCashflowUsd)) : null;
 
@@ -316,6 +322,7 @@ export function calculateIncomeStatement(S: any): IncomeStatementMetrics {
     freightRevenueUsd,
     warehouseInflowUsd,
     subcontractInflowUsd,
+    expectedFreightInflowUsd,
     totalGrossRevenueUsd,
     driverPayrollUsd,
     fuelExpenseUsd,

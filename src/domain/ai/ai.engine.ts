@@ -13,7 +13,7 @@ import { AiFilterConfig, AiLogEntry } from './ai.types';
 import { why, replenish } from '../../systems/jobs';
 import { distKm } from '../../systems/calc';
 import { CARGO_TYPES } from '../freight/cargo/registry';
-import { getDispatchNeuralNetwork } from './neuralNetwork';
+import { getDispatchNeuralNetwork, trainOnHistoricalLogs } from './neuralNetwork';
 import { DispatchExecution } from '../dispatch/execution';
 import { getCompanyProgression } from '../company/progression';
 import { isRegionUnlocked } from '../logistics/network';
@@ -93,10 +93,9 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
   const locTo = getLocationRecord(job.to);
   if (locFrom && !isRegionUnlocked(S as any, locFrom.region)) return -Infinity;
   if (locTo && !isRegionUnlocked(S as any, locTo.region)) return -Infinity;
-  if (locFrom && locTo && locFrom.region !== locTo.region) return -Infinity;
 
   const truckLoc = getLocationRecord(truck.loc);
-  if (truckLoc && locFrom && truckLoc.region !== locFrom.region) return -Infinity;
+  if (truckLoc && locFrom && !isRegionUnlocked(S as any, truckLoc.region)) return -Infinity;
 
   // 3. Domain legality check
   const truckWhyMsg = why(S, truck, job);
@@ -253,6 +252,7 @@ export function runAiAutoDispatch(S: any): { dispatchedCount: number; message: s
   let dispatchedCount = 0;
   const dispatchedJobIds = new Set<number>();
   const net = getDispatchNeuralNetwork(S.aiState?.neuralWeights);
+  trainOnHistoricalLogs(net, S);
 
   for (const truck of idleTrucks) {
     let bestJob: any = null;

@@ -6,6 +6,7 @@ import { PART_LABELS } from '../systems/calc';
 import { LOCATIONS } from '../data/world';
 import { renderDiagnosticTable } from './repair/diagnostic-table';
 import { VehicleMaintenance } from '../domain/trucks/maintenance';
+import { calculateRepairDurationMs, getPartEffectiveCost, startRepair } from '../systems/maintenance';
 import { FleetService } from '../application/services/fleet';
 import { GameState } from '../types/state';
 import { Truck } from '../domain/trucks/trucks.types';
