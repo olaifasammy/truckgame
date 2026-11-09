@@ -173,10 +173,18 @@ export default {
       return locFrom?.region === currentRegion || locTo?.region === currentRegion;
     });
 
-    // Sort: Auctions Won > Tenders > VIP > Rest
+    // Sort: Auctions Won > Return Hauls (To & Fro) for stationed trucks > Tenders > VIP > Rest
     filteredJobs.sort((a: any, b: any) => {
-      const score = (j: any) => (j.isAuctionWon ? 100 : j.tenderId ? 50 : j.vip ? 10 : 0);
-      return score(b) - score(a);
+      const aLocal = (S.fleet || []).some((t: any) => t.status === 'idle' && t.loc === a.from);
+      const bLocal = (S.fleet || []).some((t: any) => t.status === 'idle' && t.loc === b.from);
+      const score = (j: any, isLocal: boolean) => (
+        j.isAuctionWon ? 120 :
+        (isLocal ? 80 : 0) +
+        (j.isBackhaul ? 40 : 0) +
+        (j.tenderId ? 30 : 0) +
+        (j.vip ? 10 : 0)
+      );
+      return score(b, bLocal) - score(a, aLocal);
     });
 
     const prog = getCompanyProgression(S);

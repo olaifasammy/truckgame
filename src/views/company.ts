@@ -4,6 +4,7 @@ import { set, refresh } from '../core/store';
 import { fillPool } from '../systems/drivers';
 import { getCompanyProgression, renderProgressLogoRing, getBondRewardForTier } from '../domain/company/progression';
 import { CARGO_TYPES } from '../domain/freight/cargo/registry';
+import { renderCargoBadge } from '../domain/freight/cargo/cargo-svgs';
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { renderTelematicsOverlay } from './telematics-modal';
 import { getTruckTelematics, getDrivingStateBadge } from '../domain/trucks/trucks.telematics';
@@ -258,13 +259,16 @@ export default {
                 return `
                   <div style="background:#0f172a; border:1px solid ${telem.stateBadgeColor}80; border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                      <div style="min-width:0; flex:1;">
-                        <div style="display:flex; align-items:center; gap:6px;">
-                          <span style="font-size:12px; font-weight:900; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${cargoName}</span>
-                          ${getDrivingStateBadge(telem.state, true)}
-                        </div>
-                        <div style="font-size:10px; font-family:monospace; color:var(--gold); font-weight:800; margin-top:1px;">
-                          ${a.from} → ${a.to} <span style="color:var(--mu); font-weight:400;">(${a.km}km)</span>
+                      <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
+                        ${renderCargoBadge(a.cargoId || 'general_freight', { size: 30 })}
+                        <div style="min-width:0; flex:1;">
+                          <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="font-size:12px; font-weight:900; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${cargoName}</span>
+                            ${getDrivingStateBadge(telem.state, true)}
+                          </div>
+                          <div style="font-size:10px; font-family:monospace; color:var(--gold); font-weight:800; margin-top:1px;">
+                            ${a.from} → ${a.to} <span style="color:var(--mu); font-weight:400;">(${a.km}km)</span>
+                          </div>
                         </div>
                       </div>
                       <button class="btn alt" style="padding:4px 8px; font-size:9px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.3); display:flex; align-items:center; gap:4px; flex-shrink:0;" data-act="open-telematics" data-id="${a.truck}">

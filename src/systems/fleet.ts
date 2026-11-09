@@ -9,6 +9,7 @@ import { processScheduledRepair } from './maintenance';
 import { disc } from './perks';
 import { slots } from './offices';
 import { createTruck } from '../domain/trucks/trucks.physics';
+import { LOCATIONS } from '../data/world';
 
 export const FUEL_PRICE = 2.5;
 export const inspectCost = () => Math.round(500 * disc('scanner'));
@@ -133,7 +134,15 @@ export function transportInfo(S: any, t: any, city: string) {
   const healthValues = Object.values(t.components).map((c: any) => c.health);
   const avgHealth = healthValues.reduce((a, b) => a + b, 0) / healthValues.length;
   
-  const why = t.status !== 'idle' ? 'busy' : !t.driverId ? 'driver' : t.fluids.fuel < fuelNeeded ? 'fuel' : avgHealth < 20 ? 'cond' : null;
+  const locFrom = LOCATIONS[t.loc];
+  const locTo = LOCATIONS[city];
+  const isCrossContinent = locFrom && locTo && locFrom.region !== locTo.region;
+  
+  const why = t.status !== 'idle' ? 'busy' 
+    : isCrossContinent ? 'region'
+    : !t.driverId ? 'driver' 
+    : t.fluids.fuel < fuelNeeded ? 'fuel' 
+    : avgHealth < 20 ? 'cond' : null;
   return { km, fuel: fuelNeeded, ms: tripMs(km, st.topSpeed), why };
 }
 
@@ -141,7 +150,10 @@ export const transport = (id: number, city: string) => set(S => {
   const t = S.fleet.find((x: any) => x.id === id);
   if (!t) return;
   const i = transportInfo(S, t, city);
-  if (i.why) return toast('Truck cannot make this trip');
+  if (i.why) {
+    if (i.why === 'region') return toast('Cross-continental highway deadhead prohibited (inter-continental transit required)', 'err');
+    return toast('Truck cannot make this trip: ' + i.why, 'err');
+  }
   const now = Date.now();
   const st = stats(S, t);
   S.active.push({ id: S.nextId++, kind: 'move', cargo: 'Repositioning', from: t.loc, to: city, km: i.km, dh: 0, pay: 0, truck: id, start: now, end: now + tripMs(i.km, st.topSpeed) });

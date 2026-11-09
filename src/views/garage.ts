@@ -186,18 +186,21 @@ function panelHtml(S: GameState, t: Truck, busy: boolean) {
           <span style="font-size:9px; color:var(--mu); font-family:monospace;">BILL OF LADING TRANSIT</span>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; max-height:220px; overflow-y:auto; padding-right:2px;">
-          ${Object.keys(CITIES).filter(c => c !== t.loc).map(c => {
+          ${Object.keys(CITIES).filter(c => c !== t.loc && LOCATIONS[c]?.region === LOCATIONS[t.loc]?.region).map(c => {
             const i = transportInfo(S, t, c);
             const loc = LOCATIONS[c];
             return `
               <button class="btn alt" style="display:flex; flex-direction:column; align-items:flex-start; padding:8px 10px; text-align:left; border-radius:6px;" data-act="move" data-id="${t.id}" data-city="${c}" ${i.why ? 'disabled' : ''}>
-                <div style="font-size:11px; font-weight:800; color:var(--tx);">${loc?.name || c} <span style="font-size:8px; color:var(--gold); font-family:monospace;">[${loc?.region || 'Global'}]</span></div>
+                <div style="font-size:11px; font-weight:800; color:var(--tx);">${loc?.name || c} <span style="font-size:8px; color:var(--gold); font-family:monospace;">[${loc?.region || 'Regional'}]</span></div>
                 <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:2px;">
                   ${i.km} km · ETA ${dur(i.ms)}
                 </div>
               </button>
             `;
           }).join('')}
+        </div>
+        <div style="font-size:8px; color:var(--mu); font-family:monospace; margin-top:6px; text-align:center;">
+          ✓ Intra-regional highway transit only · Cross-continental highway deadhead prohibited
         </div>
       </div>
     `;

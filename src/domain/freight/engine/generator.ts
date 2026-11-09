@@ -23,7 +23,17 @@ export class FreightEngine {
    * - Bidding jobs: Exclusively high-paying contracts, scaling higher with VIP rank.
    * - Normal jobs: Modest, balanced payouts.
    */
-  static generate(S: any, options: { forceRegion?: RegionName, vip?: boolean, isAuction?: boolean, auctionDuration?: number, tenderId?: string } = {}): FreightJob | any {
+  static generate(S: any, options: { 
+    forceRegion?: RegionName; 
+    forceFrom?: string;
+    forceTo?: string;
+    isBackhaul?: boolean;
+    backhaulForTruckId?: number;
+    vip?: boolean; 
+    isAuction?: boolean; 
+    auctionDuration?: number; 
+    tenderId?: string; 
+  } = {}): FreightJob | any {
     const prog = S ? getCompanyProgression(S) : { tier: 0 };
     const vipLevel = prog.tier >= 3 ? (prog.tier - 2) : 0;
 
@@ -89,7 +99,9 @@ export class FreightEngine {
       : ['Africa'];
 
     let targetRegion: RegionName;
-    if (tender) {
+    if (options.forceFrom && LOCATIONS[options.forceFrom]) {
+      targetRegion = LOCATIONS[options.forceFrom].region;
+    } else if (tender) {
       targetRegion = unlockedRegions.includes('Europe') ? 'Europe' : unlockedRegions[0];
     } else if (options.forceRegion && unlockedRegions.includes(options.forceRegion)) {
       targetRegion = options.forceRegion;
@@ -122,8 +134,16 @@ export class FreightEngine {
     let from: string;
     let to: string;
 
-    // Freight contracts run between realistic regional cities (prioritizing owned terminal depots)
-    if (ownedHubsInRegion.length > 0 && Math.random() < 0.65) {
+    // Direct / Backhaul routing ("To & Fro" return freight)
+    if (options.forceFrom && LOCATIONS[options.forceFrom]) {
+      from = options.forceFrom;
+      const validDestinations = regionCities.filter(c => c !== from);
+      if (options.forceTo && LOCATIONS[options.forceTo] && LOCATIONS[options.forceTo].region === targetRegion && options.forceTo !== from) {
+        to = options.forceTo;
+      } else {
+        to = rnd(validDestinations.length ? validDestinations : regionCities);
+      }
+    } else if (ownedHubsInRegion.length > 0 && Math.random() < 0.65) {
       from = rnd(ownedHubsInRegion);
       const possibleDestinations = regionCities.filter(c => c !== from);
       to = rnd(possibleDestinations.length ? possibleDestinations : regionCities);
@@ -132,8 +152,8 @@ export class FreightEngine {
       const possibleDestinations = regionCities.filter(c => c !== from);
       to = rnd(possibleDestinations.length ? possibleDestinations : regionCities);
     } else {
-      from = 'LAGOS';
-      to = 'IBADAN';
+      from = regionCities[0] || 'LAGOS';
+      to = regionCities[1] || 'IBADAN';
     }
 
     // Authentic highway distance calculation
@@ -207,7 +227,9 @@ export class FreightEngine {
       },
       trailer: cargo.trailer,
       isShipperTanker: cargo.isHazmat && !ownedTrailers.has('hazmat'),
-      vip: !!options.vip
+      vip: !!options.vip,
+      isBackhaul: !!options.isBackhaul,
+      backhaulForTruckId: options.backhaulForTruckId
     };
 
     if (options.isAuction) {
@@ -264,6 +286,32 @@ export class FreightEngine {
         if (activeLoadsOnBoard < 1 && (tender.loadsRemaining || 0) > 0) {
           S.jobs.push(this.generate(S, { tenderId: tender.id }));
         }
+      }
+    }
+
+    // FLEET-AWARE "TO & FRO" OUTBOUND HAUL GUARANTEE:
+    // Guarantee that wherever a player's truck is currently stationed, there is at least one outbound contract
+    // so the truck can take a job from the place it took a job to ("to & fro") without empty deadheading!
+    const fleet = S.fleet || [];
+    for (const truck of fleet) {
+      if (!truck.loc || !LOCATIONS[truck.loc]) continue;
+      const truckRegion = LOCATIONS[truck.loc].region;
+      if (!unlockedRegions.includes(truckRegion)) continue;
+
+      const hasJobFromTruckLoc = S.jobs.some((j: any) => j.from === truck.loc);
+      if (!hasJobFromTruckLoc) {
+        const regionCities = Object.entries(LOCATIONS)
+          .filter(([k, loc]) => loc.region === truckRegion && k !== truck.loc)
+          .map(([k]) => k);
+        const returnDest = regionCities.length > 0 ? rnd(regionCities) : undefined;
+        
+        S.jobs.unshift(this.generate(S, {
+          forceRegion: truckRegion,
+          forceFrom: truck.loc,
+          forceTo: returnDest,
+          isBackhaul: true,
+          backhaulForTruckId: truck.id
+        }));
       }
     }
 

@@ -1,5 +1,6 @@
 import { ic } from '../../core/icons';
 import { CARGO_TYPES } from '../../domain/freight/cargo/registry';
+import { renderCargoBadge } from '../../domain/freight/cargo/cargo-svgs';
 import { COMPANIES } from '../../domain/freight/companies/registry';
 import { TRAILERS } from '../../domain/trucks/trucks.data';
 import { dur, fmt } from '../../core/ui';
@@ -25,9 +26,7 @@ export function renderAuctionCard(S: any, j: any) {
       <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
         <!-- Left: Icon & Auction Details -->
         <div style="display:flex; align-items:center; gap:8px; min-width:0;">
-          <div style="width:28px; height:28px; background:#080c16; border:1px solid var(--gold); border-radius:6px; display:grid; place-items:center; color:var(--gold); font-size:14px; flex-shrink:0;">
-            ${ic(cargo?.icon || 'box')}
-          </div>
+          ${renderCargoBadge(cargo?.id || auc.cargoId || 'general_freight', { size: 28, isAuctionWon: isWinning, isHazmat: cargo?.isHazmat, trailer: cargo?.trailer })}
           <div style="min-width:0;">
             <div style="display:flex; align-items:center; gap:6px;">
               <span style="font-weight:900; font-size:11px; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">

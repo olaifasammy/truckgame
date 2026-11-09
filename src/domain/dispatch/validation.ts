@@ -4,6 +4,7 @@ import { TRUCK_MODELS } from '../trucks/trucks.data';
 import { CARGO_TYPES } from '../freight/cargo/registry';
 import { hasLicense } from '../freight/licenses';
 import { FreightJob } from '../freight/types';
+import { LOCATIONS } from '../../data/world';
 
 /**
  * Validates if a truck and its assigned driver are eligible for a specific freight job.
@@ -21,6 +22,14 @@ export function getDispatchEligibilityError(
   if (truck.status !== 'idle') return 'Truck is busy';
   if ((state.subcontractedTrucks || []).includes(truck.id)) {
     return 'Truck is currently leased out on charter sub-contract';
+  }
+
+  // Cross-Continental Boundary Check (Constitution 6.4)
+  // Trucks cannot deadhead across oceans by highway (e.g. America to Europe/Africa).
+  const truckLoc = LOCATIONS[truck.loc];
+  const jobLoc = LOCATIONS[job.from];
+  if (truckLoc && jobLoc && truckLoc.region !== jobLoc.region) {
+    return `Cross-continental transit prohibited: Truck in ${truckLoc.name} (${truckLoc.region}) cannot service freight in ${jobLoc.name} (${jobLoc.region}).`;
   }
 
   // 2. Driver Assignment & Eligibility

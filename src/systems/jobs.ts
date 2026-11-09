@@ -55,7 +55,13 @@ export function blocker(S: GameState, j: any) {
   const locTo = LOCATIONS[j.to];
   if (locFrom && !isRegionUnlocked(S as any, locFrom.region)) return `Origin region (${locFrom.region}) locked.`;
   if (locTo && !isRegionUnlocked(S as any, locTo.region)) return `Destination region (${locTo.region}) locked.`;
-  if (!findTruck(S, j)) return 'No eligible idle truck found with required trailer/endorsements.';
+
+  const trucksInRegion = (S.fleet || []).filter((t: Truck) => LOCATIONS[t.loc]?.region === locFrom?.region);
+  if (trucksInRegion.length === 0) {
+    return `No tractors stationed in ${locFrom?.region || 'region'} (Cross-continental deadhead prohibited).`;
+  }
+
+  if (!findTruck(S, j)) return 'No eligible idle truck in region with required trailer/endorsements.';
   return null;
 }
 

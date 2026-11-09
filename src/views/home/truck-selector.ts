@@ -1,12 +1,15 @@
 import { action, toast, fmt } from '../../core/ui';
 import { refresh, set } from '../../core/store';
 import { CARGO_TYPES } from '../../domain/freight/cargo/registry';
+import { renderCargoBadge } from '../../domain/freight/cargo/cargo-svgs';
 import { TRUCK_MODELS, TRAILERS, TRAILER_PRICES } from '../../domain/trucks/trucks.data';
 import { TrailerType } from '../../domain/trucks/trucks.types';
 import { why, takeJob } from '../../systems/jobs';
 import { ic } from '../../core/icons';
 import { getDailyBidDispatchQuota } from '../../domain/freight/bids/quota';
 import { FREIGHT_LICENSES, hasLicense, buyLicense } from '../../domain/freight/licenses';
+import { distKm } from '../../systems/calc';
+import { LOCATIONS } from '../../data/world';
 
 export let activeSelectorJobId: number | null = null;
 
@@ -245,8 +248,15 @@ export function renderSelectorOverlay(S: any) {
   const missingLicense = requiredLicenseId && !hasLicense(S, requiredLicenseId) ? FREIGHT_LICENSES[requiredLicenseId] : null;
 
   const fleet = S.fleet || [];
-  // Show only idle tractors, but include currently matched tractor if user re-opens
-  const compatibleFleet = fleet.filter((t: any) => t.status === 'idle' && !why(S, t, job));
+  // Show only idle tractors in this continent/region, prioritized by proximity (0 km deadhead first)
+  const compatibleFleet = fleet
+    .filter((t: any) => t.status === 'idle' && !why(S, t, job))
+    .sort((a: any, b: any) => {
+      const aAtLoc = a.loc === job.from ? 1 : 0;
+      const bAtLoc = b.loc === job.from ? 1 : 0;
+      if (aAtLoc !== bAtLoc) return bAtLoc - aAtLoc;
+      return distKm(a.loc, job.from) - distKm(b.loc, job.from);
+    });
   
   let existing = document.getElementById('truck-selector-overlay');
   if (!existing) {
@@ -268,22 +278,27 @@ export function renderSelectorOverlay(S: any) {
       <div style="padding:14px 18px; border-bottom:1px solid rgba(255,255,255,0.08); background:#060a14; position:relative; flex-shrink:0;">
         <button data-act="close-truck-selector" style="position:absolute; top:12px; right:12px; background:rgba(255,255,255,0.08); border:none; color:var(--mu); font-size:16px; cursor:pointer; width:30px; height:30px; border-radius:6px; display:grid; place-items:center; z-index:10; transition:background 0.2s;">✕</button>
         
-        <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase; font-family:monospace; letter-spacing:0.8px; margin-bottom:2px;">
-          DISPATCH TRACTOR SELECTION
-        </div>
-        <h3 style="margin:0 0 4px; font-size:16px; color:var(--tx); font-weight:900; padding-right:32px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-          ${cargo?.name || 'Commercial Freight Contract'}
-        </h3>
-        <div style="font-size:11px; color:var(--mu); font-family:monospace; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-          <span style="color:var(--gold); font-weight:800;">${job.from} → ${job.to}</span>
-          <span>·</span>
-          <span>${job.km} km (${job.weight}t)</span>
-          <span>·</span>
-          <span style="color:var(--grn); font-weight:800;">${fmt(job.pay || 0)}</span>
-        </div>
-        <div style="font-size:10px; color:var(--mu); margin-top:4px; font-family:monospace; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-          <span>COUPLING: <b style="color:var(--tx);">${TRAILERS[trailerType as keyof typeof TRAILERS]?.toUpperCase() || 'STANDARD'}</b></span>
-          ${cargo?.isHazmat ? ' · <span style="color:#ef4444; font-weight:800;">SHIPPER TANKER SUPPLIED</span>' : ''}
+        <div style="display:flex; align-items:center; gap:12px;">
+          ${renderCargoBadge(cargo?.id || job.cargoId || 'general_freight', { size: 44, isAuctionWon: isAuctionWon })}
+          <div style="min-width:0; flex:1; padding-right:24px;">
+            <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase; font-family:monospace; letter-spacing:0.8px; margin-bottom:2px;">
+              DISPATCH TRACTOR SELECTION
+            </div>
+            <h3 style="margin:0 0 4px; font-size:16px; color:var(--tx); font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+              ${cargo?.name || 'Commercial Freight Contract'}
+            </h3>
+            <div style="font-size:11px; color:var(--mu); font-family:monospace; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span style="color:var(--gold); font-weight:800;">${job.from} → ${job.to}</span>
+              <span>·</span>
+              <span>${job.km} km (${job.weight}t)</span>
+              <span>·</span>
+              <span style="color:var(--grn); font-weight:800;">${fmt(job.pay || 0)}</span>
+            </div>
+            <div style="font-size:10px; color:var(--mu); margin-top:4px; font-family:monospace; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+              <span>COUPLING: <b style="color:var(--tx);">${TRAILERS[trailerType as keyof typeof TRAILERS]?.toUpperCase() || 'STANDARD'}</b></span>
+              ${cargo?.isHazmat ? ' · <span style="color:#ef4444; font-weight:800;">SHIPPER TANKER SUPPLIED</span>' : ''}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -360,6 +375,12 @@ export function renderSelectorOverlay(S: any) {
                         <span>HITCHED: <b>${trailerDesc.toUpperCase()}</b></span>
                       </div>
                       <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
+                        <span>Station: <b style="color:var(--gold);">${LOCATIONS[t.loc]?.name || t.loc}</b></span>
+                        ${t.loc === job.from 
+                          ? ' · <span style="color:var(--grn); font-weight:800; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.4); padding:1px 5px; border-radius:3px;">🔄 TO & FRO / AT ORIGIN (0 KM DH)</span>' 
+                          : ` · Deadhead: <b style="color:var(--gold);">${distKm(t.loc, job.from)} km</b>`}
+                      </div>
+                      <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
                         Driver: <b style="color:var(--tx);">${drv ? drv.name : 'Unassigned'}</b> · Fuel: <b style="color:var(--grn);">${Math.round(t.fluids?.fuel || 0)}L</b>
                       </div>
                     </div>
@@ -374,13 +395,25 @@ export function renderSelectorOverlay(S: any) {
           </div>
         ` : `
           <!-- No Compatible Trucks Notice -->
-          <div style="padding:16px 14px; text-align:center; background:#070a12; border:1px dashed #1e2638; border-radius:8px;">
-            <div style="font-size:24px; margin-bottom:4px;">🚛</div>
-            <div style="font-weight:800; font-size:12px; color:var(--gold);">No Compatible Tractors Ready For Dispatch</div>
-            <div style="font-size:10px; color:var(--mu); margin-top:4px; font-family:monospace; line-height:1.4;">
-              Ensure you have idle trucks with the correct trailer and qualified drivers assigned in the Garage.
-            </div>
-          </div>
+          ${(() => {
+            const jobRegion = LOCATIONS[job.from]?.region || 'job region';
+            const trucksInRegion = fleet.filter((t: any) => LOCATIONS[t.loc]?.region === jobRegion);
+            const isCrossContinentBlocked = fleet.length > 0 && trucksInRegion.length === 0;
+
+            return `
+              <div style="padding:16px 14px; text-align:center; background:#070a12; border:1px dashed #1e2638; border-radius:8px;">
+                <div style="font-size:24px; margin-bottom:4px;">${isCrossContinentBlocked ? '🌍' : '🚛'}</div>
+                <div style="font-weight:800; font-size:12px; color:${isCrossContinentBlocked ? '#ef4444' : 'var(--gold)'};">
+                  ${isCrossContinentBlocked ? `No Tractors Stationed in ${jobRegion}` : 'No Compatible Tractors Ready For Dispatch'}
+                </div>
+                <div style="font-size:10px; color:var(--mu); margin-top:4px; font-family:monospace; line-height:1.4;">
+                  ${isCrossContinentBlocked 
+                    ? `Your fleet tractors are stationed in other regions. Cross-continental highway deadhead is prohibited (e.g. America to Europe). Station or purchase a tractor in ${jobRegion} to haul this cargo.` 
+                    : 'Ensure you have idle trucks in this region with the correct trailer coupling and qualified CDL drivers assigned in the Garage.'}
+                </div>
+              </div>
+            `;
+          })()}
         `}
 
       </div>

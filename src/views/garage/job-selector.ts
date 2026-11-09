@@ -1,11 +1,13 @@
 import { action, toast, fmt, dur } from '../../core/ui';
 import { refresh } from '../../core/store';
 import { CARGO_TYPES } from '../../domain/freight/cargo/registry';
+import { renderCargoBadge } from '../../domain/freight/cargo/cargo-svgs';
 import { why, takeJob } from '../../systems/jobs';
 import { ic } from '../../core/icons';
 import { LOCATIONS } from '../../data/world';
 import { distKm, getRouteEnv, tripMs } from '../../systems/calc';
 import { getDailyBidDispatchQuota } from '../../domain/freight/bids/quota';
+import { FreightEngine } from '../../domain/freight/engine/generator';
 
 export let activeJobSelectorTruckId: number | null = null;
 
@@ -37,8 +39,36 @@ export function renderJobSelectorOverlay(S: any) {
     return;
   }
 
+  // Ensure there is at least one outbound load from truck.loc ("To & Fro" backhaul)
+  const hasLocalJob = (S.jobs || []).some((j: any) => j.from === truck.loc);
+  if (!hasLocalJob && LOCATIONS[truck.loc]) {
+    const truckRegion = LOCATIONS[truck.loc].region;
+    const regionCities = Object.entries(LOCATIONS)
+      .filter(([k, loc]) => loc.region === truckRegion && k !== truck.loc)
+      .map(([k]) => k);
+    const returnDest = regionCities.length > 0 ? (regionCities[Math.floor(Math.random() * regionCities.length)]) : undefined;
+    const newJob = FreightEngine.generate(S, {
+      forceRegion: truckRegion,
+      forceFrom: truck.loc,
+      forceTo: returnDest,
+      isBackhaul: true,
+      backhaulForTruckId: truck.id
+    });
+    if (newJob) {
+      if (!S.jobs) S.jobs = [];
+      S.jobs.unshift(newJob);
+    }
+  }
+
   // Filter jobs: Show only what this truck can do
-  const jobs = S.jobs.filter((j: any) => !why(S, truck, j));
+  const jobs = (S.jobs || []).filter((j: any) => !why(S, truck, j));
+  // Sort: To & Fro / Direct Departures first (dh === 0), then lowest deadhead
+  jobs.sort((a: any, b: any) => {
+    const aDirect = a.from === truck.loc ? 1 : 0;
+    const bDirect = b.from === truck.loc ? 1 : 0;
+    if (aDirect !== bDirect) return bDirect - aDirect;
+    return distKm(truck.loc, a.from) - distKm(truck.loc, b.from);
+  });
 
   let existing = document.getElementById('job-selector-overlay');
   if (!existing) {
@@ -89,9 +119,7 @@ export function renderJobSelectorOverlay(S: any) {
               <div class="card" style="padding:12px; border-radius:8px; border:1px solid ${isSpecial ? 'var(--grn)' : '#1e2638'}; background:#070a12; display:flex; justify-content:space-between; align-items:center; position:relative; overflow:hidden;">
                 ${isSpecial ? `<div style="position:absolute; top:0; right:0; background:var(--grn); color:#070a12; font-size:7px; font-weight:900; padding:2px 8px; border-bottom-left-radius:6px; font-family:monospace;">WON CONTRACT</div>` : ''}
                 <div style="display:flex; align-items:center; gap:10px; min-width:0;">
-                  <div style="font-size:18px; color:var(--gold); width:34px; height:34px; background:#0e1320; border:1px solid #1a2336; border-radius:6px; display:grid; place-items:center; flex-shrink:0;">
-                    ${ic(cargo?.icon || 'box')}
-                  </div>
+                  ${renderCargoBadge(cargo?.id || j.cargoId || 'general_freight', { size: 34, isAuctionWon: isSpecial })}
                   <div style="min-width:0;">
                     <div style="display:flex; align-items:center; gap:6px;">
                       <span style="font-weight:900; color:var(--tx); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${cargo?.name || 'Commercial Cargo'}</span>
@@ -101,7 +129,7 @@ export function renderJobSelectorOverlay(S: any) {
                       <span style="color:var(--gold);">${locFrom?.name || j.from}</span> → <span style="color:var(--tx);">${locTo?.name || j.to}</span> · ${j.km} km
                     </div>
                     <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
-                      ${dh > 0 ? `Deadhead: <b style="color:var(--gold);">${dh} km</b> · ` : ''}ETA: ~${dur(estTimeMs)} · Payload: ${j.weight}t
+                      ${dh === 0 ? `<span style="color:var(--grn); font-weight:800; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.4); padding:1px 5px; border-radius:3px;">🔄 TO & FRO (0 KM DH)</span> · ` : `Deadhead: <b style="color:var(--gold);">${dh} km</b> · `}ETA: ~${dur(estTimeMs)} · Payload: ${j.weight}t
                     </div>
                   </div>
                 </div>

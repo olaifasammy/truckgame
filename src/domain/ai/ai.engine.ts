@@ -96,6 +96,8 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
 
   const truckLoc = getLocationRecord(truck.loc);
   if (truckLoc && locFrom && !isRegionUnlocked(S as any, truckLoc.region)) return -Infinity;
+  // Cross-continental dispatch forbidden: Tractor in America cannot service Europe/Africa/Asia
+  if (truckLoc && locFrom && truckLoc.region !== locFrom.region) return -Infinity;
 
   // 3. Domain legality check
   const truckWhyMsg = why(S, truck, job);
@@ -185,6 +187,14 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
   // Bonus for hazmat cargo when certified
   if (cargo?.isHazmat && filters.requireHazmatCert) {
     score += 5000;
+  }
+
+  // "To & Fro" / Backhaul Turnaround Synergy Bonus: 0 km deadhead from current station
+  if (truck.loc === job.from) {
+    score += 8500;
+  }
+  if (job.isBackhaul) {
+    score += 4000;
   }
 
   return score;

@@ -3,6 +3,7 @@ import { fuelCost, blocker } from '../../systems/jobs';
 import { TRAILERS } from '../../domain/trucks/trucks.data';
 import { homeState } from './state';
 import { CARGO_TYPES } from '../../domain/freight/cargo/registry';
+import { renderCargoBadge } from '../../domain/freight/cargo/cargo-svgs';
 import { COMPANIES } from '../../domain/freight/companies/registry';
 import { dur, fmt } from '../../core/ui';
 import { LOCATIONS } from '../../data/world';
@@ -101,6 +102,7 @@ export function renderJobCard(S: any, j: any) {
   const isAuctionWon = (j as any).isAuctionWon;
   const isTender = !!j.tenderId;
   const wonAt = (j as any).wonAt;
+  const localTruck = (S.fleet || []).find((t: any) => t.status === 'idle' && t.loc === j.from);
   const FIVE_MINS = 5 * 60 * 1000;
   const expiryTime = wonAt ? wonAt + FIVE_MINS : 0;
   const timeLeft = expiryTime ? Math.max(0, expiryTime - Date.now()) : 0;
@@ -118,14 +120,17 @@ export function renderJobCard(S: any, j: any) {
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
         <!-- Left: Icon & Route Info -->
         <div style="display:flex; align-items:center; gap:12px; min-width:0;">
-          <div style="width:38px; height:38px; background:#080c16; border:1px solid ${isAuctionWon ? 'var(--grn)' : isTender ? '#38bdf8' : 'rgba(193,154,91,0.3)'}; border-radius:8px; display:grid; place-items:center; color:${isAuctionWon ? 'var(--grn)' : isTender ? '#38bdf8' : 'var(--gold)'}; font-size:18px; flex-shrink:0;">
-            ${ic(isAuctionWon ? 'check' : isTender ? 'truck' : (cargo?.icon || (cargo?.trailer === 'reefer' ? 'snowflake' : cargo?.trailer === 'tanker' ? 'fuel' : 'box')))}
-          </div>
+          ${renderCargoBadge(cargo?.id || j.cargoId || 'general_freight', { size: 38, isAuctionWon, isTender, isHazmat: cargo?.isHazmat, trailer: cargo?.trailer })}
           <div style="min-width:0;">
             <div style="display:flex; align-items:center; gap:6px;">
               <span style="font-weight:900; font-size:13px; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                 ${cargoName}
               </span>
+              ${(j.isBackhaul || localTruck) ? `
+                <span title="Direct Outbound Return Haul" style="font-size:7px; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.4); color:var(--grn); padding:1px 5px; border-radius:3px; font-weight:800; font-family:monospace; text-transform:uppercase; display:inline-flex; align-items:center; gap:2px;">
+                  🔄 TO & FRO ${localTruck ? `· ${localTruck.name}` : ''}
+                </span>
+              ` : ''}
               ${isTender ? `
                 <span style="font-size:7px; background:rgba(56,189,248,0.15); border:1px solid #38bdf8; color:#38bdf8; padding:0 4px; border-radius:2px; font-weight:800; font-family:monospace; text-transform:uppercase;">
                   ${tender?.client || 'LINEHAUL TENDER'}

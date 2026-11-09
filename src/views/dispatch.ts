@@ -13,6 +13,7 @@ import {
   updateAiIntensitySystem
 } from '../systems/ai-dispatcher';
 import { blocker } from '../systems/jobs';
+import { renderCargoBadge } from '../domain/freight/cargo/cargo-svgs';
 import { getDispatchNeuralNetwork } from '../domain/ai/neuralNetwork';
 import { calculateDispatchFeatureVector } from '../domain/ai/ai.engine';
 import { getCryptoMarketData } from '../domain/finance/markets/crypto';
@@ -320,19 +321,22 @@ export default {
                   neuralFit = Math.max(55, Math.min(99, Math.round((rawFit * 0.45 + 0.55) * 100)));
                 }
                 return `
-                  <div class="ai-log-item">
-                    <div class="ai-log-top">
-                      <span style="color:var(--tx); font-weight:700;">${j.cargo || j.cargoId || 'Load'}</span>
-                      <div style="display:flex; align-items:center; gap:8px;">
-                        <span style="color:var(--gold); font-size:10px; font-weight:800; background:rgba(193,154,91,0.15); padding:2px 6px; border-radius:4px;">🧠 ${neuralFit}% Fit</span>
-                        <span style="color:var(--grn); font-family:monospace; font-weight:700;">$${(j.pay || 0).toLocaleString()}</span>
+                  <div class="ai-log-item" style="display:flex; align-items:center; gap:10px;">
+                    ${renderCargoBadge(j.cargoId || j.cargo || 'general_freight', { size: 28, isAuctionWon: !!j.isAuctionWon })}
+                    <div style="flex:1; min-width:0;">
+                      <div class="ai-log-top">
+                        <span style="color:var(--tx); font-weight:700; font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${j.cargo || j.cargoId || 'Load'}</span>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                          <span style="color:var(--gold); font-size:10px; font-weight:800; background:rgba(193,154,91,0.15); padding:2px 6px; border-radius:4px;">🧠 ${neuralFit}% Fit</span>
+                          <span style="color:var(--grn); font-family:monospace; font-weight:700;">$${(j.pay || 0).toLocaleString()}</span>
+                        </div>
                       </div>
-                    </div>
-                    <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--mu);">
-                      <span>${j.from} → ${j.to} (${j.km} km)</span>
-                      <span style="color:${isMatchable ? 'var(--grn)' : 'var(--red)'}; font-weight:700;">
-                        ${isMatchable ? '✓ Eligible' : blockerReason ? `✕ ${blockerReason}` : '✕ No idle truck'}
-                      </span>
+                      <div style="display:flex; justify-content:space-between; font-size:10px; color:var(--mu); margin-top:2px;">
+                        <span>${j.from} → ${j.to} (${j.km} km)</span>
+                        <span style="color:${isMatchable ? 'var(--grn)' : 'var(--red)'}; font-weight:700;">
+                          ${isMatchable ? '✓ Eligible' : blockerReason ? `✕ ${blockerReason}` : '✕ No idle truck'}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 `;

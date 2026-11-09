@@ -84,8 +84,10 @@ export const distKm = (a: string, b: string): number => {
       const direct = Math.hypot(dx, dy);
       return Math.max(120, Math.round(direct * 8.5 / 10) * 10);
     } else {
-      // Inter-regional trans-continental logistics corridor
-      return 4500 + Math.floor(Math.random() * 2500);
+      // Inter-regional trans-continental distance based on geographic coordinates
+      const dx = (locA.latLng[0] - locB.latLng[0]) * 111;
+      const dy = (locA.latLng[1] - locB.latLng[1]) * 111 * Math.cos(((locA.latLng[0] + locB.latLng[0]) / 2) * (Math.PI / 180));
+      return Math.max(3500, Math.round(Math.hypot(dx, dy)));
     }
   }
 

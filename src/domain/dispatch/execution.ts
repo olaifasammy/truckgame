@@ -11,6 +11,8 @@ import { TRAIT_REGISTRY } from '../drivers/drivers.names';
 import { processScheduledRepair } from '../../systems/maintenance';
 import { vehicleDeliveryTemplate } from '../notifications/templates';
 import { getDispatchEligibilityError } from './validation';
+import { FreightEngine } from '../freight/engine/generator';
+import { LOCATIONS } from '../../data/world';
 
 import { getDispatchNeuralNetwork } from '../ai/neuralNetwork';
 
@@ -242,6 +244,30 @@ export const DispatchExecution = {
     addCompanyXp(S, 25 + Math.round(a.km * 0.02), `Delivery: ${cargo?.name || 'Freight'}`);
     
     pushNote(S, `Payment for ${cargo?.name || 'Freight'}: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });
+
+    // Generate immediate return haul ("To & Fro" backhaul from the arrival city back to departure city or regional hub)
+    if (t && a.to && LOCATIONS[a.to]) {
+      const destRegion = LOCATIONS[a.to].region;
+      try {
+        const returnJob = FreightEngine.generate(S, {
+          forceRegion: destRegion,
+          forceFrom: a.to,
+          forceTo: a.from, // Return leg ("to & fro") back to origin!
+          isBackhaul: true,
+          backhaulForTruckId: t.id
+        });
+        if (returnJob) {
+          if (!S.jobs) S.jobs = [];
+          S.jobs.unshift(returnJob);
+          pushNote(S, `Return freight manifest ready: ${LOCATIONS[a.to]?.name || a.to} → ${LOCATIONS[a.from]?.name || a.from} for ${t.name}.`, {
+            title: 'RETURN HAUL READY (TO & FRO)',
+            type: 'ops'
+          });
+        }
+      } catch (e) {
+        console.error('Failed to generate return haul', e);
+      }
+    }
 
     // Neural Network Reinforcement Learning (Experience Feedback)
     try {

@@ -1,5 +1,6 @@
 import { placeBid } from '../../systems/jobs';
 import { CARGO_TYPES } from '../../domain/freight/cargo/registry';
+import { renderCargoBadge } from '../../domain/freight/cargo/cargo-svgs';
 import { COMPANIES } from '../../domain/freight/companies/registry';
 import { TRAILERS } from '../../domain/trucks/trucks.data';
 import { dur, fmt, toast } from '../../core/ui';
@@ -93,11 +94,16 @@ export function renderModalOverlay(S: any) {
           <span>·</span>
           <span>HIGH-VALUE CONTRACT</span>
         </div>
-        <h3 style="margin:2px 0 1px; font-size:17px; font-weight:900; color:var(--tx);">
-          ${cargo?.name || 'Commercial Freight Contract'}
-        </h3>
-        <div style="font-size:11px; color:var(--mu); font-family:monospace;">
-          Client: <b style="color:var(--tx);">${company?.name || 'Shipper Consortium'}</b> · ${auc.from} → ${auc.to} (${auc.km} km · ${auc.weight}t)
+        <div style="display:flex; align-items:center; gap:12px; margin-top:6px;">
+          ${renderCargoBadge(cargo?.id || auc.cargoId || 'general_freight', { size: 44, isAuctionWon: isWinning, isHazmat: cargo?.isHazmat, trailer: cargo?.trailer })}
+          <div style="min-width:0;">
+            <h3 style="margin:0 0 2px; font-size:16px; font-weight:900; color:var(--tx); line-height:1.2;">
+              ${cargo?.name || 'Commercial Freight Contract'}
+            </h3>
+            <div style="font-size:11px; color:var(--mu); font-family:monospace;">
+              Client: <b style="color:var(--tx);">${company?.name || 'Shipper Consortium'}</b> · ${auc.from} → ${auc.to} (${auc.km} km · ${auc.weight}t)
+            </div>
+          </div>
         </div>
       </div>
 
