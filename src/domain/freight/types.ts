@@ -41,4 +41,9 @@ export interface FreightJob {
     reefer?: boolean;
   };
   vip?: boolean;
+  isBackhaul?: boolean;
+  isRoundTrip?: boolean;
+  returnCargoId?: string;
+  returnCargoName?: string;
+  turnaroundBonus?: number;
 }

@@ -15,6 +15,8 @@ import { getTruckTelematics, getDrivingStateBadge } from '../domain/trucks/truck
 import { FleetService } from '../application/services/fleet';
 import { Truck } from '../domain/trucks/trucks.types';
 import { GameState } from '../types/state';
+import { DEEPWATER_PORTS, getMaritimeShippingQuote, bookMaritimeShipping } from '../domain/fleet/shipping';
+import { isRegionUnlocked } from '../domain/logistics/network';
 
 let openId: number | null = null, panel: string | null = null;
 let hitchModalTruckId: number | null = null;
@@ -103,6 +105,15 @@ action('hitch-trailer', d => {
   refresh();
 });
 
+action('book-roro-shipping', d => {
+  const truckId = +(d as any).id;
+  const toCity = (d as any).city;
+  set(S => {
+    bookMaritimeShipping(S, truckId, toCity);
+  });
+  refresh();
+});
+
 
 const meter = (label: string, value: number, formattedText: string, alertThreshold = 30) => {
   const isAlert = value < alertThreshold;
@@ -179,6 +190,11 @@ function panelHtml(S: GameState, t: Truck, busy: boolean) {
   }
 
   if (panel === 'move') {
+    const originPort = DEEPWATER_PORTS[t.loc];
+    const overseasPorts = originPort 
+      ? Object.values(DEEPWATER_PORTS).filter(p => p.region !== originPort.region && isRegionUnlocked(S, p.region))
+      : [];
+
     return `
       <div style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08); background:#0a0f1d; padding:12px; border-radius:8px; border:1px solid #1f293d;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -202,6 +218,57 @@ function panelHtml(S: GameState, t: Truck, busy: boolean) {
         <div style="font-size:8px; color:var(--mu); font-family:monospace; margin-top:6px; text-align:center;">
           ✓ Intra-regional highway transit only · Cross-continental highway deadhead prohibited
         </div>
+
+        ${originPort ? `
+          <!-- Intercontinental Maritime Ro-Ro Shipping -->
+          <div style="margin-top:12px; padding-top:10px; border-top:1px solid rgba(255,255,255,0.08);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <div style="display:flex; align-items:center; gap:6px;">
+                <span style="font-size:14px;">🚢</span>
+                <span style="font-size:10px; font-weight:800; color:#38bdf8; text-transform:uppercase; letter-spacing:0.5px;">
+                  INTERCONTINENTAL MARITIME RO-RO SHIPPING
+                </span>
+              </div>
+              <span style="font-size:8px; color:var(--gold); font-family:monospace;">PORT: ${originPort.portName}</span>
+            </div>
+
+            ${overseasPorts.length > 0 ? `
+              <div style="display:flex; flex-direction:column; gap:6px;">
+                ${overseasPorts.map(p => {
+                  const q = getMaritimeShippingQuote(t.loc, p.cityKey);
+                  if (!q) return '';
+                  const canAfford = S.money >= q.totalCost;
+                  return `
+                    <div style="background:#070b14; border:1px solid rgba(56,189,248,0.3); border-radius:6px; padding:8px 10px; display:flex; justify-content:space-between; align-items:center;">
+                      <div>
+                        <div style="font-size:11px; font-weight:800; color:var(--tx);">
+                          ${p.portName} <span style="font-size:8px; color:#38bdf8; font-family:monospace;">[${p.region.toUpperCase()}]</span>
+                        </div>
+                        <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:2px;">
+                          ${q.vesselName} · ${q.seaMiles} Sea Miles · ETA ~3m
+                        </div>
+                      </div>
+                      <div style="text-align:right;">
+                        <div style="font-size:11px; font-weight:800; color:var(--gold); font-family:monospace;">$${q.totalCost.toLocaleString()}</div>
+                        <button class="btn alt" style="padding:4px 8px; font-size:9px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.5); margin-top:2px; ${!canAfford ? 'opacity:0.5;' : ''}" data-act="book-roro-shipping" data-id="${t.id}" data-city="${p.cityKey}" ${!canAfford ? 'disabled' : ''}>
+                          🚢 BOOK RO-RO VESSEL
+                        </button>
+                      </div>
+                    </div>
+                  `;
+                }).join('')}
+              </div>
+            ` : `
+              <div style="padding:8px; background:rgba(56,189,248,0.06); border:1px dashed rgba(56,189,248,0.2); border-radius:6px; font-size:9px; color:var(--mu); font-family:monospace; line-height:1.4;">
+                No overseas operating regions unlocked yet. Unlock Europe, America, or Asia in the Network view to sail across oceans.
+              </div>
+            `}
+          </div>
+        ` : `
+          <div style="margin-top:10px; padding:8px; background:rgba(56,189,248,0.06); border:1px dashed rgba(56,189,248,0.3); border-radius:6px; font-size:9px; color:var(--mu); font-family:monospace; line-height:1.4;">
+            🚢 <b>Intercontinental Shipping Tip:</b> To book overseas ocean shipping to Europe, America, or Asia, first deadhead this tractor to your regional ocean port (e.g. Lagos, Rotterdam, Los Angeles, Tokyo).
+          </div>
+        `}
       </div>
     `;
   }
@@ -211,26 +278,38 @@ function panelHtml(S: GameState, t: Truck, busy: boolean) {
 
 function body(S: GameState, t: Truck, m: any, a: any, now: number) {
   if (t.status === 'delivering') {
-    const totalTime = 15 * 60 * 1000;
+    const isRoRo = t.shippingMode === 'maritime_roro';
+    const totalTime = isRoRo ? 180000 : 15 * 60 * 1000;
     const remaining = Math.max(0, (t.availableAt || now) - now);
     const progress = 100 - (remaining / totalTime * 100);
 
     return `
-      <div style="margin-top:14px; background:#0f172a; border:1px solid var(--gold); border-radius:10px; padding:20px; text-align:center;">
+      <div style="margin-top:14px; background:#0f172a; border:1px solid ${isRoRo ? '#38bdf8' : 'var(--gold)'}; border-radius:10px; padding:20px; text-align:center;">
         <div style="font-size:32px; margin-bottom:12px;">🚢</div>
-        <div style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">Vehicle in Logistics Transit</div>
-        <div style="font-size:13px; font-weight:900; color:var(--tx); margin:4px 0 12px;">FACTORY-TO-DEPOT DELIVERY</div>
+        <div style="font-size:11px; font-weight:800; color:${isRoRo ? '#38bdf8' : 'var(--gold)'}; letter-spacing:1px; text-transform:uppercase;">
+          ${isRoRo ? 'Intercontinental Maritime Ro-Ro Transit' : 'Vehicle in Logistics Transit'}
+        </div>
+        <div style="font-size:13px; font-weight:900; color:var(--tx); margin:4px 0 12px;">
+          ${isRoRo ? `${t.shippingOrigin || 'Origin Port'} ➔ ${LOCATIONS[t.loc]?.name || t.loc} Deepwater Pier` : 'FACTORY-TO-DEPOT DELIVERY'}
+        </div>
+        ${isRoRo ? `
+          <div style="font-size:10px; color:var(--gold); font-family:monospace; margin-bottom:8px;">
+            Aboard Vessel: <b>${t.shippingVessel || 'Ro-Ro Ocean Carrier'}</b>
+          </div>
+        ` : ''}
         
         <div style="font-size:10px; color:var(--mu); font-family:monospace; margin-bottom:6px; display:flex; justify-content:space-between;">
-          <span>EST. ARRIVAL: ${new Date(t.availableAt).toLocaleTimeString()}</span>
+          <span>EST. PORT DOCKING: ${new Date(t.availableAt).toLocaleTimeString()} (${dur(remaining)})</span>
           <span>${Math.round(progress)}%</span>
         </div>
         <div class="bar" style="height:8px; background:rgba(255,255,255,0.05); border-radius:4px; overflow:hidden;">
-          <div style="width:${progress}%; height:100%; background:var(--gold); border-radius:4px; transition:width 1s linear;"></div>
+          <div style="width:${progress}%; height:100%; background:${isRoRo ? 'linear-gradient(90deg, #0284c7, #38bdf8)' : 'var(--gold)'}; border-radius:4px; transition:width 1s linear;"></div>
         </div>
         
         <div style="font-size:9px; color:var(--mu); margin-top:12px; line-height:1.4;">
-          Professional merchandise transport is currently repositioning this unit from the manufacturer regional distribution hub to your local terminal.
+          ${isRoRo 
+            ? 'Ocean car-carrier vessel is navigating international deepwater sea lanes. Upon arrival, unit will complete customs discharge and dock at destination terminal.' 
+            : 'Professional merchandise transport is currently repositioning this unit from the manufacturer regional distribution hub to your local terminal.'}
         </div>
       </div>
     `;

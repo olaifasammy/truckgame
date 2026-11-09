@@ -51,8 +51,7 @@ export function renderJobSelectorOverlay(S: any) {
       forceRegion: truckRegion,
       forceFrom: truck.loc,
       forceTo: returnDest,
-      isBackhaul: true,
-      backhaulForTruckId: truck.id
+      isBackhaul: true
     });
     if (newJob) {
       if (!S.jobs) S.jobs = [];

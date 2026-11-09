@@ -288,16 +288,22 @@ export function renderSelectorOverlay(S: any) {
               ${cargo?.name || 'Commercial Freight Contract'}
             </h3>
             <div style="font-size:11px; color:var(--mu); font-family:monospace; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-              <span style="color:var(--gold); font-weight:800;">${job.from} → ${job.to}</span>
+              <span style="color:var(--gold); font-weight:800;">${job.from} ${job.isRoundTrip ? '⇄' : '→'} ${job.to}</span>
               <span>·</span>
-              <span>${job.km} km (${job.weight}t)</span>
+              <span>${job.km} km ${job.isRoundTrip ? '(Round-Trip)' : ''} (${job.weight}t)</span>
               <span>·</span>
               <span style="color:var(--grn); font-weight:800;">${fmt(job.pay || 0)}</span>
+              ${job.isRoundTrip ? '<span style="color:#06b6d4; font-weight:800; background:rgba(6,182,212,0.15); padding:1px 6px; border-radius:4px; font-size:9px;">🔄 2-WAY TURNAROUND (+15% BONUS)</span>' : ''}
             </div>
             <div style="font-size:10px; color:var(--mu); margin-top:4px; font-family:monospace; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
               <span>COUPLING: <b style="color:var(--tx);">${TRAILERS[trailerType as keyof typeof TRAILERS]?.toUpperCase() || 'STANDARD'}</b></span>
               ${cargo?.isHazmat ? ' · <span style="color:#ef4444; font-weight:800;">SHIPPER TANKER SUPPLIED</span>' : ''}
             </div>
+            ${job.isRoundTrip ? `
+              <div style="margin-top:6px; padding:5px 8px; background:rgba(6,182,212,0.08); border-left:2px solid #06b6d4; font-size:9.5px; color:#a5f3fc; font-family:monospace; line-height:1.4;">
+                🔄 <b>TURNAROUND ROUTE:</b> Outbound <b>${job.from} → ${job.to}</b> (${cargo?.name || 'Primary Cargo'}) & Inbound Return <b>${job.to} → ${job.from}</b> (${job.returnCargoName || 'Backhaul Freight'}). Tractor returns to <b>${job.from}</b> with +15% turnaround bonus!
+              </div>
+            ` : ''}
           </div>
         </div>
       </div>

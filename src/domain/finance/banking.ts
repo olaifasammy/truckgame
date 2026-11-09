@@ -60,6 +60,8 @@ export const INSURANCE_POLICIES: Record<string, InsurancePolicy> = {
   }
 };
 
+import { calculateEnterpriseCreditProfile, getAvailableLoanOffers } from './commercialLoans';
+
 export const AVAILABLE_LOANS = [
   {
     id: 'working_capital',
@@ -94,19 +96,20 @@ export const AVAILABLE_LOANS = [
 ];
 
 export function calculateCreditRating(S: any): { rating: 'AAA' | 'AA' | 'A' | 'BBB'; score: number; maxCredit: number } {
-  const equity = S.money + ((S.fleet?.length || 0) * 125000) + ((S.offices?.length || 0) * 60000);
-  const delivered = S.loads || 0;
-  const reputation = S.reputation || 100;
-
-  let score = 600;
-  score += Math.min(150, Math.floor(equity / 10000));
-  score += Math.min(100, delivered * 5);
-  score += Math.min(100, Math.floor(reputation / 2));
-
-  if (score >= 850) return { rating: 'AAA', score, maxCredit: 750000 };
-  if (score >= 770) return { rating: 'AA', score, maxCredit: 450000 };
-  if (score >= 680) return { rating: 'A', score, maxCredit: 200000 };
-  return { rating: 'BBB', score, maxCredit: 80000 };
+  const profile = calculateEnterpriseCreditProfile(S);
+  const ratingMap: Record<string, 'AAA' | 'AA' | 'A' | 'BBB'> = {
+    AAA: 'AAA',
+    AA: 'AA',
+    A: 'A',
+    BBB: 'BBB',
+    BB: 'BBB',
+    B: 'BBB'
+  };
+  return {
+    rating: ratingMap[profile.rating] || 'BBB',
+    score: profile.score,
+    maxCredit: profile.maxCreditLimitUsd
+  };
 }
 
 import { getCryptoMarketData } from './markets/crypto';

@@ -407,18 +407,19 @@ action('open-ai-dispatch', () => {
 });
 
 export function renderFinanceNav(activeTab: string) {
+  const isLoansActive = activeTab === 'loans' || activeTab === 'banking';
   const tabs = [
-    { id: 'treasury', label: 'P&L' },
-    { id: 'banking', label: 'Debt' },
-    { id: 'fuel', label: 'Fuel' },
-    { id: 'exchange', label: 'FX & Crypto' },
-    { id: 'insurance', label: 'Risk' }
+    { id: 'treasury', label: 'P&L', active: activeTab === 'treasury' },
+    { id: 'loans', label: 'Loans', active: isLoansActive },
+    { id: 'fuel', label: 'Fuel', active: activeTab === 'fuel' },
+    { id: 'exchange', label: 'FX & Crypto', active: activeTab === 'exchange' },
+    { id: 'insurance', label: 'Risk', active: activeTab === 'insurance' }
   ];
 
   return `
     <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:16px;">
       ${tabs.map(t => `
-        <button class="btn ${activeTab === t.id ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:10px; font-weight:800;" data-act="finance-tab" data-tab="${t.id}">
+        <button class="btn ${t.active ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:10px; font-weight:800;" data-act="finance-tab" data-tab="${t.id}">
           ${t.label}
         </button>
       `).join('')}

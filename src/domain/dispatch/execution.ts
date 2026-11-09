@@ -180,8 +180,18 @@ export const DispatchExecution = {
     for (const t of arrivedTrucks) {
       t.status = 'idle';
       delete t.availableAt;
-      const tpl = vehicleDeliveryTemplate(t.id, t.name, t.loc || 'Terminal');
-      pushNote(S, tpl.msg, { title: tpl.title, type: tpl.type, priority: tpl.priority, body: tpl.body });
+      if (t.shippingMode === 'maritime_roro') {
+        pushNote(S, `🚢 Vessel arrived! ${t.name} safely discharged at ${t.loc} deepwater terminal. Cleared international customs and ready for commercial dispatch.`, {
+          title: 'OVERSEAS RO-RO ARRIVAL',
+          type: 'ops'
+        });
+        delete t.shippingMode;
+        delete t.shippingVessel;
+        delete t.shippingOrigin;
+      } else {
+        const tpl = vehicleDeliveryTemplate(t.id, t.name, t.loc || 'Terminal');
+        pushNote(S, tpl.msg, { title: tpl.title, type: tpl.type, priority: tpl.priority, body: tpl.body });
+      }
     }
 
     const arrivedTrailers = (S.pendingTrailers || []).filter((p: any) => p.availableAt <= now);
@@ -204,7 +214,7 @@ export const DispatchExecution = {
       const drv = (S.drivers || []).find((x: any) => x.id === t.driverId);
       const st = stats(S, t, a.weight || 0, a.env);
       t.status = 'idle';
-      t.loc = a.to;
+      t.loc = a.isRoundTrip ? a.from : a.to;
       processScheduledRepair(S, t.id);
       syncUsage(t, km, st, a.env, S);
       applyWear(t, km, a.weight || 0, a.env, drv);
@@ -235,7 +245,7 @@ export const DispatchExecution = {
     S.loads++;
     S.stats.earned += finalPay;
     S.stats.km += a.km;
-    S.reputation = (S.reputation || 0) + (a.isAuctionWon ? 45 : 15);
+    S.reputation = (S.reputation || 0) + (a.isAuctionWon ? 45 : a.isRoundTrip ? 25 : 15);
 
     // PoD Bonus
     const podBonus = parseFloat((0.05 + (a.km / 1000) * 0.05).toFixed(2));
@@ -243,29 +253,59 @@ export const DispatchExecution = {
 
     addCompanyXp(S, 25 + Math.round(a.km * 0.02), `Delivery: ${cargo?.name || 'Freight'}`);
     
-    pushNote(S, `Payment for ${cargo?.name || 'Freight'}: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });
-
-    // Generate immediate return haul ("To & Fro" backhaul from the arrival city back to departure city or regional hub)
-    if (t && a.to && LOCATIONS[a.to]) {
-      const destRegion = LOCATIONS[a.to].region;
-      try {
-        const returnJob = FreightEngine.generate(S, {
-          forceRegion: destRegion,
-          forceFrom: a.to,
-          forceTo: a.from, // Return leg ("to & fro") back to origin!
-          isBackhaul: true,
-          backhaulForTruckId: t.id
-        });
-        if (returnJob) {
-          if (!S.jobs) S.jobs = [];
-          S.jobs.unshift(returnJob);
-          pushNote(S, `Return freight manifest ready: ${LOCATIONS[a.to]?.name || a.to} → ${LOCATIONS[a.from]?.name || a.from} for ${t.name}.`, {
-            title: 'RETURN HAUL READY (TO & FRO)',
-            type: 'ops'
+    // Corporate Tender Milestone Progression
+    if (a.tenderId && S.corporateTenders) {
+      const tnd = S.corporateTenders.find((ct: any) => ct.id === a.tenderId);
+      if (tnd) {
+        tnd.completedLoads = (tnd.completedLoads || 0) + 1;
+        tnd.loadsRemaining = Math.max(0, (tnd.totalLoads || 10) - tnd.completedLoads);
+        if (tnd.completedLoads >= tnd.totalLoads && !tnd.bonusAwarded) {
+          tnd.bonusAwarded = true;
+          S.money += tnd.bonusPayout;
+          if (S.stats) S.stats.earned += tnd.bonusPayout;
+          pushNote(S, `🎉 30-Day Tender Completed: ${tnd.client}! SLA threshold of ${tnd.slaTarget}% fulfilled. Awarded +$${tnd.bonusPayout.toLocaleString()} volume bonus to treasury!`, {
+            title: 'ENTERPRISE TENDER COMPLETED',
+            type: 'tender',
+            priority: 1
+          });
+        } else {
+          pushNote(S, `Tender consignment delivered for ${tnd.client} (${tnd.completedLoads}/${tnd.totalLoads} completed).`, {
+            title: 'TENDER CONSIGNMENT DELIVERED',
+            type: 'tender'
           });
         }
-      } catch (e) {
-        console.error('Failed to generate return haul', e);
+      }
+    }
+
+    if (a.isRoundTrip) {
+      pushNote(S, `🔄 2-Way Turnaround Completed: ${a.from} ⇄ ${a.to} (Delivered ${cargo?.name} & returned with ${a.returnCargoName || 'Return Freight'}). Net: +$${finalPay.toLocaleString()} (Includes +$${(a.turnaroundBonus || 0).toLocaleString()} Turnaround Bonus).`, {
+        title: 'ROUND-TRIP TURNAROUND SUCCESS',
+        type: 'ops'
+      });
+    } else {
+      pushNote(S, `Payment for ${cargo?.name || 'Freight'}: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });
+
+      // Generate immediate return haul ("To & Fro" backhaul from the arrival city back to departure city or regional hub)
+      if (t && a.to && LOCATIONS[a.to]) {
+        const destRegion = LOCATIONS[a.to].region;
+        try {
+          const returnJob = FreightEngine.generate(S, {
+            forceRegion: destRegion,
+            forceFrom: a.to,
+            forceTo: a.from, // Return leg ("to & fro") back to origin!
+            isBackhaul: true
+          });
+          if (returnJob) {
+            if (!S.jobs) S.jobs = [];
+            S.jobs.unshift(returnJob);
+            pushNote(S, `Return freight manifest ready: ${LOCATIONS[a.to]?.name || a.to} → ${LOCATIONS[a.from]?.name || a.from}. Available on Freight Board for any compatible tractor.`, {
+              title: 'RETURN HAUL READY (TO & FRO)',
+              type: 'ops'
+            });
+          }
+        } catch (e) {
+          console.error('Failed to generate return haul', e);
+        }
       }
     }
 

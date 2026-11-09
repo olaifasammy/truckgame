@@ -2,6 +2,7 @@ import { GameState } from '../../types/state';
 import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
 import { processMiningTick } from '../finance/markets/mining';
+import { getTotalSubcontractInflow } from '../fleet/subcontracting';
 
 const INSURANCE_POLICIES: any = {
   liability: { dailyCost: 85 },
@@ -54,9 +55,8 @@ export const EconomySimulation = {
     if (S.warehouseUpgrades?.cross_docking) dailyInflow += 1200;
     if (S.warehouseUpgrades?.gantry_crane) dailyInflow += 600;
 
-    // 2. Sub-contracting Passive Retainer
-    const subcontractCount = (S.subcontractedTrucks || []).length;
-    if (subcontractCount > 0) dailyInflow += subcontractCount * 1800;
+    // 2. Sub-contracting Passive Retainer (Dynamic Rigs & Trailers)
+    dailyInflow += getTotalSubcontractInflow(S);
 
     // 3. Driver Payroll Daily Salaries
     const totalSalaries = (S.drivers || []).reduce((acc: number, d: any) => acc + (d.salary || 250), 0);

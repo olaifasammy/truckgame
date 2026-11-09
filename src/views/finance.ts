@@ -3,11 +3,13 @@ import { fmt, action, toast } from '../core/ui';
 import { refresh, set } from '../core/store';
 import { pushNote } from '../systems/notify';
 import { AVAILABLE_LOANS, calculateCreditRating, INSURANCE_POLICIES, REGIONAL_FUEL_SPOT, getGoldMarketData } from '../domain/finance/banking';
+import { executeTakeLoan, executePayoffLoan } from '../domain/finance/commercialLoans';
 import { createTruck } from '../domain/trucks/trucks.physics';
 
 // Modular Tab Imports
 import { renderTreasuryTab } from './finance/tabs/treasury';
 import { renderExchangeTab } from './finance/tabs/exchange';
+import { renderLoansTab } from './finance/tabs/loans';
 import { renderFinanceNav } from './finance/tabs/shared';
 
 // Initialize tab state if not present on window
@@ -25,30 +27,19 @@ action('toggle-receivable', () => {
 });
 
 action('take-loan', d => {
-  const loanId = (d as any).id;
+  const loanId = (d as any).id || (d as any).offerId;
   set(S => {
-    const loanDef = AVAILABLE_LOANS.find(l => l.id === loanId);
-    if (!loanDef) return;
-    if (!S.loans) S.loans = [];
-    if (S.loans.some((l: any) => l.id === loanId)) return toast('Active loan exists', 'err');
-    const { rating } = calculateCreditRating(S);
-    const order = ['BBB', 'A', 'AA', 'AAA'];
-    if (order.indexOf(rating) < order.indexOf(loanDef.requiredRating)) return toast('Low credit rating', 'err');
-    S.loans.push({ ...loanDef, balance: loanDef.principal, daysRemaining: loanDef.termDays });
-    S.money += loanDef.principal;
-    toast(`Loan Disbursed: +$${loanDef.principal.toLocaleString()}`, 'success');
+    executeTakeLoan(S, loanId);
   });
+  refresh();
 });
 
 action('payoff-loan', d => {
-  const loanId = (d as any).id;
+  const loanId = (d as any).id || (d as any).loanId;
   set(S => {
-    const loan = S.loans?.find((l: any) => l.id === loanId);
-    if (!loan || S.money < loan.balance) return toast('Insufficient funds', 'err');
-    S.money -= loan.balance;
-    S.loans = S.loans.filter((l: any) => l.id !== loanId);
-    toast('Loan Settled', 'success');
+    executePayoffLoan(S, loanId);
   });
+  refresh();
 });
 
 action('lease-tractor', d => {
@@ -133,27 +124,7 @@ export default {
 
         ${financeTab === 'treasury' ? renderTreasuryTab(S) : ''}
         ${financeTab === 'exchange' ? renderExchangeTab(S) : ''}
-
-        ${financeTab === 'banking' ? `
-          <div style="background:#0f172a; border:1px solid var(--gold); border-radius:10px; padding:14px; margin-bottom:14px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
-              <div>
-                <div style="font-size:9px; color:var(--gold); text-transform:uppercase;">CREDIT LIMIT</div>
-                <div style="font-size:16px; font-weight:900; color:var(--tx); font-family:monospace;">${fmt(maxCredit)}</div>
-              </div>
-              <div style="text-align:right;"><div style="font-size:18px; font-weight:900; color:var(--grn);">${rating}</div></div>
-            </div>
-          </div>
-          ${AVAILABLE_LOANS.map(l => `
-            <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <div>
-                <div style="font-size:12px; font-weight:800; color:var(--tx);">${l.name}</div>
-                <div style="font-size:9px; color:var(--mu);">$${l.principal.toLocaleString()} · ${l.apr}% APR</div>
-              </div>
-              <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900;" data-act="take-loan" data-id="${l.id}">BORROW</button>
-            </div>
-          `).join('')}
-        ` : ''}
+        ${(financeTab === 'banking' || financeTab === 'loans') ? renderLoansTab(S) : ''}
 
         ${financeTab === 'fuel' ? `
           <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:14px; margin-bottom:14px;">

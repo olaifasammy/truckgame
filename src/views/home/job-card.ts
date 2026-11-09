@@ -44,6 +44,26 @@ export function renderJobDetails(j: any, why: string | null) {
         </div>
       </div>
 
+      ${j.isRoundTrip ? `
+        <!-- 2-Way Turnaround Routing Breakdown -->
+        <div style="background:#0a0f1d; border:1px solid rgba(245,158,11,0.3); border-radius:6px; padding:8px 10px; margin-bottom:10px; font-size:10px; font-family:monospace;">
+          <div style="color:var(--gold); font-weight:800; font-size:9px; text-transform:uppercase; margin-bottom:4px;">
+            🔄 2-WAY ROUND-TRIP TURNAROUND MANIFEST
+          </div>
+          <div style="display:flex; justify-content:space-between; color:var(--tx); margin-bottom:2px;">
+            <span>Leg 1 (Outbound): <b>${cargoName}</b></span>
+            <span style="color:var(--mu);">${locFrom?.name || j.from} → ${locTo?.name || j.to}</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; color:var(--tx); margin-bottom:4px;">
+            <span>Leg 2 (Return): <b>${j.returnCargoName || 'Commercial Freight'}</b></span>
+            <span style="color:var(--mu);">${locTo?.name || j.to} → ${locFrom?.name || j.from}</span>
+          </div>
+          <div style="color:var(--grn); font-weight:800; font-size:9px; border-top:1px solid rgba(255,255,255,0.06); padding-top:4px;">
+            ✓ Includes +$${(j.turnaroundBonus || 0).toLocaleString()} Turnaround Efficiency Bonus (Returns to ${locFrom?.name || j.from})
+          </div>
+        </div>
+      ` : ''}
+
       <!-- Financial & Equipment Matrix -->
       <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:10px; font-family:monospace; font-size:10px;">
         <div style="background:#111827; padding:6px 8px; border-radius:6px; border:1px solid #1f293d;">
@@ -126,9 +146,13 @@ export function renderJobCard(S: any, j: any) {
               <span style="font-weight:900; font-size:13px; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                 ${cargoName}
               </span>
-              ${(j.isBackhaul || localTruck) ? `
-                <span title="Direct Outbound Return Haul" style="font-size:7px; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.4); color:var(--grn); padding:1px 5px; border-radius:3px; font-weight:800; font-family:monospace; text-transform:uppercase; display:inline-flex; align-items:center; gap:2px;">
-                  🔄 TO & FRO ${localTruck ? `· ${localTruck.name}` : ''}
+              ${j.isRoundTrip ? `
+                <span title="2-Way Round Trip Turnaround" style="font-size:7px; background:rgba(245,158,11,0.2); border:1px solid #f59e0b; color:var(--gold); padding:1px 5px; border-radius:3px; font-weight:800; font-family:monospace; text-transform:uppercase; display:inline-flex; align-items:center; gap:2px;">
+                  🔄 2-WAY ROUND TRIP (+15% BONUS)
+                </span>
+              ` : j.isBackhaul ? `
+                <span title="Outbound Return Haul (Backhaul)" style="font-size:7px; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.4); color:var(--grn); padding:1px 5px; border-radius:3px; font-weight:800; font-family:monospace; text-transform:uppercase; display:inline-flex; align-items:center; gap:2px;">
+                  🔄 TO & FRO BACKHAUL
                 </span>
               ` : ''}
               ${isTender ? `
@@ -147,12 +171,13 @@ export function renderJobCard(S: any, j: any) {
 
             <div style="font-size:10px; color:var(--mu); font-family:monospace; margin-top:2px; display:flex; align-items:center; gap:6px;">
               <span style="color:var(--gold); font-weight:700;">${locFrom?.name || j.from}</span>
-              <span>→</span>
+              <span>${j.isRoundTrip ? '⇄' : '→'}</span>
               <span style="color:var(--tx); font-weight:700;">${locTo?.name || j.to}</span>
               <span>·</span>
-              <span>${j.km} km</span>
+              <span>${j.km} km ${j.isRoundTrip ? '(Round-Trip)' : ''}</span>
               <span>·</span>
               <span>${j.weight}t</span>
+              ${localTruck && !j.isRoundTrip ? `<span style="color:var(--grn); font-weight:800;">(0 km DH)</span>` : ''}
             </div>
 
             ${isAuctionWon && timeLeft > 0 ? `

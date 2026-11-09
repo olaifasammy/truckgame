@@ -8,6 +8,8 @@ import { BiddingEngine } from '../bids/engine';
 import { distKm, getRouteEnv } from '../../../systems/calc';
 import { getCompanyProgression } from '../../company/progression';
 import { SAMPLE_TENDERS } from '../../logistics/network';
+import { getDynamicCorporateTenders } from '../../contracts/tenders';
+import { getTotalSubcontractInflow } from '../../fleet/subcontracting';
 import { pushNote } from '../../../systems/notify';
 
 // Internal constants for simulation
@@ -28,7 +30,6 @@ export class FreightEngine {
     forceFrom?: string;
     forceTo?: string;
     isBackhaul?: boolean;
-    backhaulForTruckId?: number;
     vip?: boolean; 
     isAuction?: boolean; 
     auctionDuration?: number; 
@@ -37,7 +38,16 @@ export class FreightEngine {
     const prog = S ? getCompanyProgression(S) : { tier: 0 };
     const vipLevel = prog.tier >= 3 ? (prog.tier - 2) : 0;
 
-    const tender = options.tenderId ? SAMPLE_TENDERS.find(t => t.id === options.tenderId) : null;
+    const tender = options.tenderId
+      ? ((S?.corporateTenders || []).find((t: any) => t.id === options.tenderId) ||
+         getDynamicCorporateTenders(S).find(t => t.id === options.tenderId) ||
+         SAMPLE_TENDERS.find(t => t.id === options.tenderId))
+      : null;
+
+    if (tender && tender.from && tender.to) {
+      if (!options.forceFrom) options.forceFrom = tender.from;
+      if (!options.forceTo) options.forceTo = tender.to;
+    }
 
     // Collect all trailer types the player currently owns (hitched to fleet or stored in HQ yard)
     const ownedTrailers = new Set<string>();
@@ -57,10 +67,16 @@ export class FreightEngine {
       // Pick cargo suitable for the tender
       const industryMap: Record<string, string[]> = {
         'Automotive & Heavy Industry': ['steel_pipes', 'electronics', 'furniture'],
+        'Automotive & Heavy Powertrains': ['industrial_machinery', 'electronics'],
         'Energy & ADR Petrochemicals': ['gasoline', 'liquid_oxy', 'toxic_waste'],
-        'Pharmaceuticals & Food Perishables': ['frozen_fish', 'vaccines', 'produce']
+        'Pharmaceuticals & Food Perishables': ['frozen_fish', 'vaccines', 'produce'],
+        'Food & Temperature-Controlled Perishables': ['frozen_fish', 'vaccines', 'produce'],
+        'High-Tech & Precision Electronics': ['electronics', 'server_blades'],
+        'Heavy Mining & Construction Aggregates': ['steel_pipes', 'gravel', 'industrial_machinery'],
+        'Specialized Pharmaceuticals & Vaccines': ['vaccines', 'produce'],
+        'Containerized Ocean Port Drayage': ['general_freight', 'electronics']
       };
-      const possibleCargos = industryMap[tender.industry] || ['electronics'];
+      const possibleCargos = industryMap[tender.industry] || (tender.cargoType ? [tender.cargoType] : ['electronics']);
       const tenderPool = CARGO_TYPES.filter(c => possibleCargos.includes(c.id));
       cargo = rnd(tenderPool.length ? tenderPool : CARGO_TYPES);
     } else if (options.isAuction) {
@@ -195,6 +211,23 @@ export class FreightEngine {
 
     const pay = tender ? tender.ratePerDelivery : Math.round(baseKm * rate);
 
+    // Dedicated 2-Way Round-Trip Turnaround Contracts
+    const isRoundTrip = !options.isAuction && !options.tenderId && !options.isBackhaul && Math.random() < 0.25;
+    let finalPay = pay;
+    let totalKm = baseKm;
+    let returnCargoObj: any = null;
+    let turnaroundBonus = 0;
+
+    if (isRoundTrip) {
+      const compatibleReturnCargos = CARGO_TYPES.filter(c => c.trailer === cargo.trailer && c.id !== cargo.id);
+      returnCargoObj = compatibleReturnCargos.length > 0 ? rnd(compatibleReturnCargos) : cargo;
+      const leg2Rate = 3.40 + (returnCargoObj.baseValue * 0.08);
+      const leg2Pay = Math.round(baseKm * leg2Rate);
+      turnaroundBonus = Math.round((pay + leg2Pay) * 0.15); // +15% Turnaround efficiency bonus
+      finalPay = pay + leg2Pay + turnaroundBonus;
+      totalKm = baseKm * 2;
+    }
+
     const dice = Math.random();
     let kind: JobKind = tender ? 'Contract' : 'Spot';
     if (options.isAuction) kind = 'Contract';
@@ -205,7 +238,7 @@ export class FreightEngine {
     if (cargo.isFragile) requiredSkills.push('Fragile Cargo');
     if (cargo.tempControlled) requiredSkills.push('Cold Chain');
     if (cargo.isHazmat) requiredSkills.push('Hazardous ADR');
-    if (baseKm > 800) requiredSkills.push('Long Distance');
+    if (totalKm > 800) requiredSkills.push('Long Distance');
     if (routeEnv.weather === 'snow' || (routeEnv.roadGrade || 0) > 5.0) requiredSkills.push('Mountain & Alpine');
 
     const job = {
@@ -217,9 +250,9 @@ export class FreightEngine {
       weight: parseFloat(weight.toFixed(1)),
       from,
       to,
-      km: baseKm,
-      pay,
-      deadline: Date.now() + (baseKm * 3600000 / 60) + (12 * 3600000),
+      km: totalKm,
+      pay: finalPay,
+      deadline: Date.now() + (totalKm * 3600000 / 60) + (14 * 3600000),
       env: routeEnv,
       requirements: {
         requiredSkills,
@@ -229,7 +262,10 @@ export class FreightEngine {
       isShipperTanker: cargo.isHazmat && !ownedTrailers.has('hazmat'),
       vip: !!options.vip,
       isBackhaul: !!options.isBackhaul,
-      backhaulForTruckId: options.backhaulForTruckId
+      isRoundTrip,
+      returnCargoId: returnCargoObj?.id,
+      returnCargoName: returnCargoObj?.name,
+      turnaroundBonus
     };
 
     if (options.isAuction) {
@@ -309,8 +345,7 @@ export class FreightEngine {
           forceRegion: truckRegion,
           forceFrom: truck.loc,
           forceTo: returnDest,
-          isBackhaul: true,
-          backhaulForTruckId: truck.id
+          isBackhaul: true
         }));
       }
     }
@@ -370,8 +405,8 @@ export class FreightEngine {
     if (S.warehouseUpgrades?.cold_vault) dailyInflow += 800;
     if (S.warehouseUpgrades?.gantry_crane) dailyInflow += 600;
 
-    const subcontractCount = (S.subcontractedTrucks || []).length;
-    if (subcontractCount > 0) dailyInflow += subcontractCount * 1800;
+    // Dynamic subcontracting inflow from chartered rigs and yard trailers
+    dailyInflow += getTotalSubcontractInflow(S);
 
     const totalSalaries = (S.drivers || []).reduce((acc: number, d: any) => acc + (d.salary || 250), 0);
     dailyOutflow += totalSalaries;

@@ -8,6 +8,7 @@ import { TRUCK_MODELS, TRAILERS } from '../trucks/trucks.data';
 import { REGIONAL_HUBS } from '../logistics/network';
 import { getGoldMarketData, INSURANCE_POLICIES } from './banking';
 import { getTotalCryptoValue, getCryptoMarketData } from './markets/crypto';
+import { getTotalSubcontractInflow } from '../fleet/subcontracting';
 
 // Valuation constants for trailer types
 export const TRAILER_VALUATIONS: Record<string, number> = {
@@ -284,8 +285,7 @@ export function calculateIncomeStatement(S: any): IncomeStatementMetrics {
   // Daily recurring inflows
   const wh = S.warehouseUpgrades || {};
   const warehouseInflowUsd = (wh.cross_docking ? 1200 : 0) + (wh.gantry_crane ? 600 : 0);
-  const subcontractCount = (S.subcontractedTrucks || []).length;
-  const subcontractInflowUsd = subcontractCount * 1800;
+  const subcontractInflowUsd = getTotalSubcontractInflow(S);
   
   // Expected daily freight operations revenue based on active fleet size (~$3,500/day per operating rig)
   const activeFleetCount = (S.fleet || []).filter((t: any) => t.status !== 'expired').length;

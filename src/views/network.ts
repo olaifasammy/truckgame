@@ -2,6 +2,18 @@ import { ic } from '../core/icons';
 import { action, fmt, toast } from '../core/ui';
 import { set, refresh } from '../core/store';
 import { REGIONAL_HUBS, REGION_AUTHORITIES, RegionName, isRegionUnlocked, SAMPLE_TENDERS, SUBCONTRACT_DAILY_RATE } from '../domain/logistics/network';
+import { getDynamicCorporateTenders, signCorporateTender } from '../domain/contracts/tenders';
+import {
+  calculateTruckCharterRate,
+  calculateTrailerCharterRate,
+  charterOutTruck,
+  recallTruck,
+  charterOutTrailer,
+  recallTrailer,
+  getTotalSubcontractInflow,
+  ALLIANCE_PARTNERS
+} from '../domain/fleet/subcontracting';
+import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { LOCATIONS } from '../data/world';
 
 let hubTab: 'regions' | 'hubs' | 'routes' | 'tenders' = 'regions';
@@ -45,29 +57,14 @@ action('buy-regional-hub', d => {
 
 action('sign-tender', d => {
   const tenderId = (d as any).id;
-  const tenderDef = SAMPLE_TENDERS.find(t => t.id === tenderId);
-  if (!tenderDef) return;
   set(S => {
-    if (!S.corporateTenders) S.corporateTenders = [];
-    if (S.corporateTenders.some((t: any) => t.id === tenderId)) {
-      return toast('You already have an active agreement with this enterprise client', 'err');
+    const success = signCorporateTender(S, tenderId);
+    if (!success) {
+      toast('Cannot execute tender: verify minimum fleet size, driver certifications, or carrier rating.', 'err');
+    } else {
+      const tnd = S.corporateTenders?.find((t: any) => t.id === tenderId);
+      toast(`Enterprise Agreement Executed: ${tnd?.client || 'Client'}! Linehaul consignments active on freight board.`, 'success');
     }
-    if (tenderDef.requiredCerts && tenderDef.requiredCerts.length > 0) {
-      const hasCerts = tenderDef.requiredCerts.every(c => {
-        if (c === 'ADR Hazmat') return S.licenses?.includes('adr_hazmat');
-        if (c === 'Cold Chain') return S.licenses?.includes('cold_chain');
-        return true;
-      });
-      if (!hasCerts) {
-        return toast(`Regulatory permit missing: requires ${tenderDef.requiredCerts.join(', ')} (Purchase in HQ Compliance)`, 'err');
-      }
-    }
-    S.corporateTenders.push({
-      ...JSON.parse(JSON.stringify(tenderDef)),
-      completedLoads: 0,
-      loadsRemaining: tenderDef.totalLoads
-    });
-    toast(`Enterprise Contract Executed: ${tenderDef.client}! Dedicated loads dispatched to job board.`, 'success');
   });
 });
 
@@ -76,29 +73,37 @@ action('cancel-tender', d => {
   set(S => {
     if (!S.corporateTenders) return;
     S.corporateTenders = S.corporateTenders.filter((t: any) => t.id !== tenderId);
-    toast('Tender agreement terminated.', 'info');
+    toast('Tender contract terminated.', 'info');
   });
 });
 
 action('subcontract-rig', d => {
   const truckId = +(d as any).id;
+  const allianceId = (d as any).allianceId || 'dhl_global';
   set(S => {
-    const trk = (S.fleet || []).find((t: any) => t.id === truckId);
-    if (!trk) return;
-    if (trk.status !== 'idle') return toast('Truck must be parked/idle to lease out on charter', 'err');
-    if (!S.subcontractedTrucks) S.subcontractedTrucks = [];
-    if (S.subcontractedTrucks.includes(truckId)) return;
-    S.subcontractedTrucks.push(truckId);
-    toast(`Unit #${trk.id} (${trk.name}) chartered out on sub-contract (+$1,800/day passive retainer)!`, 'success');
+    charterOutTruck(S, truckId, allianceId);
   });
 });
 
 action('recall-subcontract', d => {
   const truckId = +(d as any).id;
   set(S => {
-    if (!S.subcontractedTrucks) return;
-    S.subcontractedTrucks = S.subcontractedTrucks.filter((id: number) => id !== truckId);
-    toast(`Unit #${truckId} recalled to primary fleet operations!`, 'info');
+    recallTruck(S, truckId);
+  });
+});
+
+action('subcontract-trailer', d => {
+  const trailerType = (d as any).type;
+  const allianceId = (d as any).allianceId || 'dhl_global';
+  set(S => {
+    charterOutTrailer(S, trailerType, allianceId);
+  });
+});
+
+action('recall-trailer', d => {
+  const trailerType = (d as any).type;
+  set(S => {
+    recallTrailer(S, trailerType);
   });
 });
 
@@ -290,16 +295,21 @@ export default {
 
         <!-- TAB 4: ENTERPRISE TENDERS & CHARTER SUBCONTRACTING -->
         ${hubTab === 'tenders' ? `
-          <div style="display:flex; flex-direction:column; gap:16px; margin-bottom:20px;">
+          <div style="display:flex; flex-direction:column; gap:18px; margin-bottom:20px;">
+            
             <!-- Section A: Corporate SLA Tenders -->
             <div>
               <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase;">Enterprise Corporate Logistics Tenders</span>
-                <span style="font-size:9px; color:var(--gold); font-family:monospace;">ANNUAL COMMITTED FREIGHT</span>
+                <span style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase;">Enterprise 30-Day Linehaul Contracts (RFPs)</span>
+                <span style="font-size:9px; color:var(--gold); font-family:monospace;">DEDICATED CORRIDOR TENDERS</span>
               </div>
 
-              <div style="display:flex; flex-direction:column; gap:10px;">
-                ${SAMPLE_TENDERS.map(tender => {
+              <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:12px; margin-bottom:12px; font-size:10px; color:var(--mu); line-height:1.4;">
+                Commit capacity to high-volume commercial shippers on dedicated multi-load freight corridors. Fulfill consignments on time within contract SLA to unlock major volume completion bonuses.
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:12px;">
+                ${getDynamicCorporateTenders(S).map(tender => {
                   const activeTender = (S.corporateTenders || []).find((ct: any) => ct.id === tender.id);
                   const isSigned = !!activeTender;
                   const reqCerts = tender.requiredCerts || [];
@@ -308,117 +318,220 @@ export default {
                     if (c === 'Cold Chain') return !S.licenses?.includes('cold_chain');
                     return false;
                   });
-                  const isCompliant = missingCerts.length === 0;
+                  const hasFleet = (S.fleet?.length || 0) >= tender.minFleetSize;
+                  const hasReputation = (S.reputation ?? 100) >= tender.minReputation;
+                  const isCompliant = missingCerts.length === 0 && hasFleet && hasReputation;
+
+                  const completed = activeTender ? (activeTender.completedLoads || 0) : 0;
+                  const total = activeTender ? (activeTender.totalLoads || tender.totalLoads) : tender.totalLoads;
+                  const remaining = activeTender ? (activeTender.loadsRemaining ?? Math.max(0, total - completed)) : total;
+                  const progressPct = Math.round((completed / Math.max(1, total)) * 100);
 
                   return `
-                    <div style="background:#111827; border:1px solid ${isSigned ? 'var(--gold)' : isCompliant ? '#1f293d' : 'rgba(239,68,68,0.25)'}; border-radius:10px; padding:14px;">
-                      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px;">
+                    <div style="background:#111827; border:1px solid ${isSigned ? 'var(--gold)' : isCompliant ? '#1f293d' : 'rgba(239,68,68,0.25)'}; border-radius:10px; padding:14px; box-shadow:0 4px 14px rgba(0,0,0,0.3);">
+                      
+                      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; flex-wrap:wrap; gap:8px;">
                         <div style="display:flex; align-items:center; gap:10px;">
-                          <span style="font-size:24px;">${tender.icon}</span>
+                          <span style="font-size:26px;">${tender.icon}</span>
                           <div>
                             <div style="font-size:13px; font-weight:900; color:var(--tx);">${tender.client}</div>
-                            <div style="font-size:9px; color:var(--gold); font-family:monospace; margin-top:1px;">
-                              ${tender.industry} · SLA Target: ${tender.slaTarget}% On-Time
+                            <div style="font-size:9.5px; color:var(--gold); font-family:monospace; margin-top:1px;">
+                              ${tender.industry} · Lane: <b>${tender.lane}</b>
                             </div>
                           </div>
                         </div>
+
                         <div>
                           ${isSigned ? `
                             <div style="display:flex; align-items:center; gap:6px;">
                               <span style="font-size:9px; font-weight:900; color:var(--grn); background:rgba(16,185,129,0.12); border:1px solid var(--grn); padding:4px 8px; border-radius:4px; font-family:monospace;">
-                                ✓ COMMITTED
+                                ✓ ACTIVE LINEHAUL
                               </span>
                               <button class="btn alt" style="padding:4px 8px; font-size:9px; font-weight:700; color:#ef4444;" data-act="cancel-tender" data-id="${tender.id}">
                                 Cancel
                               </button>
                             </div>
                           ` : `
-                            <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900;" data-act="sign-tender" data-id="${tender.id}" ${!isCompliant ? 'disabled style="opacity:0.5;"' : ''}>
+                            <button class="btn gold" style="padding:6px 14px; font-size:9.5px; font-weight:900;" data-act="sign-tender" data-id="${tender.id}" ${!isCompliant ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>
                               SIGN AGREEMENT
                             </button>
                           `}
                         </div>
                       </div>
 
-                      <div style="font-size:10px; color:var(--mu); line-height:1.4; margin-bottom:8px;">
+                      <div style="font-size:10px; color:var(--mu); line-height:1.4; margin-bottom:10px;">
                         ${tender.desc}
                       </div>
 
                       ${isSigned ? `
-                        <div style="background:#0a0f1d; padding:8px 10px; border-radius:6px; border:1px solid #1f293d; margin-bottom:8px;">
-                          <div style="display:flex; justify-content:space-between; font-size:9px; margin-bottom:4px; font-weight:700;">
-                            <span style="color:var(--mu); text-transform:uppercase;">DELIVERY PROGRESS</span>
-                            <span style="color:var(--gold); font-family:monospace;">${activeTender.completedLoads || 0} / ${activeTender.totalLoads} LOADS (${activeTender.loadsRemaining || 0} REMAINING)</span>
+                        <div style="background:#0a0f1d; padding:10px 12px; border-radius:6px; border:1px solid #1f293d; margin-bottom:10px;">
+                          <div style="display:flex; justify-content:space-between; font-size:9.5px; margin-bottom:4px; font-weight:700; font-family:monospace;">
+                            <span style="color:var(--mu); text-transform:uppercase;">DELIVERY PROGRESS (${progressPct}%)</span>
+                            <span style="color:var(--gold);">${completed} / ${total} LOADS DELIVERED (${remaining} REMAINING)</span>
                           </div>
-                          <div style="height:5px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
-                            <div style="width:${Math.round(((activeTender.completedLoads || 0) / activeTender.totalLoads) * 100)}%; height:100%; background:var(--gold); border-radius:3px;"></div>
+                          <div style="height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
+                            <div style="width:${progressPct}%; height:100%; background:var(--gold); border-radius:3px; transition:width 0.3s;"></div>
                           </div>
                         </div>
                       ` : ''}
 
-                      <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; border-top:1px solid rgba(255,255,255,0.06); padding-top:8px; font-size:9px; font-family:monospace;">
+                      <!-- Metrics Row -->
+                      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(110px, 1fr)); gap:6px; background:#060a14; padding:8px 10px; border-radius:6px; margin-bottom:8px; font-family:monospace;">
                         <div>
-                          <span style="color:var(--mu);">Per-Delivery Rate:</span>
-                          <span style="color:var(--grn); font-weight:800; margin-left:4px;">+$${tender.ratePerDelivery.toLocaleString()}</span>
+                          <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">PAY PER LOAD</div>
+                          <div style="font-size:12px; font-weight:900; color:var(--grn);">${fmt(tender.ratePerDelivery)}</div>
                         </div>
-                        <div style="text-align:right;">
-                          <span style="color:var(--mu);">SLA Bonus:</span>
-                          <span style="color:var(--gold); font-weight:800; margin-left:4px;">+$${tender.bonusPayout.toLocaleString()}</span>
+                        <div>
+                          <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">SLA THRESHOLD</div>
+                          <div style="font-size:12px; font-weight:900; color:var(--tx);">${tender.slaTarget}% ON-TIME</div>
+                        </div>
+                        <div>
+                          <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">SCHEDULED VOLUME</div>
+                          <div style="font-size:12px; font-weight:900; color:var(--tx);">${tender.totalLoads} Loads</div>
+                        </div>
+                        <div>
+                          <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">COMPLETION BONUS</div>
+                          <div style="font-size:12px; font-weight:900; color:var(--gold);">+${fmt(tender.bonusPayout)}</div>
                         </div>
                       </div>
-                      ${reqCerts.length > 0 ? `
-                        <div style="font-size:9px; color:${isCompliant ? 'var(--mu)' : '#ef4444'}; margin-top:4px;">
-                          Required Endorsements: ${reqCerts.join(', ')} ${!isCompliant ? '(Missing - Acquire in Carrier Compliance)' : '✓ Verified'}
-                        </div>
-                      ` : ''}
+
+                      <!-- Shipper Prerequisites -->
+                      <div style="display:flex; flex-wrap:wrap; gap:8px; font-size:9px; font-family:monospace; color:var(--mu);">
+                        <span style="color:${hasFleet ? 'var(--grn)' : '#ef4444'};">
+                          ${hasFleet ? '✓' : '✕'} Min Fleet: ${tender.minFleetSize} ${tender.minFleetSize === 1 ? 'Tractor' : 'Tractors'} (${S.fleet?.length || 0} owned)
+                        </span>
+                        <span>·</span>
+                        <span style="color:${hasReputation ? 'var(--grn)' : '#ef4444'};">
+                          ${hasReputation ? '✓' : '✕'} Min Safety: ${tender.minReputation} (${S.reputation ?? 100} current)
+                        </span>
+                        ${reqCerts.length > 0 ? `
+                          <span>·</span>
+                          <span style="color:${missingCerts.length === 0 ? 'var(--grn)' : '#ef4444'};">
+                            ${missingCerts.length === 0 ? '✓' : '✕'} Permits: ${reqCerts.join(', ')}
+                          </span>
+                        ` : ''}
+                      </div>
+
                     </div>
                   `;
                 }).join('')}
               </div>
             </div>
 
-            <!-- Section B: Fleet Subcontracting Charters -->
+            <!-- Section B: Fleet Rig & Trailer Subcontracting -->
             <div>
               <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase;">3rd-Party Charter Subcontracting</span>
-                <span style="font-size:9px; color:var(--grn); font-family:monospace;">GUARANTEED +$${SUBCONTRACT_DAILY_RATE.toLocaleString()}/DAY PER RIG</span>
+                <span style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase;">3rd-Party Fleet & Trailer Charter Leasing</span>
+                <span style="font-size:10px; color:var(--grn); font-weight:900; font-family:monospace;">TOTAL RETAINER: +${fmt(getTotalSubcontractInflow(S))}/DAY</span>
               </div>
 
-              <div style="background:#111827; border:1px solid #1f293d; border-radius:10px; padding:12px; margin-bottom:10px; font-size:10px; color:var(--mu); line-height:1.4;">
-                Charter idle highway tractors out to allied regional logistics carriers. Chartered rigs generate steady daily passive cashflow directly to your corporate treasury, requiring no manual dispatching.
+              <div style="background:#111827; border:1px solid #1f293d; border-radius:10px; padding:12px; margin-bottom:12px; font-size:10px; color:var(--mu); line-height:1.4;">
+                Sublease idle heavy tractors and storage yard trailers to global carrier alliances (DHL Express, Maersk Intermodal, FedEx Freight, DB Schenker) for guaranteed passive daily retainers ($2,400 to $6,800/day per rig; $950 to $1,950/day per trailer).
               </div>
 
-              <div style="display:flex; flex-direction:column; gap:8px;">
+              <!-- Tractors Subcontracting List -->
+              <div style="font-size:10px; color:var(--gold); font-weight:800; font-family:monospace; text-transform:uppercase; margin-bottom:8px;">
+                Commercial Highway Tractors (${(S.fleet || []).length} Units)
+              </div>
+
+              <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
                 ${(S.fleet || []).map((t: any) => {
+                  const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'] || { brand: 'Tractor', name: t.name, hp: 500 };
                   const isSubcontracted = (S.subcontractedTrucks || []).includes(t.id);
                   const isIdle = t.status === 'idle';
+                  const charterRate = calculateTruckCharterRate(t);
 
                   return `
-                    <div style="background:#0f172a; border:1px solid ${isSubcontracted ? 'rgba(16,185,129,0.3)' : '#1e293b'}; border-radius:8px; padding:10px 12px; display:flex; justify-content:space-between; align-items:center;">
+                    <div style="background:#0f172a; border:1px solid ${isSubcontracted ? 'rgba(16,185,129,0.35)' : '#1e293b'}; border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
                       <div>
-                        <div style="font-size:12px; font-weight:800; color:var(--tx);">${t.name}</div>
-                        <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
-                          Base: ${t.loc} · ${isSubcontracted ? '<b style="color:var(--grn);">CHARTERED OUT (+$' + SUBCONTRACT_DAILY_RATE.toLocaleString() + '/day)</b>' : 'Status: ' + t.status.toUpperCase()}
+                        <div style="font-size:13px; font-weight:800; color:var(--tx);">${t.name}</div>
+                        <div style="font-size:9.5px; color:var(--mu); font-family:monospace; margin-top:1px;">
+                          ${m.brand} ${m.name} (${m.hp} HP) · Base: ${t.loc} · Rate: <b style="color:var(--grn);">+${fmt(charterRate)}/day</b>
+                        </div>
+                        <div style="font-size:9px; color:${isSubcontracted ? 'var(--grn)' : isIdle ? 'var(--gold)' : 'var(--mu)'}; font-family:monospace;">
+                          ${isSubcontracted ? '● CHARTERED TO DHL GLOBAL LINEHAUL ALLIANCE' : isIdle ? '● IDLE IN DEPOT (READY TO CHARTER)' : '● IN TRANSIT ON HAUL'}
                         </div>
                       </div>
                       <div>
                         ${isSubcontracted ? `
-                          <button class="btn alt" style="padding:5px 10px; font-size:9px; font-weight:800; color:#ef4444;" data-act="recall-subcontract" data-id="${t.id}">
-                            RECALL FLEET RIG
+                          <button class="btn alt" style="padding:6px 12px; font-size:9.5px; font-weight:800; color:#ef4444;" data-act="recall-subcontract" data-id="${t.id}">
+                            RECALL TO ACTIVE FLEET
                           </button>
                         ` : isIdle ? `
-                          <button class="btn gold" style="padding:5px 10px; font-size:9px; font-weight:900;" data-act="subcontract-rig" data-id="${t.id}">
-                            CHARTER OUT (+$${SUBCONTRACT_DAILY_RATE}/d)
+                          <button class="btn gold" style="padding:6px 12px; font-size:9.5px; font-weight:900;" data-act="subcontract-rig" data-id="${t.id}">
+                            CHARTER OUT (+${fmt(charterRate)}/d)
                           </button>
                         ` : `
-                          <span style="font-size:9px; color:var(--mu); font-family:monospace;">RIG IN TRANSIT</span>
+                          <span style="font-size:9px; color:var(--mu); font-family:monospace;">BUSY IN TRANSIT</span>
                         `}
                       </div>
                     </div>
                   `;
                 }).join('')}
               </div>
+
+              <!-- Storage Yard Trailers Subcontracting List -->
+              ${(S.trailers && S.trailers.length > 0) ? `
+                <div style="font-size:10px; color:var(--gold); font-weight:800; font-family:monospace; text-transform:uppercase; margin-bottom:8px;">
+                  Storage Yard Trailer Inventory (${S.trailers.length} Units)
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  ${(() => {
+                    const trailerCounts: Record<string, number> = {};
+                    (S.trailers || []).forEach((tr: string) => {
+                      trailerCounts[tr] = (trailerCounts[tr] || 0) + 1;
+                    });
+                    const leasedCounts: Record<string, number> = {};
+                    (S.subcontractedTrailers || []).forEach((tr: string) => {
+                      leasedCounts[tr] = (leasedCounts[tr] || 0) + 1;
+                    });
+
+                    return Object.entries(trailerCounts).map(([trType, count]) => {
+                      const leased = leasedCounts[trType] || 0;
+                      const available = count - leased;
+                      const rate = calculateTrailerCharterRate(trType);
+
+                      return `
+                        <div style="background:#0f172a; border:1px solid ${leased > 0 ? 'rgba(16,185,129,0.35)' : '#1e293b'}; border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                          <div>
+                            <div style="font-size:13px; font-weight:800; color:var(--tx); text-transform:uppercase;">
+                              ${trType.replace('_', ' ')} TRAILER FLEET
+                            </div>
+                            <div style="font-size:9.5px; color:var(--mu); font-family:monospace; margin-top:1px;">
+                              Total Owned: ${count} · Chartered Out: <b style="color:var(--grn);">${leased}</b> · In Yard: ${available}
+                            </div>
+                            <div style="font-size:9px; color:var(--grn); font-family:monospace;">
+                              Charter Yield: +${fmt(rate)}/day per trailer
+                            </div>
+                          </div>
+                          <div style="display:flex; gap:6px;">
+                            ${leased > 0 ? `
+                              <button class="btn alt" style="padding:6px 10px; font-size:9px; font-weight:800; color:#ef4444;" data-act="recall-trailer" data-type="${trType}">
+                                RECALL (${leased})
+                              </button>
+                            ` : ''}
+                            ${available > 0 ? `
+                              <button class="btn gold" style="padding:6px 12px; font-size:9.5px; font-weight:900;" data-act="subcontract-trailer" data-type="${trType}">
+                                CHARTER OUT (+${fmt(rate)}/d)
+                              </button>
+                            ` : `
+                              <span style="font-size:9px; color:var(--mu); font-family:monospace;">ALL CHARTERED</span>
+                            `}
+                          </div>
+                        </div>
+                      `;
+                    }).join('');
+                  })()}
+                </div>
+              ` : `
+                <div style="font-size:10px; color:var(--mu); font-style:italic; padding:6px 0;">
+                  No storage yard trailers in inventory. Acquire specialized trailers in Garage to lease them out to carrier alliances.
+                </div>
+              `}
+
             </div>
+
           </div>
         ` : ''}
       </div>
