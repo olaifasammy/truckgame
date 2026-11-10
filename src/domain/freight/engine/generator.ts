@@ -223,14 +223,15 @@ export class FreightEngine {
       rate = 3.40 + (cargo.baseValue * 0.08);
       if (options.vip) rate *= 1.30;
       if (cargo.isHazmat) rate *= 1.45;
+      if (cargo.isFragile) rate *= 1.30;
       if (cargo.tempControlled) rate *= 1.35;
-      if (weight > 18) rate *= 1.25;
+      if (weight > 18) rate *= (1 + (weight - 18) * 0.02);
       if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') rate *= 1.40;
       if ((routeEnv.roadGrade || 0) > 5.0) rate *= 1.30;
     }
 
     const calculatedPay = tender ? Math.round((tender.ratePerDelivery || 15000) * (0.94 + Math.random() * 0.12)) : Math.round(baseKm * rate);
-    const pay = Math.max(1500, calculatedPay);
+    const pay = Math.max(450, calculatedPay);
 
     // Dedicated 2-Way Round-Trip Turnaround Contracts
     const isRoundTrip = !options.isAuction && !options.tenderId && Math.random() < 0.25;
@@ -244,8 +245,15 @@ export class FreightEngine {
     if (isRoundTrip) {
       const compatibleReturnCargos = CARGO_TYPES.filter(c => c.trailer === cargo.trailer && c.id !== cargo.id);
       returnCargoObj = compatibleReturnCargos.length > 0 ? rnd(compatibleReturnCargos) : cargo;
-      const leg2Rate = 3.40 + (returnCargoObj.baseValue * 0.08);
-      leg2Pay = Math.max(1200, Math.round(baseKm * leg2Rate));
+      let leg2Rate = 3.40 + (returnCargoObj.baseValue * 0.08);
+      if (options.vip) leg2Rate *= 1.30;
+      if (returnCargoObj.isHazmat) leg2Rate *= 1.45;
+      if (returnCargoObj.isFragile) leg2Rate *= 1.30;
+      if (returnCargoObj.tempControlled) leg2Rate *= 1.35;
+      if (weight > 18) leg2Rate *= (1 + (weight - 18) * 0.02);
+      if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') leg2Rate *= 1.40;
+      if ((routeEnv.roadGrade || 0) > 5.0) leg2Rate *= 1.30;
+      leg2Pay = Math.max(450, Math.round(baseKm * leg2Rate));
       turnaroundBonus = Math.round((pay + leg2Pay) * 0.15); // +15% Turnaround efficiency bonus
       finalPay = pay + leg2Pay + turnaroundBonus;
       totalKm = baseKm * 2;
@@ -346,12 +354,36 @@ export class FreightEngine {
     const prog = S ? getCompanyProgression(S) : { tier: 0 };
     const isVipCarrier = prog.tier >= 3;
     
-    // Inject corporate tender loads if active
+    // Inject corporate tender loads if active (Enforce 5 jobs per 5 hours limit unless premium)
     if (S.corporateTenders && S.corporateTenders.length > 0) {
+      const now = Date.now();
+      if (!S.tenderListingLimit) S.tenderListingLimit = { count: 0, windowStart: now };
+      
+      const limit = S.tenderListingLimit;
+      const WINDOW_MS = 5 * 60 * 60 * 1000;
+      if (now - limit.windowStart > WINDOW_MS) {
+        limit.windowStart = now;
+        limit.count = 0;
+      }
+
+      const isPremium = limit.premiumActive && limit.premiumExpiresAt > now;
+      const MAX_FREE_LISTINGS = 5;
+
       for (const tender of S.corporateTenders) {
         const activeLoadsOnBoard = (S.jobs || []).filter((j: any) => j.tenderId === tender.id).length;
         if (activeLoadsOnBoard < 1 && (tender.loadsRemaining || 0) > 0) {
-          S.jobs.push(this.generate(S, { tenderId: tender.id }));
+          // Check limit
+          if (!isPremium && limit.count >= MAX_FREE_LISTINGS) {
+            continue; // Skip listing if limit reached and not premium
+          }
+
+          const newJob = this.generate(S, { tenderId: tender.id });
+          if (newJob) {
+            S.jobs.push(newJob);
+            if (!isPremium) {
+              limit.count++;
+            }
+          }
         }
       }
     }
