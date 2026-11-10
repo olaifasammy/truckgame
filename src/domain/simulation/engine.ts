@@ -20,6 +20,7 @@ import { toast } from '../../core/ui';
 export interface SimulationTickResult {
   doneCount: number;
   auctionsChanged: boolean;
+  bidChanged: boolean;
   repairsCount: number;
   dispatchedCount: number;
   botTraded: boolean;
@@ -65,12 +66,22 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
   // 3. Freight Consignment Arrivals & Job Completions
   let done: any[] = [];
   let auctionChanged = false;
+  let bidChanged = false;
+
+  // EMERGENCY CLEANUP: If the board is overwhelmed (e.g. from legacy state or bugs), 
+  // truncate it immediately to maintain performance and UI sanity.
+  if (st.jobs && st.jobs.length > 20) {
+    st.jobs = st.jobs.slice(0, 17);
+  }
+
   const prevAuctionCount = (st.auctions || []).length;
+  const prevJobCount = (st.jobs || []).length;
 
   try {
     const jobResult = completeJobs(st, now) || {};
     done = jobResult.done || [];
     auctionChanged = !!jobResult.auctionChanged;
+    bidChanged = !!jobResult.bidChanged;
     
     if (done.length > 0) {
       done.forEach((job: any) => {
@@ -208,18 +219,20 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
   }
 
   const currentAuctionCount = (st.auctions || []).length;
-  const auctionsStructurallyChanged = prevAuctionCount !== currentAuctionCount || auctionChanged;
+  const currentJobCount = (st.jobs || []).length;
+  const boardStructurallyChanged = prevAuctionCount !== currentAuctionCount || prevJobCount !== currentJobCount || auctionChanged;
 
   const hasStructuralChange = 
     done.length > 0 ||
     repCount > 0 ||
     dispatchedCount > 0 ||
     maintCount > 0 ||
-    auctionsStructurallyChanged;
+    boardStructurallyChanged;
 
   return {
     doneCount: done.length,
-    auctionsChanged: auctionsStructurallyChanged,
+    auctionsChanged: boardStructurallyChanged,
+    bidChanged,
     repairsCount: repCount,
     dispatchedCount,
     botTraded,

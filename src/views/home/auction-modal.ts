@@ -112,14 +112,14 @@ export function renderModalOverlay(S: any) {
         <div style="font-size:9px; color:var(--mu); text-transform:uppercase; letter-spacing:1px; font-family:monospace;">
           CURRENT WINNING LOWEST BID
         </div>
-        <div style="font-size:28px; font-weight:900; color:${isWinning ? 'var(--grn)' : 'var(--gold)'}; font-family:monospace; margin:4px 0;">
+        <div style="font-size:28px; font-weight:900; color:${isWinning ? 'var(--grn)' : 'var(--gold)'}; font-family:monospace; margin:4px 0;" data-auc-bid="${auc.id}">
           ${fmt(auc.currentBid || 0)}
         </div>
         <div style="font-size:11px; color:var(--tx); font-family:monospace;">
-          Leading Carrier: <b style="color:${isWinning ? 'var(--grn)' : 'var(--gold)'};">${isWinning ? '★ Your Fleet (Lowest Bidder)' : auc.currentWinnerName}</b>
+          Leading Carrier: <b style="color:${isWinning ? 'var(--grn)' : 'var(--gold)'};" data-auc-winner="${auc.id}">${isWinning ? '★ Your Fleet (Lowest Bidder)' : auc.currentWinnerName}</b>
         </div>
         <div style="font-size:11px; font-weight:800; color:${timeLeft < 20000 ? 'var(--red)' : 'var(--mu)'}; font-family:monospace; margin-top:4px;">
-          ⏱️ Contract Closes In: <b>${dur(timeLeft)}</b>
+          ⏱️ Contract Closes In: <b data-auction-eta="${auc.expiresAt}">${dur(timeLeft)}</b>
         </div>
       </div>
 

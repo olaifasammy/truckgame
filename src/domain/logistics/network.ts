@@ -204,13 +204,13 @@ export const REGIONAL_HUBS: RegionalHub[] = [
 ];
 
 export function isRegionUnlocked(S: any, region: RegionName): boolean {
-  if (!S) return region === 'Africa';
-  const unlocked: RegionName[] = S.unlockedRegions || ['Africa'];
+  if (!S || !S.unlockedRegions) return false;
+  const unlocked: RegionName[] = S.unlockedRegions;
   return unlocked.includes(region);
 }
 
 export function getOwnedHubs(S: any): RegionalHub[] {
-  if (!S || !S.depots) return [REGIONAL_HUBS[0]];
+  if (!S || !S.depots) return [];
   return REGIONAL_HUBS.filter(h => S.depots.includes(h.id));
 }
 
@@ -223,7 +223,7 @@ export function getHubById(id: string): RegionalHub | undefined {
 }
 
 export function hasHubInRegion(S: any, region: RegionName): boolean {
-  if (!S || !S.depots) return region === 'Africa';
+  if (!S || !S.depots) return false;
   return REGIONAL_HUBS.some(h => h.region === region && S.depots.includes(h.id));
 }
 

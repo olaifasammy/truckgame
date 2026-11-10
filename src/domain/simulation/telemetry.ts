@@ -58,10 +58,10 @@ export function syncLiveDomTelemetry(st: any, now: number): void {
 
       const winnerEl = document.querySelector(`[data-auc-winner="${auc.id}"]`);
       if (winnerEl) {
-        const winText = isWinning ? '★ Winning' : auc.currentWinnerName;
+        const winText = isWinning ? '★ Your Fleet (Lowest Bidder)' : auc.currentWinnerName;
         if (winnerEl.textContent !== winText) {
           winnerEl.textContent = winText;
-          (winnerEl as HTMLElement).style.color = isWinning ? 'var(--grn)' : 'var(--mu)';
+          (winnerEl as HTMLElement).style.color = isWinning ? 'var(--grn)' : 'var(--gold)';
         }
       }
 
@@ -194,8 +194,6 @@ export function syncLiveDomTelemetry(st: any, now: number): void {
     }
   }
 
-  // 11. Modal Overlays (if active auction modal is open)
-  if (activeAuctionModalId !== null) {
-    renderModalOverlay(st);
-  }
+  // 11. Modal Overlays (removed automatic second-by-second re-render to prevent flicker)
+  // Logic moved to main.ts and auction-modal.ts with data-attributes for live updates.
 }

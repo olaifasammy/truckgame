@@ -23,6 +23,7 @@ import { tripMs } from './systems/calc';
 import { processOfflineAiDispatch } from './domain/ai/ai.engine';
 import { executeSimulationStep } from './domain/simulation/engine';
 import { syncLiveDomTelemetry } from './domain/simulation/telemetry';
+import { activeAuctionModalId, renderModalOverlay } from './views/home/auction-modal';
 
 console.log('Main: Imports completed');
 
@@ -209,12 +210,18 @@ try {
     if (tickResult.hasStructuralChange || tickResult.botTraded) {
       set(() => {}); // Persist and trigger subscribers
       lastSaveTimestamp = now;
-    } else if (now - lastSaveTimestamp > 10000) {
-      // Background heartbeat save (every 10s) to avoid expensive JSON.stringify on the main thread every second
-      try {
-        localStorage.setItem('sam.v3', JSON.stringify(st));
-        lastSaveTimestamp = now;
-      } catch (e) {}
+    } else {
+      if (tickResult.bidChanged && activeAuctionModalId !== null) {
+        renderModalOverlay(st);
+      }
+      
+      if (now - lastSaveTimestamp > 10000) {
+        // Background heartbeat save (every 10s) to avoid expensive JSON.stringify on the main thread every second
+        try {
+          localStorage.setItem('sam.v3', JSON.stringify(st));
+          lastSaveTimestamp = now;
+        } catch (e) {}
+      }
     }
 
     // 3. Surgical in-place DOM telemetry sync (live ETAs, progress bars, tickers, odometers, telematics)

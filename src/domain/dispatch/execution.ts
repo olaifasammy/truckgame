@@ -175,7 +175,9 @@ export const DispatchExecution = {
     this._processAssetDeliveries(S, now);
 
     // 2. Process Job Completions
-    const auctionChanged = BiddingEngine.tickAuctions(S, now);
+    const aucRes = BiddingEngine.tickAuctions(S, now);
+    const auctionChanged = aucRes.listChanged;
+    const bidChanged = aucRes.bidChanged;
     const done: any[] = S.active.filter((a: any) => a.end <= now);
     
     if (done.length > 0) {
@@ -185,7 +187,7 @@ export const DispatchExecution = {
       }
     }
 
-    return { done, auctionChanged };
+    return { done, auctionChanged, bidChanged };
   },
 
   _processAssetDeliveries(S: any, now: number): void {
@@ -310,7 +312,8 @@ export const DispatchExecution = {
       pushNote(S, `Payment for ${cargo?.name || 'Freight'}: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });
 
       // Generate immediate return haul from the arrival city back to departure city or regional hub
-      if (t && a.to && LOCATIONS[a.to]) {
+      // Only if the board isn't already overwhelmed (Limit: 17)
+      if (t && a.to && LOCATIONS[a.to] && (S.jobs || []).length < 17) {
         const destRegion = LOCATIONS[a.to].region;
         try {
           const returnJob = FreightEngine.generate(S, {

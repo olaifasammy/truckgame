@@ -123,15 +123,20 @@ export class FreightEngine {
     // Filter available regions strictly to those unlocked by company operating authority
     const unlockedRegions: RegionName[] = (S?.unlockedRegions && S.unlockedRegions.length > 0)
       ? S.unlockedRegions
-      : ['Africa'];
+      : [];
 
     let targetRegion: RegionName;
     if (options.forceFrom && LOCATIONS[options.forceFrom]) {
       targetRegion = LOCATIONS[options.forceFrom].region;
-    } else if (tender) {
-      targetRegion = unlockedRegions.includes('Europe') ? 'Europe' : unlockedRegions[0];
+    } else if (tender && (tender as any).region && unlockedRegions.includes((tender as any).region as RegionName)) {
+      targetRegion = (tender as any).region as RegionName;
     } else if (options.forceRegion && unlockedRegions.includes(options.forceRegion)) {
       targetRegion = options.forceRegion;
+    } else if (tender) {
+      // If it's a tender but no region is specified, spread it across unlocked regions
+      // based on tender ID to ensure stability but variation.
+      const tenderSeed = (tender.id || '').split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+      targetRegion = unlockedRegions[tenderSeed % unlockedRegions.length];
     } else {
       targetRegion = rnd(unlockedRegions);
     }
@@ -310,17 +315,23 @@ export class FreightEngine {
     return job;
   }
 
-  static replenish(S: any, count = 8) {
+  static replenish(S: any, count = 6) {
     if (!S.jobs) S.jobs = [];
     if (!S.auctions) S.auctions = [];
 
+    // STRICTOR LIMIT ENFORCEMENT: Section 2.1 & 6.4 compliance
+    // Ensure the board never exceeds 17 total jobs. Truncate immediately if over limit.
+    if (S.jobs.length > 17) {
+      S.jobs = S.jobs.slice(0, 17);
+    }
+
     const unlockedRegions: RegionName[] = (S?.unlockedRegions && S.unlockedRegions.length > 0)
       ? S.unlockedRegions
-      : ['Africa'];
+      : [];
 
     // Ensure 2 to 3 live auctions, distributed across unlocked regions
     const targetAuctions = 2 + Math.floor(Math.random() * 2); 
-    while (S.auctions.length < targetAuctions) {
+    while (S.auctions.length < targetAuctions && S.auctions.length < 4) {
       const customDuration = (75 + Math.floor(Math.random() * 60)) * 1000;
       const forceRegion = unlockedRegions[Math.floor(Math.random() * unlockedRegions.length)];
       this.generate(S, { 
@@ -338,7 +349,7 @@ export class FreightEngine {
     // Inject corporate tender loads if active
     if (S.corporateTenders && S.corporateTenders.length > 0) {
       for (const tender of S.corporateTenders) {
-        const activeLoadsOnBoard = S.jobs.filter((j: any) => j.tenderId === tender.id).length;
+        const activeLoadsOnBoard = (S.jobs || []).filter((j: any) => j.tenderId === tender.id).length;
         if (activeLoadsOnBoard < 1 && (tender.loadsRemaining || 0) > 0) {
           S.jobs.push(this.generate(S, { tenderId: tender.id }));
         }
@@ -346,10 +357,12 @@ export class FreightEngine {
     }
 
     // FLEET-AWARE OUTBOUND HAUL GUARANTEE:
-    // Guarantee that wherever a player's truck is currently stationed, there is at least one outbound contract
-    // so the truck can take a job from the place it's currently at without empty deadheading!
-    const fleet = S.fleet || [];
+    // Cap this to avoid overwhelming the board when the fleet is large.
+    // Prioritize idle trucks that don't already have a local job.
+    const fleet = (S.fleet || []).filter((t: any) => t.status === 'idle');
+    let addedFleetJobs = 0;
     for (const truck of fleet) {
+      if (addedFleetJobs >= 4 || S.jobs.length >= 17) break;
       if (!truck.loc || !LOCATIONS[truck.loc]) continue;
       const truckRegion = LOCATIONS[truck.loc].region;
       if (!unlockedRegions.includes(truckRegion)) continue;
@@ -367,11 +380,13 @@ export class FreightEngine {
           forceTo: returnDest,
           forceTrailer: truck.trailer || 'curtain'
         }));
+        addedFleetJobs++;
       }
     }
 
     // Ensure each unlocked region has balanced jobs on the board simultaneously
     for (const region of unlockedRegions) {
+      if (S.jobs.length >= 17) break;
       const regionJobsCount = S.jobs.filter((j: any) => {
         const loc = LOCATIONS[j.from];
         return loc && loc.region === region;
@@ -382,7 +397,7 @@ export class FreightEngine {
       }
     }
 
-    while (S.jobs.length < count) {
+    while (S.jobs.length < count && S.jobs.length < 17) {
       const forceRegion = unlockedRegions[Math.floor(Math.random() * unlockedRegions.length)];
       S.jobs.push(this.generate(S, { vip: isVipCarrier && Math.random() < 0.15, forceRegion }));
     }

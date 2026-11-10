@@ -165,7 +165,19 @@ function getLaneDistance(cityA: string, cityB: string): number {
  * unlocked operating regions, actual highway corridors, and market pricing.
  */
 export function getDynamicCorporateTenders(S: any): CorporateTender[] {
-  const unlockedRegions = S.unlockedRegions || ['Europe', 'North America'];
+  // Use authoritative unlocked regions, but fallback to hub ownership to ensure 
+  // zero-latency regional activation after hub purchase.
+  const unlockedFromState: string[] = S.unlockedRegions || [];
+  const hubs = (S.depots || []).map((id: string) => {
+    if (id.includes('lagos') || id.includes('abuja') || id.includes('kano')) return 'Africa';
+    if (id.includes('rotterdam') || id.includes('munich') || id.includes('lyon')) return 'Europe';
+    if (id.includes('chicago') || id.includes('dallas') || id.includes('los_angeles')) return 'America';
+    if (id.includes('tokyo') || id.includes('shanghai') || id.includes('almaty')) return 'Asia';
+    return null;
+  }).filter(Boolean) as string[];
+  
+  const unlockedRegions = Array.from(new Set([...unlockedFromState, ...hubs]));
+  
   const now = Date.now();
   // 6-hour dynamic rotation cycle
   const cycleSeed = Math.floor(now / (1000 * 60 * 60 * 6));

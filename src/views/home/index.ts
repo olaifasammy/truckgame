@@ -169,14 +169,14 @@ export default {
       return locFrom?.region === currentRegion || locTo?.region === currentRegion;
     });
 
-    // Sort: Auctions Won > Jobs for stationed trucks > Tenders > VIP > Rest
+    // Sort: Auctions Won > Tenders > Jobs for stationed trucks > VIP > Rest
     filteredJobs.sort((a: any, b: any) => {
       const aLocal = (S.fleet || []).some((t: any) => t.status === 'idle' && t.loc === a.from);
       const bLocal = (S.fleet || []).some((t: any) => t.status === 'idle' && t.loc === b.from);
       const score = (j: any, isLocal: boolean) => (
-        j.isAuctionWon ? 120 :
-        (isLocal ? 80 : 0) +
-        (j.tenderId ? 30 : 0) +
+        (j.isAuctionWon ? 1000 : 0) +
+        (j.tenderId ? 500 : 0) +
+        (isLocal ? 100 : 0) +
         (j.vip ? 10 : 0)
       );
       return score(b, bLocal) - score(a, aLocal);

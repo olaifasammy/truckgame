@@ -36,23 +36,23 @@ export class BiddingEngine {
   /**
    * Process AI competitor bids during game loop tick
    */
-  static tickAuctions(S: any, now: number): boolean {
+  static tickAuctions(S: any, now: number): { listChanged: boolean; bidChanged: boolean } {
     if (!S.auctions) S.auctions = [];
     if (!S.jobs) S.jobs = [];
     
-    let stateChanged = false;
+    let listChanged = false;
+    let bidChanged = false;
 
     // 1. Check for Expired "Won" Jobs (5 minute window)
     const FIVE_MINS = 5 * 60 * 1000;
     const initialJobCount = S.jobs.length;
     S.jobs = S.jobs.filter((j: any) => {
       if (j.isAuctionWon && j.wonAt && (now - j.wonAt > FIVE_MINS)) {
-
         return false;
       }
       return true;
     });
-    if (S.jobs.length !== initialJobCount) stateChanged = true;
+    if (S.jobs.length !== initialJobCount) listChanged = true;
 
     const active: JobAuction[] = [];
     const expired: JobAuction[] = [];
@@ -60,7 +60,7 @@ export class BiddingEngine {
     for (const auc of S.auctions) {
       if (now >= auc.expiresAt) {
         expired.push(auc);
-        stateChanged = true;
+        listChanged = true;
       } else {
         const timeLeft = auc.expiresAt - now;
         
@@ -75,7 +75,7 @@ export class BiddingEngine {
 
         if (Math.random() < bidChance) {
           if (this.simulateCompetitorBid(S, auc)) {
-            stateChanged = true;
+            bidChanged = true;
           }
         }
         active.push(auc);
@@ -83,14 +83,14 @@ export class BiddingEngine {
     }
 
     if (expired.length > 0) {
-      stateChanged = true;
+      listChanged = true;
       S.auctions = active;
       for (const auc of expired) {
         this.finalizeAuction(S, auc);
       }
     }
 
-    return stateChanged;
+    return { listChanged, bidChanged };
   }
 
   /**

@@ -314,6 +314,9 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
     try {
       replenish(S);
     } catch (e) {}
+  } else if (S.jobs.length > 17) {
+    // Truncate if board is oversized
+    S.jobs = S.jobs.slice(0, 17);
   }
 
   const marketJobs = [...(S.jobs || [])];
@@ -339,7 +342,7 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
 
     // Fallback contract procurement: If no compatible jobs exist on the board for this truck's current location,
     // generate an immediate matchable outbound consignment from truck.loc so fleet units never stall
-    if (candidateJobs.length === 0) {
+    if (candidateJobs.length === 0 && (S.jobs || []).length < 17) {
       const truckLoc = getLocationRecord(truck.loc);
       if (truckLoc && isRegionUnlocked(S as any, truckLoc.region)) {
         try {
