@@ -62,6 +62,7 @@ export interface Truck {
   availableAt?: number;
   driverId: number | null;
   trailer: TrailerType | null;
+  color?: string; // cab paint hex
   fluids: TruckFluids;
   components: TruckComponents;
   upgrades: {

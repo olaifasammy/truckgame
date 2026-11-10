@@ -88,7 +88,7 @@ export function renderTelematicsOverlay(S: any): string {
               <span>·</span>
               <span>${ambientTemp}°C</span>
               <span>·</span>
-              <span style="color:#38bdf8; font-weight:800;">📍 ${t.loc} → ${a ? a.to : 'DEPOT'}</span>
+              <span style="color:#38bdf8; font-weight:800;">📍 ${t.status === 'delivering' ? 'FACTORY' : t.loc} → ${a ? a.to : (t.status === 'delivering' ? t.loc : 'DEPOT')}</span>
             </div>
             <div style="display:flex; align-items:center; gap:6px;">
               <span style="color:${telem.stateBadgeColor}; font-weight:900; font-size:8px;">${telem.stateIcon} ${telem.state.toUpperCase()}</span>
@@ -286,6 +286,24 @@ export function renderTelematicsOverlay(S: any): string {
               <span>DEPARTED: ${a.from}</span>
               <span>PROGRESS: ${telem.pctCompleted}% (${telem.distanceRemainingKm} km to go)</span>
               <span>DESTINATION: ${a.to}</span>
+            </div>
+          </div>
+        ` : t.status === 'delivering' ? `
+          <div style="background:#09101d; border:1px solid var(--gold); border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase;">LOGISTICS DELIVERY MANIFEST</span>
+              <span style="font-size:10px; font-weight:800; color:var(--gold); font-family:monospace;">ETA: ${dur(telem.remainingMs)}</span>
+            </div>
+            <div style="font-size:11px; color:var(--tx); font-weight:700;">
+              Repositioning: FACTORY → ${t.loc} · Mode: <b style="color:#38bdf8;">${telem.phase}</b>
+            </div>
+            <div style="margin-top:6px; height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
+              <div style="width:${100 - (telem.remainingMs / (15 * 60 * 1000) * 100)}%; height:100%; background:var(--gold); border-radius:3px;"></div>
+            </div>
+            <div style="display:flex; justify-content:space-between; font-size:8px; color:var(--mu); font-family:monospace; margin-top:4px;">
+              <span>SHIPPING POINT: FACTORY</span>
+              <span>IN TRANSIT</span>
+              <span>DESTINATION: ${t.loc} TERMINAL</span>
             </div>
           </div>
         ` : `

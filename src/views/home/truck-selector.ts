@@ -383,7 +383,7 @@ export function renderSelectorOverlay(S: any) {
                       <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
                         <span>Station: <b style="color:var(--gold);">${LOCATIONS[t.loc]?.name || t.loc}</b></span>
                         ${t.loc === job.from 
-                          ? ' · <span style="color:var(--grn); font-weight:800; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.4); padding:1px 5px; border-radius:3px;">🔄 TO & FRO / AT ORIGIN (0 KM DH)</span>' 
+                          ? ' · <span style="color:var(--grn); font-weight:800; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.4); padding:1px 5px; border-radius:3px;">🔄 AT ORIGIN</span>' 
                           : ` · Deadhead: <b style="color:var(--gold);">${distKm(t.loc, job.from)} km</b>`}
                       </div>
                       <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">

@@ -57,6 +57,7 @@ export interface AiLogEntry {
   profileUsed: AiDispatchProfile;
   status: 'dispatched' | 'serviced' | 'offline_dispatched' | 'failed';
   message: string;
+  features?: number[];
 }
 
 export interface AiState {

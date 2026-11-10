@@ -34,6 +34,18 @@ if (typeof document !== 'undefined') {
     const fn = act && actions.get(act);
     if (fn) fn(el.dataset);
   });
+
+  document.addEventListener('change', e => {
+    const target = e.target as HTMLElement;
+    const el = target?.closest('[data-act]') as HTMLElement;
+    if (!el) return;
+    const act = el.dataset.act;
+    const fn = act && actions.get(act);
+    if (fn) {
+      const dataset = { ...el.dataset, value: (el as HTMLInputElement).value };
+      fn(dataset);
+    }
+  });
 }
 
 export function toast(msg: string, type: 'info' | 'success' | 'err' = 'info') {

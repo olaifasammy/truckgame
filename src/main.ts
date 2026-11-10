@@ -156,9 +156,15 @@ try {
     } else {
        const lastActive = parseInt(lastActiveStr, 10);
        const elapsed = now - lastActive;
-       if (elapsed > 1000 * 60 * 5) { // 5 minutes away
-          toast('Welcome back, Director', 'success');
-          toast('Operations synchronized');
+       if (elapsed > 1000 * 30) { // More than 30 seconds away
+          const hrs = Math.floor(elapsed / 3600000);
+          const mins = Math.floor((elapsed % 3600000) / 60000);
+          const timeStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`;
+          
+          toast(`Synchronizing operations... (${timeStr} offline)`, 'info');
+          if (elapsed > 1000 * 60 * 5) {
+            toast('Welcome back, Director', 'success');
+          }
        }
        if (S.aiState?.offlineDispatchActive && now < (S.aiState?.offlineExpiresTimestamp || 0) && elapsed > 15000) {
           const offRes = processOfflineAiDispatch(S, elapsed);
@@ -175,16 +181,10 @@ try {
   // Initial synchronization step
   set(st => {
     const now = Date.now();
-    // Migrate legacy active jobs with huge end times
-    if (st.active && st.active.length > 0) {
-      st.active.forEach((a: any) => {
-        const remaining = a.end - now;
-        if (remaining > 3600000) { // Cap legacy stuck jobs to 1 hour max
-          const fastDuration = tripMs(a.km || 200, 80, a.env);
-          a.end = Math.min(a.end, now + fastDuration);
-        }
-      });
-    }
+    
+    // Ensure lastTick is valid for economic catch-up
+    if (!st.lastTick) st.lastTick = now;
+    
     replenish(st);
     fillPool(st);
     syncProgressionAudit(st);

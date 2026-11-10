@@ -199,14 +199,14 @@ export function getDynamicCorporateTenders(S: any): CorporateTender[] {
     // Realistic volume commitment: 10 to 24 consignments over 30 days
     const totalLoads = 10 + ((idx * 3 + cycleSeed) % 15);
     
-    // Competitive pricing: ~$18,000 to $42,000 per delivery based on distance, cargo specialty, and multiplier
-    const ratePerKm = 24.5 * tpl.baseRateMultiplier;
-    const rawRate = Math.round((distKm * ratePerKm) / 500) * 500;
-    const ratePerDelivery = Math.max(18500, Math.min(48000, rawRate));
+    // Dynamic enterprise pricing calibrated to distance and industry multiplier
+    const ratePerKm = 11.5 * tpl.baseRateMultiplier;
+    const rawRate = Math.round((distKm * ratePerKm) / 250) * 250;
+    const ratePerDelivery = Math.max(4500, Math.min(55000, rawRate));
 
-    // Lucrative completion bonus: 25% to 40% of total contract value
+    // Lucrative completion bonus: 25% to 35% of total contract value
     const totalContractValue = ratePerDelivery * totalLoads;
-    const bonusPayout = Math.round((totalContractValue * 0.28) / 5000) * 5000;
+    const bonusPayout = Math.round((totalContractValue * 0.30) / 5000) * 5000;
 
     const expiresAtMs = (cycleSeed + 1) * (1000 * 60 * 60 * 6);
 

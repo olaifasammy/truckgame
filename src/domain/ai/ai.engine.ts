@@ -10,7 +10,7 @@
  */
 
 import { AiFilterConfig, AiLogEntry } from './ai.types';
-import { why, replenish } from '../../systems/jobs';
+import { why, replenish, completeJobs } from '../../systems/jobs';
 import { distKm } from '../../systems/calc';
 import { CARGO_TYPES } from '../freight/cargo/registry';
 import { getDispatchNeuralNetwork, trainOnHistoricalLogs } from './neuralNetwork';
@@ -45,8 +45,8 @@ export function calculateDispatchFeatureVector(S: any, truck: any, job: any, dri
   // 1. Payout normalized (0..$40k)
   const payoutNorm = Math.min(1, Math.max(0, payout / 40000));
 
-  // 2. Yield per km normalized (0..$30/km)
-  const yieldNorm = Math.min(1, Math.max(0, (payout / km) / 30));
+  // 2. Yield per total km normalized (0..$15/total km) - Includes deadhead distance!
+  const yieldNorm = Math.min(1, Math.max(0, (payout / totalKm) / 15));
 
   // 3. Deadhead efficiency (1 = 0km deadhead, 0 = excessive empty run)
   const dhEfficiency = Math.max(0, 1 - (deadheadKm / Math.max(1, totalKm)));
@@ -62,10 +62,9 @@ export function calculateDispatchFeatureVector(S: any, truck: any, job: any, dri
   const hosHours = driver?.hosHours || 0;
   const driverReadiness = Math.max(0.1, 1 - (fatigue / 100) * 0.7 - (hosHours / 14) * 0.3);
 
-  // 6. Estimated Net Profit Margin Ratio
-  const fuelLitersEst = totalKm * 0.40;
-  const fuelCostEst = fuelLitersEst * 1.25;
-  const netMargin = Math.max(0, Math.min(1, (payout - fuelCostEst) / Math.max(1, payout)));
+  // 6. Estimated Net Profit Margin Ratio (Fuel + Wear + Driver Expenses = ~$0.90/km)
+  const estimatedCost = totalKm * 0.90;
+  const netMargin = Math.max(0, Math.min(1, (payout - estimatedCost) / Math.max(1, payout)));
 
   // 7. Route familiarity & Hub Proximity
   const hasOriginDepot = (S.depots || []).some((d: string) => d.toLowerCase().includes((job.from || '').toLowerCase()));
@@ -79,7 +78,7 @@ export function calculateDispatchFeatureVector(S: any, truck: any, job: any, dri
 
 /**
  * Score a candidate job for a specific truck based on neural inference and strategy profile.
- * Returns -Infinity if ineligible.
+ * Returns -Infinity if ineligible or unprofitable.
  */
 export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilterConfig): number {
   // 1. VIP Rank check
@@ -103,18 +102,38 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
   const truckWhyMsg = why(S, truck, job);
   if (truckWhyMsg) return -Infinity;
 
+  // 4. Deadhead and Total Km Economics Check (Prevent dispatching money-losing contracts)
+  const deadheadKm = distKm(truck.loc, job.from);
+  const payout = job.pay || 0;
+  const km = Math.max(1, job.km || 1);
+  const totalKm = km + deadheadKm;
+
+  // Real operating costs per total km (~$0.90/km fuel + wear + driver compensation)
+  const estimatedTotalCost = totalKm * 0.90;
+  const netProfitEst = payout - estimatedTotalCost;
+  
+  // NEVER DISPATCH A CONTRACT THAT LOSES MONEY
+  if (netProfitEst <= 0) return -Infinity;
+
+  // Penalize long deadheads relative to job distance
+  if (deadheadKm > 300 && deadheadKm > km * 1.5 && netProfitEst < 250) {
+    return -Infinity;
+  }
+
+  const effectiveYieldPerKm = payout / totalKm;
+
   const minPayout = filters.minPayoutUsd ?? 0;
   const minYpk = filters.minYieldUsdPerKm ?? 0;
   const maxDist = filters.maxDistanceKm ?? 50000;
   const minHealth = filters.minTruckHealthPct ?? 0;
   const allowSub = filters.allowSubcontracted !== false;
 
-  // 4. Subcontracted status check
+  // 5. Subcontracted status check
   if (!allowSub && (S.subcontractedTrucks || []).includes(truck.id)) {
     return -Infinity;
   }
 
-  // 5. Truck health check
+  // 6. Truck health check
   if (minHealth > 0) {
     const comp = truck.components || {};
     const healthValues = Object.values(comp).map((c: any) => typeof c === 'number' ? c : c?.health ?? 100);
@@ -124,17 +143,12 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
     }
   }
 
-  // 6. Job pay and distance filters
-  const payout = job.pay || 0;
-  const km = Math.max(1, job.km || 1);
-  const yieldPerKm = payout / km;
-
+  // 7. Job pay and distance filters based on TOTAL trip distance
   if (payout < minPayout) return -Infinity;
-  if (yieldPerKm < minYpk) return -Infinity;
+  if (effectiveYieldPerKm < minYpk) return -Infinity;
   if (km > maxDist) return -Infinity;
 
-  // 7. Hazmat preference filter:
-  // If hazmat jobs exist on the board, prioritize or filter; if none exist, don't stall the fleet
+  // 8. Hazmat preference filter
   const cargo = CARGO_TYPES.find(c => c.id === job.cargoId);
   if (filters.requireHazmatCert) {
     const hasAnyHazmatOnBoard = (S.jobs || []).some((j: any) => {
@@ -146,16 +160,13 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
     }
   }
 
-  // 8. Cargo type preference filter
+  // 9. Cargo type preference filter
   if (filters.priorityCargoTypes && filters.priorityCargoTypes.length > 0) {
     const hasPriorityJobsOnBoard = (S.jobs || []).some((j: any) => filters.priorityCargoTypes!.includes(j.cargoId));
     if (hasPriorityJobsOnBoard && !filters.priorityCargoTypes.includes(job.cargoId)) {
       return -Infinity;
     }
   }
-
-  // 9. Deadhead transit distance
-  const deadheadKm = distKm(truck.loc, job.from);
 
   // 10. Neural Network Inference
   const driver = (S.drivers || []).find((d: any) => d.id === truck.driverId);
@@ -167,20 +178,20 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
   let score = 0;
   switch (filters.profile) {
     case 'highest_payout':
-      score = (payout * 2) + (neuralScore * 10000) - (deadheadKm * 2);
+      score = (netProfitEst * 3) + (neuralScore * 10000) - (deadheadKm * 2);
       break;
     case 'highest_yield_per_km':
-      score = (yieldPerKm * 1500) + (neuralScore * 10000) - (deadheadKm * 2);
+      score = (effectiveYieldPerKm * 1800) + (neuralScore * 10000) - (deadheadKm * 2);
       break;
     case 'nearest_origin':
-      score = (10000 - deadheadKm * 15) + (neuralScore * 5000) + (payout * 0.01);
+      score = (10000 - deadheadKm * 15) + (neuralScore * 5000) + (netProfitEst * 0.05);
       break;
     case 'shortest_distance':
-      score = (10000 - km * 6) + (neuralScore * 5000) + (payout * 0.01);
+      score = (10000 - km * 6) + (neuralScore * 5000) + (netProfitEst * 0.05);
       break;
     case 'balanced_efficiency':
     default:
-      score = (yieldPerKm * 600) + (neuralScore * 12000) - (deadheadKm * 3) + (payout * 0.04);
+      score = (effectiveYieldPerKm * 800) + (netProfitEst * 1.5) + (neuralScore * 12000) - (deadheadKm * 3);
       break;
   }
 
@@ -205,10 +216,10 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
  * MUST NOT generate fake jobs. Uses ONLY S.jobs.
  * Dispatches guaranteed whenever user is subscribed and idle units are matchable.
  */
-export function runAiAutoDispatch(S: any): { dispatchedCount: number; message: string } {
+export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCount: number; message: string } {
   if (!S.aiState) return { dispatchedCount: 0, message: 'AI State uninitialized' };
   
-  const now = Date.now();
+  const now = overrideNow || Date.now();
   const isSubActive = !!(S.aiState.subscriptionActive && now < (S.aiState.expiresTimestamp || 0));
   if (!isSubActive) {
     return { dispatchedCount: 0, message: 'AI Subscription Inactive or Expired' };
@@ -220,12 +231,17 @@ export function runAiAutoDispatch(S: any): { dispatchedCount: number; message: s
     return { dispatchedCount: 0, message: 'Continuous Auto-Dispatch Engine is currently paused' };
   }
 
-  // 1. Self-healing: Clear expired driver HOS rest periods
+  // 1. Self-healing: Clear expired driver HOS rest periods & handle auto-resting fatigued drivers
   for (const drv of (S.drivers || [])) {
     if (drv.hosRestUntil && drv.hosRestUntil <= now) {
       delete drv.hosRestUntil;
       drv.hosHours = 0;
       drv.fatigue = Math.max(0, (drv.fatigue || 0) - 50);
+    } else if (!drv.hosRestUntil && (drv.fatigue > 75 || (drv.hosHours || 0) >= 11)) {
+      // Initiate 15-second simulation rest break so driver recovers without stalling dispatcher indefinitely
+      drv.fatigue = 0;
+      drv.hosHours = 0;
+      drv.hosRestUntil = now + 15000;
     }
   }
 
@@ -241,8 +257,16 @@ export function runAiAutoDispatch(S: any): { dispatchedCount: number; message: s
     }
   }
 
-  // 3. Identify idle trucks with assigned drivers
-  const idleTrucks = (S.fleet || []).filter((t: any) => t.status === 'idle' && t.driverId);
+  // 3. Identify idle trucks with assigned, rested drivers
+  const idleTrucks = (S.fleet || []).filter((t: any) => {
+    if (t.status !== 'idle' || !t.driverId) return false;
+    const drv = (S.drivers || []).find((d: any) => d.id === t.driverId);
+    if (!drv) return false;
+    if (drv.hosRestUntil && drv.hosRestUntil > now) return false;
+    if (drv.fatigue > 85 || (drv.hosHours || 0) >= 11) return false;
+    return true;
+  });
+
   if (idleTrucks.length === 0) {
     return { dispatchedCount: 0, message: 'No idle trucks with drivers available' };
   }
@@ -262,27 +286,31 @@ export function runAiAutoDispatch(S: any): { dispatchedCount: number; message: s
   let dispatchedCount = 0;
   const dispatchedJobIds = new Set<number>();
   const net = getDispatchNeuralNetwork(S.aiState?.neuralWeights);
-  trainOnHistoricalLogs(net, S);
 
   for (const truck of idleTrucks) {
-    let bestJob: any = null;
-    let bestScore = -Infinity;
+    // Score all available jobs for this truck and sort in descending order
+    const candidateJobs: { job: any; score: number }[] = [];
 
     for (const job of marketJobs) {
       if (dispatchedJobIds.has(job.id)) continue;
       const score = scoreJobForTruck(S, truck, job, filters);
-      if (score > bestScore && score > -Infinity) {
-        bestScore = score;
-        bestJob = job;
+      if (score > -Infinity) {
+        candidateJobs.push({ job, score });
       }
     }
 
-    if (bestJob) {
+    candidateJobs.sort((a, b) => b.score - a.score);
+
+    // Attempt candidate jobs in order of score until one succeeds
+    for (const candidate of candidateJobs) {
+      const bestJob = candidate.job;
       const cargo = CARGO_TYPES.find(c => c.id === bestJob.cargoId);
       const cargoName = cargo?.name || bestJob.cargo || 'Commercial Cargo';
       const payout = bestJob.pay || 0;
       const km = bestJob.km || 1;
-      const yieldRate = Math.round((payout / Math.max(1, km)) * 100) / 100;
+      const deadheadKm = distKm(truck.loc, bestJob.from);
+      const totalKm = km + deadheadKm;
+      const yieldRate = Math.round((payout / Math.max(1, totalKm)) * 100) / 100;
       const drv = (S.drivers || []).find((d: any) => d.id === truck.driverId);
       const features = calculateDispatchFeatureVector(S, truck, bestJob, drv);
       const neuralScore = net.forward(features);
@@ -294,10 +322,6 @@ export function runAiAutoDispatch(S: any): { dispatchedCount: number; message: s
       if (dispatchResult.success) {
         dispatchedJobIds.add(bestJob.id);
         dispatchedCount++;
-
-        // Autonomous reinforcement learning: train the neural dispatch model
-        net.train(features, 0.96, 0.04);
-        S.aiState.neuralTrainingEpochs = (S.aiState.neuralTrainingEpochs || 24) + 1;
 
         const logEntry: AiLogEntry = {
           id: `ai-log-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -314,7 +338,8 @@ export function runAiAutoDispatch(S: any): { dispatchedCount: number; message: s
           yieldPerKm: yieldRate,
           profileUsed: filters.profile,
           status: 'dispatched',
-          message: `Matched ${truck.name} → ${cargoName} (${bestJob.from} → ${bestJob.to}) for $${payout.toLocaleString()} [Neural Score: ${confidencePct}% · $${yieldRate}/km]`
+          message: `Matched ${truck.name} → ${cargoName} (${bestJob.from} → ${bestJob.to}) for $${payout.toLocaleString()} [Neural Score: ${confidencePct}% · $${yieldRate}/total km]`,
+          features
         };
 
         if (!S.aiState.logs) S.aiState.logs = [];
@@ -323,28 +348,7 @@ export function runAiAutoDispatch(S: any): { dispatchedCount: number; message: s
 
         S.aiState.totalDispatchedCount = (S.aiState.totalDispatchedCount || 0) + 1;
         S.aiState.totalRevenueGeneratedUsd = (S.aiState.totalRevenueGeneratedUsd || 0) + payout;
-      } else {
-        const failEntry: AiLogEntry = {
-          id: `ai-fail-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-          timestamp: Date.now(),
-          simTimeFormatted: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          truckId: truck.id,
-          truckName: truck.name || `Unit #${truck.id}`,
-          jobId: bestJob.id,
-          cargoName,
-          from: bestJob.from,
-          to: bestJob.to,
-          payoutUsd: payout,
-          km,
-          yieldPerKm: yieldRate,
-          profileUsed: filters.profile,
-          status: 'failed',
-          message: `Dispatch blocked for ${truck.name}: ${dispatchResult.reason || 'Eligibility check'}`
-        };
-
-        if (!S.aiState.logs) S.aiState.logs = [];
-        S.aiState.logs.unshift(failEntry);
-        if (S.aiState.logs.length > 60) S.aiState.logs.pop();
+        break; // Successfully dispatched this truck, move to next
       }
     }
   }
@@ -361,27 +365,43 @@ export function runAiAutoDispatch(S: any): { dispatchedCount: number; message: s
 
 /**
  * Simulates offline auto-dispatching for players who hold the Autonomous Offline Dispatch Add-on.
+ * Iteratively simulates time passage to allow sequential dispatches (dispatch -> complete -> dispatch).
  */
 export function processOfflineAiDispatch(S: any, offlineMs: number): { dispatches: number; revenue: number } {
   if (!S.aiState || !S.aiState.offlineDispatchActive) return { dispatches: 0, revenue: 0 };
-  const now = Date.now();
-  if (now >= S.aiState.offlineExpiresTimestamp) return { dispatches: 0, revenue: 0 };
+  const realNow = Date.now();
+  if (realNow >= S.aiState.offlineExpiresTimestamp) return { dispatches: 0, revenue: 0 };
 
-  const offlineSeconds = Math.min(86400 * 2, Math.floor(offlineMs / 1000));
-  if (offlineSeconds < 30) return { dispatches: 0, revenue: 0 };
+  const offlineSeconds = Math.floor(offlineMs / 1000);
+  if (offlineSeconds < 60) return { dispatches: 0, revenue: 0 };
 
-  const simulatedTicks = Math.min(25, Math.floor(offlineSeconds / 20));
+  // Max simulation cap: 24 hours to prevent extreme CPU hangs on return
+  const cappedOfflineMs = Math.min(86400000, offlineMs);
+  const lastActive = realNow - offlineMs;
+  
+  // Simulation step size: 15 minutes per "tick"
+  // This allows enough time for jobs to complete and trucks to be re-dispatched
+  const STEP_MS = 15 * 60 * 1000; 
+  const iterations = Math.ceil(cappedOfflineMs / STEP_MS);
+  
   let totalDispatches = 0;
-  let totalRevenue = 0;
+  let virtualNow = lastActive;
 
-  for (let i = 0; i < simulatedTicks; i++) {
-    const res = runAiAutoDispatch(S);
+  for (let i = 0; i < iterations; i++) {
+    virtualNow += STEP_MS;
+    if (virtualNow > realNow) virtualNow = realNow;
+
+    // 1. Complete any jobs that would have finished by this virtual timestamp
+    completeJobs(S, virtualNow);
+
+    // 2. Run AI to pick up new work
+    const res = runAiAutoDispatch(S, virtualNow);
     if (res.dispatchedCount > 0) {
       totalDispatches += res.dispatchedCount;
     }
   }
 
-  return { dispatches: totalDispatches, revenue: totalRevenue };
+  return { dispatches: totalDispatches, revenue: 0 };
 }
 
 /**

@@ -70,5 +70,14 @@ export const FleetService = {
         : 'Truck hoisted into Repair Bay.';
       toast(msg, 'success');
     });
+  },
+
+  setTruckColor(truckId: number, color: string) {
+    set((S: GameState) => {
+      const truck = S.fleet.find(t => t.id === truckId);
+      if (!truck) return toast('Truck not found', 'err');
+      truck.color = color;
+      toast(`Repainted truck #${truckId} with custom livery`, 'success');
+    });
   }
 };

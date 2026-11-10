@@ -11,7 +11,8 @@ import storage from './storage';
 import notifications from './notifications';
 import network from './network';
 import dispatch from './dispatch';
+import copilot from './copilot';
 
-[home, garage, dispatch, company, network, finance, store, rankings, repair, drivers, storage, notifications].forEach(register);
+[home, garage, dispatch, company, network, finance, store, rankings, repair, drivers, storage, notifications, copilot].forEach(register);
 
 

@@ -279,9 +279,8 @@ function runAutonomousSelfSupervisedCycle(): void {
       0.5
     ];
 
-    // Reinforce dip buying target with backpropagation
     const target = dipRatio < 0.35 ? 0.95 : dipRatio > 0.70 ? 0.15 : 0.50;
-    quantModel.train(features, target, 0.03);
+    quantModel.train(features, target, 0.04);
   }
 }
 
@@ -350,6 +349,7 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
 
   // 1. Continuous autonomous self-supervised background training
   runAutonomousSelfSupervisedCycle();
+  bot.smartXp = (bot.smartXp || 50) + 3;
 
   const prevLevel = bot.smartLevel || 1;
   const smartInfo = getQuantSmartLevelInfo(bot);
@@ -471,13 +471,23 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
     const buyPrice = openPos?.buyPrice || (currentPrice * 0.95);
     const sellUsd = holdingValueUsd;
     const costBasis = holdings * buyPrice;
-    const rawProfit = Math.max(50, sellUsd - costBasis);
+    const rawProfit = sellUsd - costBasis;
     
-    // Neural Alpha Multiplier: Higher smart levels & aggressive intensity leverage arbitrage precision for larger payouts
+    // Neural Alpha Multiplier: Higher smart levels & aggressive intensity leverage arbitrage precision for larger payouts.
+    // Realism adjustment: Alpha only amplifies gains (better execution/arbitrage).
+    // It should not artificially floor profits at $50 if the trade was a loss.
     const intensity = bot.intensity || S.aiState?.filters?.intensity || 'balanced';
     const intensityAlphaBonus = intensity === 'conservative' ? 0.0 : intensity === 'aggressive' ? 0.35 : 0.15;
     const alphaMultiplier = 1.0 + ((smartInfo.level - 1) * 0.22) + (asset.id === 'flb' ? 0.35 : 0.1) + intensityAlphaBonus;
-    const realizedProfit = Math.round(rawProfit * alphaMultiplier);
+    
+    let realizedProfit = Math.round(rawProfit);
+    if (rawProfit > 0) {
+        realizedProfit = Math.round(rawProfit * alphaMultiplier);
+    } else {
+        // High-level bots are better at risk management/stop-loss, reducing losses slightly
+        const riskMitigation = 1.0 - Math.min(0.5, (smartInfo.level - 1) * 0.05);
+        realizedProfit = Math.round(rawProfit * riskMitigation);
+    }
 
     S.cryptoPortfolio.cash += sellUsd + (realizedProfit - rawProfit); // Add arbitrage alpha to cash
     S.cryptoPortfolio.holdings[asset.id] = 0;

@@ -35,7 +35,8 @@ const P: Record<string, string> = {
   alert: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
   check: '<polyline points="20 6 9 17 4 12"/>',
   radio: '<circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 010 8.49m-8.48-.01a6 6 0 010-8.49m11.31-2.82a10 10 0 010 14.14m-14.14 0a10 10 0 010-14.14"/>',
-  activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>'
+  activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+  truckTop: '<path d="M7 2h10v4H7zM6 6h12v14a2 2 0 01-2 2H8a2 2 0 01-2-2V6zM8 6V4m8 2V4"/>'
 };
 
 export const registerIcon = (n: string, p: string) => { P[n] = p; };

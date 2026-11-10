@@ -79,7 +79,7 @@ if (typeof window !== 'undefined') {
 
   (window as any).__aiWidgetClick = (e: MouseEvent) => {
     if (hasDragged) return;
-    set(S => { S.tab = 'dispatch'; });
+    set(S => { S.tab = 'copilot'; });
     refresh();
   };
 }

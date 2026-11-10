@@ -8,7 +8,7 @@ export function renderTransferModal(transferDriverObj: any): string {
       <div style="background:var(--s1); border:1px solid var(--gold); border-radius:16px; width:100%; max-width:400px; padding:20px; position:relative;">
         <button style="position:absolute; top:14px; right:16px; background:none; border:none; color:var(--mu); font-size:18px; cursor:pointer;" data-act="close-transfer-modal">✕</button>
         <h3 style="margin:0 0 4px 0; font-size:16px; color:var(--tx);">Transfer ${transferDriverObj.name}</h3>
-        <div style="font-size:11px; color:var(--mu); margin-bottom:16px;">Current Region: <b style="color:var(--gold);">${transferDriverObj.region || 'Africa'}</b> · Fee: <b style="color:var(--gold);">$${transferFee.toLocaleString()}</b></div>
+        <div style="font-size:11px; color:var(--mu); margin-bottom:16px;">Current Region: <b style="color:var(--gold);">${transferDriverObj.region || 'Africa'}</b> · Fee: <b style="color:var(--gold);">$${(transferFee || 0).toLocaleString()}</b></div>
 
         <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
           ${(['America', 'Europe', 'Africa', 'Asia'] as Region[]).map(reg => `

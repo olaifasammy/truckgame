@@ -39,7 +39,7 @@ export function renderJobSelectorOverlay(S: any) {
     return;
   }
 
-  // Ensure there is at least one outbound load from truck.loc ("To & Fro" backhaul)
+  // Ensure there is at least one outbound load from truck.loc
   const hasLocalJob = (S.jobs || []).some((j: any) => j.from === truck.loc);
   if (!hasLocalJob && LOCATIONS[truck.loc]) {
     const truckRegion = LOCATIONS[truck.loc].region;
@@ -61,7 +61,7 @@ export function renderJobSelectorOverlay(S: any) {
 
   // Filter jobs: Show only what this truck can do
   const jobs = (S.jobs || []).filter((j: any) => !why(S, truck, j));
-  // Sort: To & Fro / Direct Departures first (dh === 0), then lowest deadhead
+  // Sort: Direct Departures first (dh === 0), then lowest deadhead
   jobs.sort((a: any, b: any) => {
     const aDirect = a.from === truck.loc ? 1 : 0;
     const bDirect = b.from === truck.loc ? 1 : 0;
@@ -128,7 +128,7 @@ export function renderJobSelectorOverlay(S: any) {
                       <span style="color:var(--gold);">${locFrom?.name || j.from}</span> → <span style="color:var(--tx);">${locTo?.name || j.to}</span> · ${j.km} km
                     </div>
                     <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
-                      ${dh === 0 ? `<span style="color:var(--grn); font-weight:800; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.4); padding:1px 5px; border-radius:3px;">🔄 TO & FRO (0 KM DH)</span> · ` : `Deadhead: <b style="color:var(--gold);">${dh} km</b> · `}ETA: ~${dur(estTimeMs)} · Payload: ${j.weight}t
+                      ${dh === 0 ? `<span style="color:var(--grn); font-weight:800; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.4); padding:1px 5px; border-radius:3px;">🔄 AT ORIGIN</span> · ` : `Deadhead: <b style="color:var(--gold);">${dh} km</b> · `}ETA: ~${dur(estTimeMs)} · Payload: ${j.weight}t
                     </div>
                   </div>
                 </div>

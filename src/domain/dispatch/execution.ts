@@ -83,7 +83,11 @@ export const DispatchExecution = {
     const now = Date.now(), dh = distKm(t.loc, j.from);
     const routeEnv = getRouteEnv(j.from, j.to);
     const st = stats(S, t, j.weight, routeEnv);
-    const totalKm = j.km + dh;
+    
+    // For Round Trips, Segment 1 is from -> to with baseKm.
+    // If it's not a round trip, j.km is the total distance.
+    const leg1Km = j.isRoundTrip ? (j.baseKm || j.km / 2) : j.km;
+    const totalKm = leg1Km + dh;
     const duration = tripMs(totalKm, st.topSpeed, routeEnv);
 
     const isHazmatJob = cargo?.isHazmat || (cargo?.trailer === 'tanker') || (cargo?.trailer === 'hazmat');
@@ -107,7 +111,8 @@ export const DispatchExecution = {
     }
 
     S.jobs = S.jobs.filter((x: any) => x.id !== jobId);
-    S.active.push({ 
+    
+    const activeEntry = { 
       ...j, 
       cargo: cargo?.name || j.cargo || 'Freight', 
       truck: t.id, 
@@ -116,8 +121,16 @@ export const DispatchExecution = {
       end: now + duration, 
       env: routeEnv, 
       isShipperTanker: isHazmatJob, 
-      unhitchedTrailer: previousTrailer 
-    });
+      unhitchedTrailer: previousTrailer,
+      km: leg1Km,
+      pay: j.isRoundTrip ? (j.leg1Pay || Math.round(j.pay / 2.2)) : j.pay
+    };
+
+    if (j.isRoundTrip) {
+      (activeEntry as any).currentLeg = 1;
+    }
+
+    S.active.push(activeEntry);
     
     t.status = 'busy';
     pushNote(S, `Consignment Dispatched: ${cargo?.name || 'Cargo'} · ${j.from} → ${j.to}${quotaNote}`, { title: 'DISPATCH CONFIRMATION', type: 'ops' });
@@ -213,8 +226,14 @@ export const DispatchExecution = {
     if (t) {
       const drv = (S.drivers || []).find((x: any) => x.id === t.driverId);
       const st = stats(S, t, a.weight || 0, a.env);
-      t.status = 'idle';
-      t.loc = a.isRoundTrip ? a.from : a.to;
+      
+      // If it's a Round-Trip Leg 1, the truck is now at 'to'.
+      // If it's Leg 2 or a normal trip, it's at 'to' (or back at 'from' for Round Trip Leg 2).
+      t.loc = a.to; 
+      if (a.isRoundTrip && a.currentLeg === 2) {
+        t.loc = a.from;
+      }
+
       processScheduledRepair(S, t.id);
       syncUsage(t, km, st, a.env, S);
       applyWear(t, km, a.weight || 0, a.env, drv);
@@ -232,20 +251,86 @@ export const DispatchExecution = {
         }
       }
 
-      if (a.isShipperTanker) t.trailer = null;
+      // Handle Round Trip Leg Transition
+      if (a.isRoundTrip && a.currentLeg === 1) {
+        // Start Leg 2 immediately
+        const now = Date.now();
+        const routeEnvLeg2 = getRouteEnv(a.to, a.from);
+        const stLeg2 = stats(S, t, a.weight || 0, routeEnvLeg2);
+        const durationLeg2 = tripMs(a.km, stLeg2.topSpeed, routeEnvLeg2);
+        
+        S.active.push({
+          ...a,
+          currentLeg: 2,
+          cargo: a.returnCargoName || a.cargo,
+          from: a.to,
+          to: a.from,
+          dh: 0,
+          start: now,
+          end: now + durationLeg2,
+          env: routeEnvLeg2,
+          pay: (a.leg2Pay || Math.round(a.pay * 1.1)) + (a.turnaroundBonus || 0),
+          km: a.km // baseKm
+        });
+        
+        t.status = 'busy';
+        // Note: We don't set t.status to 'idle' if we are starting leg 2.
+      } else {
+        t.status = 'idle';
+        if (a.isShipperTanker) t.trailer = null;
+      }
     }
 
     if (a.kind === 'move') return;
 
     // Financials
     let finalPay = a.pay;
-    // (Add trait/warehouse bonuses here if needed, keeping it modular)
     
     S.money += finalPay;
     S.loads++;
     S.stats.earned += finalPay;
     S.stats.km += a.km;
-    S.reputation = (S.reputation || 0) + (a.isAuctionWon ? 45 : a.isRoundTrip ? 25 : 15);
+    
+    if (a.isRoundTrip) {
+      if (a.currentLeg === 1) {
+        S.reputation = (S.reputation || 0) + 15;
+        pushNote(S, `🔄 Round-Trip Segment 1 Completed: ${a.from} → ${a.to}. Outbound freight delivered. Commencing return leg with ${a.returnCargoName || 'Backhaul'}. Payment: +$${finalPay.toLocaleString()}`, {
+          title: 'ROUND-TRIP LEG 1 COMPLETE',
+          type: 'ops'
+        });
+      } else {
+        S.reputation = (S.reputation || 0) + 30;
+        pushNote(S, `🔄 Round-Trip Finalized: ${a.from} → ${a.to}. Net Return: +$${finalPay.toLocaleString()} (Includes Turnaround Bonus).`, {
+          title: 'ROUND-TRIP TURNAROUND SUCCESS',
+          type: 'ops'
+        });
+      }
+    } else {
+      S.reputation = (S.reputation || 0) + (a.isAuctionWon ? 45 : 15);
+      pushNote(S, `Payment for ${cargo?.name || 'Freight'}: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });
+
+      // Generate immediate return haul from the arrival city back to departure city or regional hub
+      if (t && a.to && LOCATIONS[a.to]) {
+        const destRegion = LOCATIONS[a.to].region;
+        try {
+          const returnJob = FreightEngine.generate(S, {
+            forceRegion: destRegion,
+            forceFrom: a.to,
+            forceTo: a.from // Return leg back to origin
+          });
+          if (returnJob) {
+            if (!S.jobs) S.jobs = [];
+            S.jobs.unshift(returnJob);
+            pushNote(S, `Freight manifest ready: ${LOCATIONS[a.to]?.name || a.to} → ${LOCATIONS[a.from]?.name || a.from}. Available on Freight Board for any compatible tractor.`, {
+              title: 'RETURN HAUL READY',
+              type: 'ops'
+            });
+          }
+        } catch (e) {
+          console.error('Failed to generate return haul', e);
+        }
+      }
+    }
 
     // PoD Bonus
     const podBonus = parseFloat((0.05 + (a.km / 1000) * 0.05).toFixed(2));
@@ -273,38 +358,6 @@ export const DispatchExecution = {
             title: 'TENDER CONSIGNMENT DELIVERED',
             type: 'tender'
           });
-        }
-      }
-    }
-
-    if (a.isRoundTrip) {
-      pushNote(S, `🔄 2-Way Turnaround Completed: ${a.from} ⇄ ${a.to} (Delivered ${cargo?.name} & returned with ${a.returnCargoName || 'Return Freight'}). Net: +$${finalPay.toLocaleString()} (Includes +$${(a.turnaroundBonus || 0).toLocaleString()} Turnaround Bonus).`, {
-        title: 'ROUND-TRIP TURNAROUND SUCCESS',
-        type: 'ops'
-      });
-    } else {
-      pushNote(S, `Payment for ${cargo?.name || 'Freight'}: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });
-
-      // Generate immediate return haul ("To & Fro" backhaul from the arrival city back to departure city or regional hub)
-      if (t && a.to && LOCATIONS[a.to]) {
-        const destRegion = LOCATIONS[a.to].region;
-        try {
-          const returnJob = FreightEngine.generate(S, {
-            forceRegion: destRegion,
-            forceFrom: a.to,
-            forceTo: a.from, // Return leg ("to & fro") back to origin!
-            isBackhaul: true
-          });
-          if (returnJob) {
-            if (!S.jobs) S.jobs = [];
-            S.jobs.unshift(returnJob);
-            pushNote(S, `Return freight manifest ready: ${LOCATIONS[a.to]?.name || a.to} → ${LOCATIONS[a.from]?.name || a.from}. Available on Freight Board for any compatible tractor.`, {
-              title: 'RETURN HAUL READY (TO & FRO)',
-              type: 'ops'
-            });
-          }
-        } catch (e) {
-          console.error('Failed to generate return haul', e);
         }
       }
     }

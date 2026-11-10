@@ -7,7 +7,11 @@ export function renderEmployedCard(d: any, S: any, isExpanded: boolean): string 
   const trait = TRAIT_REGISTRY[d.trait as keyof typeof TRAIT_REGISTRY];
   const assignedTruck = S.fleet?.find((t: any) => t.driverId === d.id || t.id === d.assignedTruckId);
   const regionStr = (d.region || 'Africa').toUpperCase();
-  const stats = d.stats || { tripsCompleted: 0, kmDriven: 0, earned: 0 };
+  const stats = {
+    tripsCompleted: d.stats?.tripsCompleted || 0,
+    kmDriven: d.stats?.kmDriven || 0,
+    earned: d.stats?.earned || 0
+  };
   const morale = d.morale !== undefined ? d.morale : 90;
   const fatigue = d.fatigue !== undefined ? d.fatigue : 10;
   const salary = d.salary || 200;
@@ -62,7 +66,7 @@ export function renderEmployedCard(d: any, S: any, isExpanded: boolean): string 
                   </span>
                 ` : `
                   <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="train-driver-skill" data-id="${d.id}" ${S.money >= upgradeFee ? '' : 'disabled'}>
-                    TRAIN TO LVL ${d.skill + 1}★ ($${upgradeFee.toLocaleString()})
+                    TRAIN TO LVL ${d.skill + 1}★ ($${(upgradeFee || 0).toLocaleString()})
                   </button>
                 `}
               </div>
@@ -95,7 +99,7 @@ export function renderEmployedCard(d: any, S: any, isExpanded: boolean): string 
                         </span>
                       ` : `
                         <button class="btn gold" style="padding:4px 10px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="certify-driver" data-id="${d.id}" data-cert="${cert.id}" ${canAfford ? '' : 'disabled'}>
-                          ENROLL $${cert.cost.toLocaleString()}
+                          ENROLL $${(cert.cost || 0).toLocaleString()}
                         </button>
                       `}
                     </div>
@@ -174,7 +178,7 @@ export function renderEmployedCard(d: any, S: any, isExpanded: boolean): string 
 
           <div style="display:flex; gap:8px;">
             <button class="btn alt" style="flex:1; padding:8px; font-size:10px; font-weight:800;" data-act="open-transfer-modal" data-id="${d.id}">
-              🌍 Transfer Region ($${transferFee.toLocaleString()})
+              🌍 Transfer Region ($${(transferFee || 0).toLocaleString()})
             </button>
             <button class="btn alt" style="padding:8px 16px; font-size:10px; font-weight:800; color:#ef4444; border-color:rgba(239,68,68,0.3);" data-act="fire-driver" data-id="${d.id}">
               Fire

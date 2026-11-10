@@ -3,6 +3,7 @@ import { REGIONAL_HUBS } from '../../domain/logistics/network';
 import { refresh } from '../../core/store';
 import { openTelematicsModal } from '../telematics-modal';
 import { homeState } from './state';
+import { ic } from '../../core/icons';
 
 if (typeof window !== 'undefined') {
   (window as any).__openTelem = openTelematicsModal;
@@ -337,12 +338,11 @@ export function syncLeafletMap(S: any) {
     const truckIcon = L.divIcon({
       html: `
         <div style="position:relative; width:36px; height:36px; display:grid; place-items:center; cursor:pointer;" data-act="open-telematics" data-id="${truckId}">
-          <div style="position:absolute; width:100%; height:100%; border-radius:50%; background:rgba(16,185,129,0.3); animation:mapPulse 2s infinite;"></div>
-          <div style="width:20px; height:20px; border-radius:50%; background:#065f46; border:2px solid #10b981; box-shadow:0 0 10px #10b981; display:grid; place-items:center; transform:rotate(${bearing}deg); transition:transform 0.3s ease;">
-            <span style="font-size:11px; line-height:1; color:#fff;">▲</span>
-          </div>
-          <div style="position:absolute; bottom:-16px; font-size:9px; font-weight:900; color:#10b981; font-family:monospace; white-space:nowrap; text-shadow:0 1px 3px #000; background:rgba(10,15,29,0.9); padding:2px 6px; border-radius:4px; border:1px solid rgba(16,185,129,0.5);">
-            🚚 ${driverName} (${pctDisplay}%)
+          <div style="position:absolute; width:100%; height:100%; border-radius:50%; background:rgba(255,255,255,0.15); animation:mapPulse 2s infinite;"></div>
+          <div style="width:24px; height:24px; display:grid; place-items:center; transform:rotate(${bearing}deg); transition:transform 0.4s linear;">
+            <div style="width:18px; height:18px; color:#ffffff; filter:drop-shadow(0 0 4px rgba(0,0,0,0.8));">
+              ${ic('truckTop')}
+            </div>
           </div>
         </div>`,
       className: 'custom-truck-marker',

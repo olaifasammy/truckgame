@@ -3,6 +3,7 @@ import { calculatePerformance } from './trucks.physics';
 
 export type DrivingState =
   | 'parking'        // Parked or staged in terminal yard
+  | 'delivering'     // Vehicle in logistics transit (factory-to-depot)
   | 'loading'        // Docked at shipper warehouse, cargo manifest loading
   | 'accelerating'   // Leaving depot / accelerating through gears
   | 'cruising'       // Steady linehaul cruise in overdrive top gear
@@ -58,8 +59,42 @@ export function getTruckTelematics(
   const hasCrawler = truck?.upgrades?.gearbox === '16spd_crawler';
   const totalGears = hasCrawler ? 16 : 12;
 
-  // 1. Inactive / Parked Tractor State
+  // 1. Inactive / Parked / Delivering Tractor State
   if (!activeJob) {
+    if (truck?.status === 'delivering') {
+      const remaining = Math.max(0, (truck.availableAt || nowMs) - nowMs);
+      const isRoRo = truck.shippingMode === 'maritime_roro';
+      
+      return {
+        state: 'delivering',
+        stateLabel: isRoRo ? 'MARITIME RO-RO TRANSIT' : 'LOGISTICS TRANSIT DELIVERY',
+        stateDescription: isRoRo 
+          ? `Vessel arrived at ${truck.loc} deepwater terminal. Unit awaiting customs discharge and port clearance.`
+          : `Tractor in professional logistics transit repositioning to ${truck.loc} terminal hub.`,
+        stateBadgeColor: '#fbbf24',
+        stateIcon: isRoRo ? '🚢' : '🚚',
+        speedKmh: isRoRo ? 35 : 82,
+        targetSpeedKmh: 90,
+        throttlePct: 0,
+        brakePct: 0,
+        retarderActive: false,
+        engineRpm: 0,
+        currentGear: 'N (Neutral)',
+        fuelBurnRate: 0.0,
+        turboBoostBar: 0.0,
+        oilPressureBar: 0.0,
+        coolantTempC: 22,
+        brakeTempC: 22,
+        gradientPct: 0.0,
+        roadSurface: isRoRo ? 'Maritime Sea Lane' : 'Highway Asphalt',
+        pctCompleted: 0,
+        phase: isRoRo ? 'Maritime Shipping' : 'Dealer Delivery',
+        isMoving: true,
+        remainingMs: remaining,
+        distanceRemainingKm: Math.round(remaining / 60000 * 1.5)
+      };
+    }
+
     return {
       state: 'parking',
       stateLabel: 'PARKED / TERMINAL STAGED',
@@ -360,6 +395,7 @@ export function getTruckTelematics(
 export function getDrivingStateBadge(state: DrivingState, compact: boolean = false): string {
   const meta: Record<DrivingState, { label: string; icon: string; bg: string; border: string; text: string }> = {
     parking: { label: 'PARKED', icon: '🅿️', bg: 'rgba(148,163,184,0.12)', border: 'rgba(148,163,184,0.3)', text: '#94a3b8' },
+    delivering: { label: 'DELIVERING', icon: '🚚', bg: 'rgba(251,191,36,0.12)', border: 'rgba(251,191,36,0.3)', text: '#fbbf24' },
     loading: { label: 'LOADING', icon: '📦', bg: 'rgba(56,189,248,0.12)', border: 'rgba(56,189,248,0.3)', text: '#38bdf8' },
     accelerating: { label: 'ACCELERATING', icon: '🚀', bg: 'rgba(16,185,129,0.12)', border: 'rgba(16,185,129,0.3)', text: '#10b981' },
     cruising: { label: 'CRUISING', icon: '🛣️', bg: 'rgba(16,185,129,0.15)', border: 'rgba(16,185,129,0.4)', text: '#34d399' },

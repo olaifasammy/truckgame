@@ -56,14 +56,32 @@ action('ai-run-quant-now', () => {
 
 
 action('ai-deposit-capital', d => {
-  const amt = +(d as any).amount || 10000;
+  let amt = +(d as any).amount;
+  if (!amt || amt <= 0) {
+    const input = document.getElementById('quant-capital-input') as HTMLInputElement;
+    if (input) amt = parseFloat(input.value);
+  }
+
+  if (!amt || isNaN(amt) || amt <= 0) {
+    return toast('Enter a valid amount to deposit', 'err');
+  }
+
   const res = depositAiQuantCapital(get(), amt);
   toast(res.message, res.success ? 'success' : 'err');
   refresh();
 });
 
 action('ai-withdraw-capital', d => {
-  const amt = +(d as any).amount || 10000;
+  let amt = +(d as any).amount;
+  if (!amt || amt <= 0) {
+    const input = document.getElementById('quant-capital-input') as HTMLInputElement;
+    if (input) amt = parseFloat(input.value);
+  }
+
+  if (!amt || isNaN(amt) || amt <= 0) {
+    return toast('Enter a valid amount to withdraw', 'err');
+  }
+
   const res = withdrawAiQuantCapital(get(), amt);
   toast(res.message, res.success ? 'success' : 'err');
   refresh();
@@ -516,16 +534,19 @@ export default {
               <span>Capital Funding & Treasury</span>
               <span style="font-size:10px; color:var(--gold);">Treasury: $${(S.money || 0).toLocaleString()}</span>
             </div>
-            <div style="font-size:11px; color:var(--mu); margin-bottom:10px;">
+            <div style="font-size:11px; color:var(--mu); margin-bottom:12px;">
               Allocate company cash to fund the AI Quant Bot trading portfolio.
             </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px;">
-              <button data-act="ai-deposit-capital" data-amount="10000" class="btn gold" style="font-size:10px;">Deposit $10k USD</button>
-              <button data-act="ai-deposit-capital" data-amount="50000" class="btn gold" style="font-size:10px;">Deposit $50k USD</button>
-            </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-              <button data-act="ai-withdraw-capital" data-amount="10000" class="btn alt" style="font-size:10px;">Withdraw $10k USD</button>
-              <button data-act="ai-withdraw-capital" data-amount="50000" class="btn alt" style="font-size:10px;">Withdraw $50k USD</button>
+
+            <!-- Custom Amount Input -->
+            <div style="display:flex; gap:6px; margin-bottom:12px;">
+              <div style="position:relative; flex:1;">
+                <span style="position:absolute; left:10px; top:50%; transform:translateY(-50%); font-size:11px; color:var(--mu);">$</span>
+                <input type="number" id="quant-capital-input" placeholder="Amount" 
+                  style="width:100%; height:36px; padding:0 10px 0 22px; background:rgba(0,0,0,0.3); border:1px solid var(--line); border-radius:6px; color:var(--tx); font-family:monospace; font-size:12px; font-weight:700;" />
+              </div>
+              <button data-act="ai-deposit-capital" class="btn gold" style="padding:0 16px; font-size:10px; font-weight:800; height:36px;">DEPOSIT</button>
+              <button data-act="ai-withdraw-capital" class="btn alt" style="padding:0 16px; font-size:10px; font-weight:800; height:36px;">WITHDRAW</button>
             </div>
           </div>
 

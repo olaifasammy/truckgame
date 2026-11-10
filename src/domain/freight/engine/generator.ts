@@ -29,7 +29,6 @@ export class FreightEngine {
     forceRegion?: RegionName; 
     forceFrom?: string;
     forceTo?: string;
-    isBackhaul?: boolean;
     vip?: boolean; 
     isAuction?: boolean; 
     auctionDuration?: number; 
@@ -64,21 +63,22 @@ export class FreightEngine {
 
     let cargo;
     if (tender) {
-      // Pick cargo suitable for the tender
+      // Pick cargo suitable for the tender, ensuring varied consignments per contract
+      const trailerPool = CARGO_TYPES.filter(c => c.trailer === tender.trailerRequired);
       const industryMap: Record<string, string[]> = {
-        'Automotive & Heavy Industry': ['steel_pipes', 'electronics', 'furniture'],
-        'Automotive & Heavy Powertrains': ['industrial_machinery', 'electronics'],
-        'Energy & ADR Petrochemicals': ['gasoline', 'liquid_oxy', 'toxic_waste'],
-        'Pharmaceuticals & Food Perishables': ['frozen_fish', 'vaccines', 'produce'],
-        'Food & Temperature-Controlled Perishables': ['frozen_fish', 'vaccines', 'produce'],
-        'High-Tech & Precision Electronics': ['electronics', 'server_blades'],
-        'Heavy Mining & Construction Aggregates': ['steel_pipes', 'gravel', 'industrial_machinery'],
-        'Specialized Pharmaceuticals & Vaccines': ['vaccines', 'produce'],
-        'Containerized Ocean Port Drayage': ['general_freight', 'electronics']
+        'Automotive & Heavy Industry': ['steel_pipes', 'electronics', 'furniture', 'industrial_machinery'],
+        'Automotive & Heavy Powertrains': ['industrial_machinery', 'electronics', 'auto_parts'],
+        'Energy & ADR Petrochemicals': ['gasoline', 'liquid_oxy', 'toxic_waste', 'crude_oil'],
+        'Pharmaceuticals & Food Perishables': ['frozen_fish', 'vaccines', 'produce', 'meat', 'dairy'],
+        'Food & Temperature-Controlled Perishables': ['frozen_fish', 'vaccines', 'produce', 'meat'],
+        'High-Tech & Precision Electronics': ['electronics', 'server_blades', 'semiconductors'],
+        'Heavy Mining & Construction Aggregates': ['steel_pipes', 'gravel', 'industrial_machinery', 'excavator'],
+        'Specialized Pharmaceuticals & Vaccines': ['vaccines', 'medical_supplies', 'produce'],
+        'Containerized Ocean Port Drayage': ['general_freight', 'electronics', 'textiles', 'consumer_goods']
       };
       const possibleCargos = industryMap[tender.industry] || (tender.cargoType ? [tender.cargoType] : ['electronics']);
-      const tenderPool = CARGO_TYPES.filter(c => possibleCargos.includes(c.id));
-      cargo = rnd(tenderPool.length ? tenderPool : CARGO_TYPES);
+      const tenderPool = CARGO_TYPES.filter(c => possibleCargos.includes(c.id) || c.trailer === tender.trailerRequired);
+      cargo = rnd(tenderPool.length ? tenderPool : (trailerPool.length ? trailerPool : CARGO_TYPES));
     } else if (options.isAuction) {
       // Job bidding MUST generate higher paying jobs only
       const ultraTierChance = Math.min(0.92, 0.40 + (vipLevel * 0.015));
@@ -150,30 +150,34 @@ export class FreightEngine {
     let from: string;
     let to: string;
 
+    const allCityKeys = Object.keys(CITIES);
+    const validRegionCities = regionCities.length > 0 ? regionCities : allCityKeys;
+
     // Direct / Backhaul routing ("To & Fro" return freight)
     if (options.forceFrom && LOCATIONS[options.forceFrom]) {
       from = options.forceFrom;
-      const validDestinations = regionCities.filter(c => c !== from);
-      if (options.forceTo && LOCATIONS[options.forceTo] && LOCATIONS[options.forceTo].region === targetRegion && options.forceTo !== from) {
-        to = options.forceTo;
-      } else {
-        to = rnd(validDestinations.length ? validDestinations : regionCities);
-      }
     } else if (ownedHubsInRegion.length > 0 && Math.random() < 0.65) {
       from = rnd(ownedHubsInRegion);
-      const possibleDestinations = regionCities.filter(c => c !== from);
-      to = rnd(possibleDestinations.length ? possibleDestinations : regionCities);
-    } else if (regionCities.length >= 2) {
-      from = rnd(regionCities);
-      const possibleDestinations = regionCities.filter(c => c !== from);
-      to = rnd(possibleDestinations.length ? possibleDestinations : regionCities);
     } else {
-      from = regionCities[0] || 'LAGOS';
-      to = regionCities[1] || 'IBADAN';
+      from = rnd(validRegionCities);
     }
 
-    // Authentic highway distance calculation
-    const baseKm = distKm(from, to);
+    const otherRegionCities = validRegionCities.filter(c => c !== from);
+    const fallbackCities = allCityKeys.filter(c => c !== from);
+    const destinationPool = otherRegionCities.length > 0 ? otherRegionCities : fallbackCities;
+
+    if (options.forceTo && LOCATIONS[options.forceTo] && options.forceTo !== from) {
+      to = options.forceTo;
+    } else {
+      to = rnd(destinationPool.length > 0 ? destinationPool : fallbackCities);
+    }
+    if (!to || to === from) {
+      to = fallbackCities.find(c => c !== from) || 'IBADAN';
+    }
+
+    // Authentic highway distance calculation with minimum floor
+    const rawBaseKm = distKm(from, to);
+    const baseKm = rawBaseKm > 10 ? rawBaseKm : Math.max(125, distKm(from, from === 'LAGOS' ? 'IBADAN' : 'LAGOS'));
     const routeEnv = getRouteEnv(from, to);
 
     // Realistic Cargo Weight (tonnes)
@@ -209,20 +213,23 @@ export class FreightEngine {
       if ((routeEnv.roadGrade || 0) > 5.0) rate *= 1.30;
     }
 
-    const pay = tender ? tender.ratePerDelivery : Math.round(baseKm * rate);
+    const calculatedPay = tender ? Math.round((tender.ratePerDelivery || 15000) * (0.94 + Math.random() * 0.12)) : Math.round(baseKm * rate);
+    const pay = Math.max(1500, calculatedPay);
 
     // Dedicated 2-Way Round-Trip Turnaround Contracts
-    const isRoundTrip = !options.isAuction && !options.tenderId && !options.isBackhaul && Math.random() < 0.25;
+    const isRoundTrip = !options.isAuction && !options.tenderId && Math.random() < 0.25;
     let finalPay = pay;
     let totalKm = baseKm;
     let returnCargoObj: any = null;
     let turnaroundBonus = 0;
+    let leg1Pay = pay;
+    let leg2Pay = 0;
 
     if (isRoundTrip) {
       const compatibleReturnCargos = CARGO_TYPES.filter(c => c.trailer === cargo.trailer && c.id !== cargo.id);
       returnCargoObj = compatibleReturnCargos.length > 0 ? rnd(compatibleReturnCargos) : cargo;
       const leg2Rate = 3.40 + (returnCargoObj.baseValue * 0.08);
-      const leg2Pay = Math.round(baseKm * leg2Rate);
+      leg2Pay = Math.max(1200, Math.round(baseKm * leg2Rate));
       turnaroundBonus = Math.round((pay + leg2Pay) * 0.15); // +15% Turnaround efficiency bonus
       finalPay = pay + leg2Pay + turnaroundBonus;
       totalKm = baseKm * 2;
@@ -252,6 +259,9 @@ export class FreightEngine {
       to,
       km: totalKm,
       pay: finalPay,
+      leg1Pay,
+      leg2Pay,
+      baseKm, // original one-way distance
       deadline: Date.now() + (totalKm * 3600000 / 60) + (14 * 3600000),
       env: routeEnv,
       requirements: {
@@ -261,7 +271,6 @@ export class FreightEngine {
       trailer: cargo.trailer,
       isShipperTanker: cargo.isHazmat && !ownedTrailers.has('hazmat'),
       vip: !!options.vip,
-      isBackhaul: !!options.isBackhaul,
       isRoundTrip,
       returnCargoId: returnCargoObj?.id,
       returnCargoName: returnCargoObj?.name,
@@ -325,9 +334,9 @@ export class FreightEngine {
       }
     }
 
-    // FLEET-AWARE "TO & FRO" OUTBOUND HAUL GUARANTEE:
+    // FLEET-AWARE OUTBOUND HAUL GUARANTEE:
     // Guarantee that wherever a player's truck is currently stationed, there is at least one outbound contract
-    // so the truck can take a job from the place it took a job to ("to & fro") without empty deadheading!
+    // so the truck can take a job from the place it's currently at without empty deadheading!
     const fleet = S.fleet || [];
     for (const truck of fleet) {
       if (!truck.loc || !LOCATIONS[truck.loc]) continue;
@@ -344,8 +353,7 @@ export class FreightEngine {
         S.jobs.unshift(this.generate(S, {
           forceRegion: truckRegion,
           forceFrom: truck.loc,
-          forceTo: returnDest,
-          isBackhaul: true
+          forceTo: returnDest
         }));
       }
     }

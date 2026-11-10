@@ -22,6 +22,7 @@ export function renderJobDetails(j: any, why: string | null) {
   const estTripMs = tripMs(j.km, 80, env);
   
   const clientName = tender ? tender.client : (company?.name || 'Private Industrial Shipper');
+  const cargoName = cargo?.name || j.cargo || 'Freight';
 
   const weatherLabel = env.weather === 'snow' ? '❄ Alpine Snow / Ice' 
     : env.weather === 'rain' ? '🌧 Tropical Heavy Rain' 
@@ -68,7 +69,7 @@ export function renderJobDetails(j: any, why: string | null) {
       <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:10px; font-family:monospace; font-size:10px;">
         <div style="background:#111827; padding:6px 8px; border-radius:6px; border:1px solid #1f293d;">
           <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">DISTANCE & TIME</div>
-          <div style="font-weight:800; color:var(--tx); margin-top:1px;">${j.km} km · ~${dur(estTripMs)}</div>
+          <div style="font-weight:800; color:var(--tx); margin-top:1px;">${j.km} km ${j.isRoundTrip ? '(Total)' : ''} · ~${dur(estTripMs)}</div>
         </div>
         <div style="background:#111827; padding:6px 8px; border-radius:6px; border:1px solid #1f293d;">
           <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">CARGO WEIGHT</div>
@@ -150,10 +151,6 @@ export function renderJobCard(S: any, j: any) {
                 <span title="2-Way Round Trip Turnaround" style="font-size:7px; background:rgba(245,158,11,0.2); border:1px solid #f59e0b; color:var(--gold); padding:1px 5px; border-radius:3px; font-weight:800; font-family:monospace; text-transform:uppercase; display:inline-flex; align-items:center; gap:2px;">
                   🔄 2-WAY ROUND TRIP (+15% BONUS)
                 </span>
-              ` : j.isBackhaul ? `
-                <span title="Outbound Return Haul (Backhaul)" style="font-size:7px; background:rgba(16,185,129,0.18); border:1px solid rgba(16,185,129,0.4); color:var(--grn); padding:1px 5px; border-radius:3px; font-weight:800; font-family:monospace; text-transform:uppercase; display:inline-flex; align-items:center; gap:2px;">
-                  🔄 TO & FRO BACKHAUL
-                </span>
               ` : ''}
               ${isTender ? `
                 <span style="font-size:7px; background:rgba(56,189,248,0.15); border:1px solid #38bdf8; color:#38bdf8; padding:0 4px; border-radius:2px; font-weight:800; font-family:monospace; text-transform:uppercase;">
@@ -177,7 +174,7 @@ export function renderJobCard(S: any, j: any) {
               <span>${j.km} km ${j.isRoundTrip ? '(Round-Trip)' : ''}</span>
               <span>·</span>
               <span>${j.weight}t</span>
-              ${localTruck && !j.isRoundTrip ? `<span style="color:var(--grn); font-weight:800;">(0 km DH)</span>` : ''}
+
             </div>
 
             ${isAuctionWon && timeLeft > 0 ? `

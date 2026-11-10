@@ -2,7 +2,7 @@ import { ic } from '../core/icons';
 import { action, fmt, dur, toast } from '../core/ui';
 import { refresh, set } from '../core/store';
 import { TRUCK_MODELS, TRAILERS, getTrailerIcon } from '../domain/trucks/trucks.data';
-import { CITIES, LOCATIONS } from '../data/world';
+import { CITIES, LOCATIONS, REGIONS, RegionName } from '../data/world';
 import { stats, distKm } from '../systems/calc';
 import { refuel, repair, inspect, transport, refuelCost, repairCost, transportInfo, inspectCost } from '../systems/fleet';
 import { why } from '../systems/jobs';
@@ -23,6 +23,23 @@ let hitchModalTruckId: number | null = null;
 let garagePage = 1;
 const TRUCKS_PER_PAGE = 10;
 let garageFilter: 'all' | 'parked' | 'transit' | 'repair' = 'all';
+let garageRegionFilter: string = '';
+
+const getLocInfo = (locKey: string) => {
+  if (!locKey) return null;
+  const upper = String(locKey).toUpperCase();
+  if (LOCATIONS[upper]) return LOCATIONS[upper];
+  for (const k of Object.keys(LOCATIONS)) {
+    if (k.toUpperCase() === upper || LOCATIONS[k].name.toUpperCase() === upper) {
+      return LOCATIONS[k];
+    }
+  }
+  const euroCities = ['ROTTERDAM', 'MUNICH', 'INNSBRUCK', 'LYON', 'GOTHENBURG', 'BERLIN', 'PARIS', 'LONDON', 'MADRID', 'ROME', 'AMSTERDAM', 'FRANKFURT'];
+  if (euroCities.includes(upper) || /europe|germany|france|netherlands|austria|sweden|uk|spain|italy/i.test(locKey)) {
+    return { name: locKey, region: 'Europe', country: 'Europe', coords: [150, 50], latLng: [50, 5], elevation: 10, typicalWeather: 'clear', terrain: 'highway', avgTemp: 15, roadGrade: 1, description: 'European regional hub' };
+  }
+  return { name: locKey, region: 'Europe', country: 'Europe', coords: [150, 50], latLng: [50, 5], elevation: 10, typicalWeather: 'clear', terrain: 'highway', avgTemp: 15, roadGrade: 1, description: 'Regional hub' };
+};
 
 action('garage-page-prev', () => {
   if (garagePage > 1) {
@@ -42,9 +59,16 @@ action('garage-filter', d => {
   refresh();
 });
 
+action('garage-region-select', d => {
+  garageRegionFilter = (d as any).value || 'all';
+  garagePage = 1;
+  refresh();
+});
+
 action('truck-toggle', d => { openId = openId === +(d as any).id ? null : +(d as any).id; panel = null; refresh(); });
 action('panel', d => { panel = panel === (d as any).kind ? null : (d as any).kind; refresh(); });
 action('refuel', d => refuel(+(d as any).id));
+action('set-truck-color', d => FleetService.setTruckColor(+(d as any).id, (d as any).color));
 
 action('set-powertrain-gearbox', d => FleetService.setGearbox(+(d as any).id, (d as any).gearbox));
 action('set-powertrain-axle', d => FleetService.setAxleRatio(+(d as any).id, (d as any).ratio));
@@ -201,7 +225,25 @@ function panelHtml(S: GameState, t: Truck, busy: boolean) {
           <span style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">TERMINAL DEADHEAD / RELOCATION</span>
           <span style="font-size:9px; color:var(--mu); font-family:monospace;">BILL OF LADING TRANSIT</span>
         </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; max-height:220px; overflow-y:auto; padding-right:2px;">
+
+        <!-- Quick Location Dropdown Transfer -->
+        <div style="margin-bottom:12px; background:#070a12; border:1px solid #161e2e; border-radius:6px; padding:8px 10px;">
+          <div style="font-size:8px; font-weight:800; color:var(--mu); text-transform:uppercase; margin-bottom:4px;">Select Destination Terminal Location</div>
+          <div style="display:flex; gap:6px;">
+            <select id="transfer-city-${t.id}" style="flex:1; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:6px 8px; border-radius:6px; outline:none;">
+              ${Object.keys(CITIES).filter(c => c !== t.loc && LOCATIONS[c]?.region === LOCATIONS[t.loc]?.region).map(c => {
+                const loc = LOCATIONS[c];
+                return `<option value="${c}">${loc?.name || c} (${loc?.region || ''})</option>`;
+              }).join('')}
+            </select>
+            <button class="btn gold" style="padding:6px 12px; font-size:10px; font-weight:900;" onclick="const sel = document.getElementById('transfer-city-${t.id}'); if(sel) { window.__actions?.get('move')?.({ id: '${t.id}', city: sel.value }); }">
+              TRANSFER
+            </button>
+          </div>
+        </div>
+
+        <div style="font-size:9px; font-weight:800; color:var(--mu); text-transform:uppercase; margin-bottom:6px;">Or Select Regional Terminal Grid:</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; max-height:180px; overflow-y:auto; padding-right:2px;">
           ${Object.keys(CITIES).filter(c => c !== t.loc && LOCATIONS[c]?.region === LOCATIONS[t.loc]?.region).map(c => {
             const i = transportInfo(S, t, c);
             const loc = LOCATIONS[c];
@@ -499,6 +541,19 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
         </div>
       </div>
 
+      <!-- Custom Livery & Paint Color Selector -->
+      <div style="background:#0a0f1d; border:1px solid #1e293b; padding:10px 12px; border-radius:8px; margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="color:var(--gold); font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">CUSTOM LIVERY & CAB PAINT</span>
+          <span style="font-size:8px; font-family:monospace; color:var(--mu);">RGB HEX FINISH</span>
+        </div>
+        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          ${['#2b4a6f', '#c0392b', '#c9a24f', '#27ae60', '#111827', '#e5e7eb', '#d97706', '#7c3aed', '#0284c7', '#db2777'].map(c => `
+            <button class="btn alt" style="width:24px; height:24px; border-radius:50%; background:${c}; border:2px solid ${t.color === c ? 'var(--gold)' : 'rgba(255,255,255,0.2)'}; padding:0; cursor:pointer;" data-act="set-truck-color" data-id="${t.id}" data-color="${c}" title="Paint ${c}"></button>
+          `).join('')}
+        </div>
+      </div>
+
       <!-- Primary Dispatch Action -->
       <button class="btn gold" style="width:100%; margin-bottom:12px; padding:10px; font-weight:900; font-size:11px; letter-spacing:0.5px; text-transform:uppercase;" data-act="dispatch" data-id="${t.id}" ${hasCompatibleJobs && !busy ? '' : 'disabled'}>
         ${ic('send')} ${busy ? 'TRACTOR CURRENTLY IN TRANSIT' : hasCompatibleJobs ? 'DISPATCH ON COMPATIBLE FREIGHT LOAD' : 'NO COMPATIBLE FREIGHT LOADS ON BOARD'}
@@ -587,6 +642,7 @@ function truck(S: any, t: any) {
   const drv = S.drivers.find((x: any) => x.id === t.driverId);
 
   const isBusy = !!a || t.status === 'busy';
+  const isDelivering = t.status === 'delivering';
   const berthNum = (t.id % 6) + 1;
   const locInfo = LOCATIONS[t.loc];
   const cityName = locInfo?.name || t.loc;
@@ -594,6 +650,9 @@ function truck(S: any, t: any) {
   let parkingLocationText = '';
   if (isBusy && a) {
     parkingLocationText = `🛣️ En-Route: ${a.from} → ${a.to} (ETA: ${dur(Math.max(0, (a.arrivesAt || now) - now))})`;
+  } else if (isDelivering) {
+    const remaining = Math.max(0, (t.availableAt || now) - now);
+    parkingLocationText = `🚚 Delivery in Transit: Factory ➔ ${cityName} (ETA: ${dur(remaining)})`;
   } else {
     const isOwnedHub = (S.depots || []).some((depotId: string) => depotId.toLowerCase().includes(t.loc.toLowerCase()));
     if (isOwnedHub) {
@@ -604,6 +663,7 @@ function truck(S: any, t: any) {
   }
 
   const status = t.status === 'repair' ? { txt: 'IN REPAIR BAY', color: '#ef4444' }
+    : isDelivering ? { txt: 'LOGISTICS TRANSIT', color: 'var(--gold)' }
     : isBusy ? { txt: a?.kind === 'move' ? 'REPOSITIONING' : 'ON HIGHWAY', color: 'var(--blu)' }
     : drv ? { txt: 'PARKED · READY', color: 'var(--grn)' }
     : { txt: 'PARKED (NO CDL)', color: 'var(--mu)' };
@@ -632,7 +692,7 @@ function truck(S: any, t: any) {
             <div style="display:flex; align-items:center; gap:6px; font-size:9px; color:var(--mu); font-family:monospace;">
               <span style="color:var(--gold); font-weight:800;">UNIT #${t.id}</span>
               <span>·</span>
-              <span style="color:${isBusy ? '#38bdf8' : 'var(--grn)'}; font-weight:700;">${isBusy ? 'ACTIVE IN TRANSIT' : `PARKED: ${t.loc}`}</span>
+              <span style="color:${isBusy ? '#38bdf8' : isDelivering ? 'var(--gold)' : 'var(--grn)'}; font-weight:700;">${isBusy ? 'ACTIVE IN TRANSIT' : isDelivering ? 'LOGISTICS DELIVERY' : `PARKED: ${t.loc}`}</span>
               <span>·</span>
               <span>${drv ? drv.name : 'NO DRIVER'}</span>
             </div>
@@ -669,7 +729,7 @@ function truck(S: any, t: any) {
 
       <!-- Vehicle Blueprint Silhouette Preview (Bobtail or Connected Rig) -->
       <div style="background:#0a0f1d; border:1px solid #1e293b; border-radius:6px; padding:6px 12px; margin-bottom:8px; display:flex; justify-content:center; align-items:center; min-height:64px;">
-        ${getTruckSilhouetteSvg(m, o ? 'var(--gold)' : 'rgba(193,154,91,0.6)', m.axle, t.trailer)}
+        ${getTruckSilhouetteSvg(m, o ? 'var(--gold)' : 'rgba(193,154,91,0.6)', m.axle, t.trailer, t.color)}
       </div>
 
       <!-- Quick Telematics Bar -->
@@ -810,14 +870,23 @@ export default {
 
     const repairUnitsCount = S.fleet.filter((t: any) => truckNeedsRepair(t)).length;
 
-    // Filter fleet based on selected tab
-    let filteredFleet = S.fleet;
+    // Determine active regions with fleet units using authoritative LOCATIONS world data
+    const regionKeys: RegionName[] = ['Africa', 'Europe', 'America', 'Asia'];
+    const regionOptions = regionKeys;
+    if (!garageRegionFilter || !regionOptions.includes(garageRegionFilter as any)) {
+      garageRegionFilter = regionOptions[0];
+    }
+
+    // Filter fleet based on selected region
+    let fleetInRegion = S.fleet.filter((t: any) => getLocInfo(t.loc)?.region === garageRegionFilter);
+
+    let filteredFleet = fleetInRegion;
     if (garageFilter === 'parked') {
-      filteredFleet = S.fleet.filter((t: any) => t.status !== 'busy' && t.status !== 'repair');
+      filteredFleet = fleetInRegion.filter((t: any) => t.status === 'idle');
     } else if (garageFilter === 'transit') {
-      filteredFleet = S.fleet.filter((t: any) => t.status === 'busy');
+      filteredFleet = fleetInRegion.filter((t: any) => t.status === 'busy' || t.status === 'delivering');
     } else if (garageFilter === 'repair') {
-      filteredFleet = S.fleet.filter((t: any) => truckNeedsRepair(t));
+      filteredFleet = fleetInRegion.filter((t: any) => truckNeedsRepair(t));
     }
 
     const totalPages = Math.max(1, Math.ceil(filteredFleet.length / TRUCKS_PER_PAGE));
@@ -874,21 +943,31 @@ export default {
         </div>
       </div>
 
-      <!-- Fleet Status Filter Tabs Bar -->
+      <!-- Fleet Status Filter Tabs & Region Selector Bar -->
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px; flex-wrap:wrap;">
-        <div style="display:flex; gap:6px;">
+        <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <button class="btn ${garageFilter === 'all' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="all">
-            ALL (${S.fleet.length})
+            ALL (${fleetInRegion.length})
           </button>
           <button class="btn ${garageFilter === 'parked' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="parked">
-            PARKED (${S.fleet.length - busy})
+            PARKED (${fleetInRegion.filter((t: any) => t.status === 'idle').length})
           </button>
           <button class="btn ${garageFilter === 'transit' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="transit">
-            EN-ROUTE (${busy})
+            EN-ROUTE (${fleetInRegion.filter((t: any) => t.status === 'busy' || t.status === 'delivering').length})
           </button>
           <button class="btn ${garageFilter === 'repair' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="repair">
-            SERVICE / REPAIR (${repairUnitsCount})
+            SERVICE / REPAIR (${fleetInRegion.filter((t: any) => truckNeedsRepair(t)).length})
           </button>
+        </div>
+
+        <div>
+          <select id="garage-region-select" data-act="garage-region-select" style="background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:5px 8px; border-radius:6px; outline:none;">
+            ${regionOptions.map(reg => {
+              const count = S.fleet.filter((t: any) => getLocInfo(t.loc)?.region === reg).length;
+              const displayName = REGIONS[reg]?.name || reg;
+              return `<option value="${reg}" ${garageRegionFilter === reg ? 'selected' : ''}>${displayName} (${count} Units)</option>`;
+            }).join('')}
+          </select>
         </div>
       </div>
 

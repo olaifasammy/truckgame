@@ -169,14 +169,13 @@ export default {
       return locFrom?.region === currentRegion || locTo?.region === currentRegion;
     });
 
-    // Sort: Auctions Won > Return Hauls (To & Fro) for stationed trucks > Tenders > VIP > Rest
+    // Sort: Auctions Won > Jobs for stationed trucks > Tenders > VIP > Rest
     filteredJobs.sort((a: any, b: any) => {
       const aLocal = (S.fleet || []).some((t: any) => t.status === 'idle' && t.loc === a.from);
       const bLocal = (S.fleet || []).some((t: any) => t.status === 'idle' && t.loc === b.from);
       const score = (j: any, isLocal: boolean) => (
         j.isAuctionWon ? 120 :
         (isLocal ? 80 : 0) +
-        (j.isBackhaul ? 40 : 0) +
         (j.tenderId ? 30 : 0) +
         (j.vip ? 10 : 0)
       );
@@ -379,6 +378,7 @@ export default {
               const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
               const isSubcontracted = (S.subcontractedTrucks || []).includes(t.id);
               const isBusy = t.status === 'busy';
+              const isDelivering = t.status === 'delivering';
               const charterRate = calculateTruckCharterRate(t);
 
               return `
@@ -388,13 +388,13 @@ export default {
                     <div style="font-size:10px; color:var(--mu); margin-top:1px;">
                       ${m.brand} ${m.name} (${m.hp} HP) · Base: ${t.loc} · Rate: <b style="color:var(--grn);">+${fmt(charterRate)}/day</b>
                     </div>
-                    <div style="font-size:9px; color:${isSubcontracted ? 'var(--grn)' : isBusy ? '#38bdf8' : 'var(--gold)'}; font-family:monospace; margin-top:2px;">
-                      Status: <b>${isSubcontracted ? 'CHARTERED TO DHL LINEHAUL' : isBusy ? 'IN TRANSIT' : 'IDLE IN DEPOT'}</b>
+                    <div style="font-size:9px; color:${isSubcontracted ? 'var(--grn)' : isBusy ? '#38bdf8' : isDelivering ? 'var(--gold)' : 'var(--gold)'}; font-family:monospace; margin-top:2px;">
+                      Status: <b>${isSubcontracted ? 'CHARTERED TO DHL LINEHAUL' : isBusy ? 'IN TRANSIT' : isDelivering ? 'LOGISTICS DELIVERY' : 'IDLE IN DEPOT'}</b>
                     </div>
                   </div>
                   <div>
-                    <button class="btn ${isSubcontracted ? 'alt' : 'gold'}" style="padding:6px 12px; font-size:10px; font-weight:800; ${isSubcontracted ? 'color:var(--grn); border-color:var(--grn);' : ''}" data-act="toggle-subcontract" data-id="${t.id}" ${isBusy && !isSubcontracted ? 'disabled' : ''}>
-                      ${isSubcontracted ? `RECALL TO DEPOT` : `CHARTER OUT (+${fmt(charterRate)}/d)`}
+                    <button class="btn ${isSubcontracted ? 'alt' : 'gold'}" style="padding:6px 12px; font-size:10px; font-weight:800; ${isSubcontracted ? 'color:var(--grn); border-color:var(--grn);' : ''}" data-act="toggle-subcontract" data-id="${t.id}" ${(isBusy || isDelivering) && !isSubcontracted ? 'disabled' : ''}>
+                      ${isSubcontracted ? `RECALL TO DEPOT` : isDelivering ? 'IN TRANSIT' : `CHARTER OUT (+${fmt(charterRate)}/d)`}
                     </button>
                   </div>
                 </div>

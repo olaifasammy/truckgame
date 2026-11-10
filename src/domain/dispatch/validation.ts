@@ -87,6 +87,15 @@ export function getDispatchEligibilityError(
   if (trailerType === 'double_trailer' && !hasLicense(state, 'lcv_double')) {
     return 'Missing Company Permit: LCV Double Trailer Authority (Buy in HQ)';
   }
+  if (trailerType === 'tipper' && !hasLicense(state, 'bulk_tipper')) {
+    return 'Missing Company Permit: Bulk Tipper Authority (Buy in HQ)';
+  }
+  if (trailerType === 'container' && !hasLicense(state, 'intermodal_container')) {
+    return 'Missing Company Permit: Intermodal Container Authority (Buy in HQ)';
+  }
+  if (cargo?.isFragile && (cargo.baseValue || 0) > 30 && !hasLicense(state, 'high_value')) {
+    return 'Missing Company Permit: High-Value Goods Authority (Buy in HQ)';
+  }
 
   return null;
 }
