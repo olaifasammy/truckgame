@@ -32,6 +32,7 @@ export interface AiCryptoTradeRecord {
 export interface AiCryptoBotState {
   enabled: boolean;
   strategy: 'conservative' | 'momentum' | 'high_volatility';
+  intensity?: 'conservative' | 'balanced' | 'aggressive';
   allocatedUsd: number;
   totalProfitUsd: number;
   dailyProfitUsd: number;
@@ -367,165 +368,207 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
   if (!S.cryptoPortfolio.cash) S.cryptoPortfolio.cash = 10000;
   if (!S.cryptoPortfolio.holdings) S.cryptoPortfolio.holdings = {};
 
-  // Pick priority asset (BTC, ETH, SOL, FLB)
-  const priorityAssets = CRYPTO_ASSETS.filter(a => ['btc', 'eth', 'sol', 'flb'].includes(a.id));
-  const asset = priorityAssets[Math.floor(Math.random() * priorityAssets.length)] || CRYPTO_ASSETS[0];
-  const market = getCryptoMarketData(asset.id, '15m');
-
-  if (!market || !market.history || market.history.length < 5) {
-    bot.weights = quantModel.toJSON();
-    return { executed: false, message: 'Insufficient market candle history' };
-  }
-
-  const currentPrice = market.price;
-  const low24h = market.low24h || currentPrice * 0.8;
-  const high24h = market.high24h || currentPrice * 1.2;
-  const priceRange = high24h - low24h || 1;
-
-  // Smart Dip Ratio: (0.0 = bottom dip, 1.0 = peak high)
-  const dipRatio = Math.max(0, Math.min(1, (currentPrice - low24h) / priceRange));
-
-  // 6-Feature input telemetry vector for Quant Neural Network
-  const features = [
-    dipRatio,
-    Math.min(1, Math.max(0, market.change24h / 50 + 0.5)),
-    Math.min(1, currentPrice / high24h),
-    Math.min(1, asset.volatility),
-    bot.strategy === 'conservative' ? 0.25 : bot.strategy === 'momentum' ? 0.60 : 0.85,
-    Math.min(1, smartInfo.level / 10)
-  ];
-
-  let neuralScore = 0.5;
-  try {
-    neuralScore = quantModel.forward(features);
-  } catch (e) {
-    neuralScore = 0.5;
-  }
-
-  // Dynamic Neural Weight: As bot gains autonomous mastery, neural intelligence governs more of the decision
-  const neuralWeight = 0.35 + (smartInfo.level * 0.04);
-  const buyUrgencyScore = (1 - dipRatio) * (1 - neuralWeight) + neuralScore * neuralWeight;
-
-  const holdings = S.cryptoPortfolio.holdings[asset.id] || 0;
-  const holdingValueUsd = holdings * currentPrice;
-
-  // Buy Thresholds adjusted by bot Smart Level
-  const baseThreshold = bot.strategy === 'conservative' ? 0.55 : bot.strategy === 'momentum' ? 0.45 : 0.35;
-  const smartDiscount = (smartInfo.level - 1) * 0.015;
-  const buyThreshold = Math.max(0.25, baseThreshold - smartDiscount);
-  const sellThreshold = 0.58; // Balanced sell threshold so bot actively takes profit and keeps trading
-
-  // Long-Term Value HODL / Appreciation Strategy Check:
-  // If coin is in strong uptrend and position is very fresh (< 5 mins), AI holds briefly; otherwise takes profit
-  const openPos = bot.openPositions[asset.id];
-  const positionAgeMs = openPos ? Date.now() - openPos.time : 0;
-  const isStrongUptrend = market.change24h > 3.0;
-  const shouldHoldForAppreciation = isStrongUptrend && positionAgeMs < 300000 && dipRatio < 0.70;
-
-  // Auto-liquidity rebalance: If cash is very low (< $300) and we have holdings, prioritize taking profit to keep trading active
-  const needsLiquidity = (S.cryptoPortfolio.cash || 0) < 300 && holdings > 0;
+  const priorityAssets = CRYPTO_ASSETS.filter(a => ['flb', 'btc', 'eth', 'sol'].includes(a.id));
+  const intensity = bot.intensity || S.aiState?.filters?.intensity || 'balanced';
 
   let actionTaken = false;
   let msg = '';
 
-  if (buyUrgencyScore >= buyThreshold && S.cryptoPortfolio.cash >= 300) {
-    // BUY ON DIP (Aggressive high-conviction capital allocation scaled by Smart Level & Intensity)
-    const intensity = bot.intensity || S.aiState?.filters?.intensity || 'balanced';
-    const capitalMultiplier = intensity === 'conservative' ? 0.45 : intensity === 'aggressive' ? 0.95 : 0.70;
-    const maxTradeAlloc = 25000 + (smartInfo.level * 4000);
-    const tradeUsd = Math.min(S.cryptoPortfolio.cash, Math.min(maxTradeAlloc, S.cryptoPortfolio.cash * capitalMultiplier));
-    if (tradeUsd >= 150) {
-      S.cryptoPortfolio.cash -= tradeUsd;
-      const tokensBought = tradeUsd / currentPrice;
-      S.cryptoPortfolio.holdings[asset.id] = holdings + tokensBought;
+  // 1. POSITION SCAN: Check existing open positions for Take-Profit or Stop-Loss opportunities
+  for (const [assetId, qtyRaw] of Object.entries(S.cryptoPortfolio.holdings)) {
+    const holdings = qtyRaw as number;
+    if (holdings <= 0.00001) continue;
+
+    const asset = CRYPTO_ASSETS.find(a => a.id === assetId) || priorityAssets[0];
+    const market = getCryptoMarketData(assetId, '15m');
+    if (!market || !market.history || market.history.length < 5) continue;
+
+    const currentPrice = market.price;
+    const low24h = market.low24h || currentPrice * 0.8;
+    const high24h = market.high24h || currentPrice * 1.2;
+    const priceRange = high24h - low24h || 1;
+    const dipRatio = Math.max(0, Math.min(1, (currentPrice - low24h) / priceRange));
+
+    const openPos = bot.openPositions?.[assetId];
+    const buyPrice = openPos?.buyPrice || (currentPrice * 0.98);
+    const holdingValueUsd = holdings * currentPrice;
+    const costBasis = holdings * buyPrice;
+    const rawProfit = holdingValueUsd - costBasis;
+    const gainPct = costBasis > 0 ? (rawProfit / costBasis) * 100 : 0;
+    const positionAgeMs = openPos ? Date.now() - openPos.time : 60000;
+
+    // Intelligent Take-Profit & Risk Management targets:
+    // Profit target scales with bot strategy (conservative 1.2%, momentum 2.2%, aggressive 3.5%)
+    const targetProfitPct = bot.strategy === 'conservative' ? 1.2 : bot.strategy === 'momentum' ? 2.0 : 3.2;
+    const stopLossPct = bot.strategy === 'conservative' ? -2.8 : bot.strategy === 'momentum' ? -4.5 : -6.5;
+
+    const meetsProfitTarget = gainPct >= targetProfitPct;
+    const meetsStopLoss = gainPct <= stopLossPct;
+    const meetsDipPeak = dipRatio >= 0.55 && rawProfit > 0;
+    const needsLiquidity = (S.cryptoPortfolio.cash || 0) < 300 && holdings > 0;
+    const agedProfitable = positionAgeMs > 45000 && rawProfit > 20;
+
+    if (meetsProfitTarget || meetsDipPeak || meetsStopLoss || needsLiquidity || agedProfitable) {
+      // Execute TAKE PROFIT / STOP-LOSS
+      const intensityAlphaBonus = intensity === 'conservative' ? 0.0 : intensity === 'aggressive' ? 0.35 : 0.15;
+      const alphaMultiplier = 1.0 + ((smartInfo.level - 1) * 0.22) + (asset.id === 'flb' ? 0.35 : 0.1) + intensityAlphaBonus;
+
+      let realizedProfit = Math.round(rawProfit);
+      if (rawProfit > 0) {
+        realizedProfit = Math.round(rawProfit * alphaMultiplier);
+      } else {
+        const riskMitigation = 1.0 - Math.min(0.5, (smartInfo.level - 1) * 0.05);
+        realizedProfit = Math.round(rawProfit * riskMitigation);
+      }
+
+      S.cryptoPortfolio.cash += holdingValueUsd + (realizedProfit - rawProfit);
+      S.cryptoPortfolio.holdings[assetId] = 0;
+      if (bot.openPositions) delete bot.openPositions[assetId];
+
+      bot.totalProfitUsd += realizedProfit;
+      bot.dailyProfitUsd = (bot.dailyProfitUsd || 0) + realizedProfit;
       bot.lastTradeTimestamp = Date.now();
 
-      // Track entry state for reinforcement training on exit
-      bot.openPositions[asset.id] = {
-        buyPrice: currentPrice,
-        features: [...features],
-        time: Date.now()
-      };
+      // Backpropagation reinforcement update
+      const trainFeatures = openPos?.features || [
+        dipRatio,
+        Math.min(1, Math.max(0, market.change24h / 50 + 0.5)),
+        Math.min(1, currentPrice / high24h),
+        Math.min(1, asset.volatility),
+        0.5,
+        Math.min(1, smartInfo.level / 10)
+      ];
+      const targetReward = realizedProfit > 0 ? 0.96 : 0.12;
+      quantModel.train(trainFeatures, targetReward, 0.05);
 
-      bot.smartXp = (bot.smartXp || 50) + 8;
+      const xpGain = realizedProfit > 0 ? 35 : 12;
+      bot.smartXp = (bot.smartXp || 50) + xpGain;
 
       const record: AiCryptoTradeRecord = {
         id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
         time: Date.now(),
-        type: 'BUY',
+        type: 'SELL',
         symbol: asset.symbol,
-        qty: tokensBought,
+        qty: holdings,
         price: currentPrice,
-        usd: tradeUsd,
-        confidence: buyUrgencyScore,
+        usd: holdingValueUsd,
+        profitUsd: realizedProfit,
+        confidence: dipRatio,
         smartLevelAtTrade: smartInfo.level
       };
       bot.tradeHistory.unshift(record);
       if (bot.tradeHistory.length > 50) bot.tradeHistory.pop();
 
       actionTaken = true;
-      msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) ACCUMULATED ${asset.symbol}: Bought ${tokensBought.toFixed(4)} tokens for $${tradeUsd.toLocaleString()} @ $${currentPrice.toLocaleString()} [HODL Strategy Enabled]`;
+      const outcomeText = realizedProfit >= 0 ? `REALIZED GAINS: +$${realizedProfit.toLocaleString()} PnL (+${gainPct.toFixed(2)}%)` : `STOP-LOSS: -$${Math.abs(realizedProfit).toLocaleString()} (${gainPct.toFixed(2)}%)`;
+      msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) ${outcomeText} on ${asset.symbol} ($${holdingValueUsd.toLocaleString()})`;
+      break; // One primary position exit per tick for clean telemetry
     }
-  } else if ((needsLiquidity || (!shouldHoldForAppreciation && (dipRatio >= sellThreshold || holdingValueUsd > 8000))) && holdings > 0) {
-    // TAKE PROFIT ON PEAK (With smart level profit amplification & arbitrage alpha)
-    const buyPrice = openPos?.buyPrice || (currentPrice * 0.95);
-    const sellUsd = holdingValueUsd;
-    const costBasis = holdings * buyPrice;
-    const rawProfit = sellUsd - costBasis;
-    
-    // Neural Alpha Multiplier: Higher smart levels & aggressive intensity leverage arbitrage precision for larger payouts.
-    // Realism adjustment: Alpha only amplifies gains (better execution/arbitrage).
-    // It should not artificially floor profits at $50 if the trade was a loss.
-    const intensity = bot.intensity || S.aiState?.filters?.intensity || 'balanced';
-    const intensityAlphaBonus = intensity === 'conservative' ? 0.0 : intensity === 'aggressive' ? 0.35 : 0.15;
-    const alphaMultiplier = 1.0 + ((smartInfo.level - 1) * 0.22) + (asset.id === 'flb' ? 0.35 : 0.1) + intensityAlphaBonus;
-    
-    let realizedProfit = Math.round(rawProfit);
-    if (rawProfit > 0) {
-        realizedProfit = Math.round(rawProfit * alphaMultiplier);
-    } else {
-        // High-level bots are better at risk management/stop-loss, reducing losses slightly
-        const riskMitigation = 1.0 - Math.min(0.5, (smartInfo.level - 1) * 0.05);
-        realizedProfit = Math.round(rawProfit * riskMitigation);
-    }
-
-    S.cryptoPortfolio.cash += sellUsd + (realizedProfit - rawProfit); // Add arbitrage alpha to cash
-    S.cryptoPortfolio.holdings[asset.id] = 0;
-    delete bot.openPositions[asset.id];
-
-    bot.totalProfitUsd += realizedProfit;
-    bot.dailyProfitUsd = (bot.dailyProfitUsd || 0) + realizedProfit;
-    bot.lastTradeTimestamp = Date.now();
-
-    // ONLINE REINFORCEMENT LEARNING VIA BACKPROPAGATION:
-    const trainFeatures = openPos?.features || features;
-    const targetReward = realizedProfit > 0 ? 0.96 : 0.12;
-    quantModel.train(trainFeatures, targetReward, 0.05);
-
-    const xpGain = realizedProfit > 0 ? 35 : 12;
-    bot.smartXp = (bot.smartXp || 50) + xpGain;
-
-    const record: AiCryptoTradeRecord = {
-      id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      time: Date.now(),
-      type: 'SELL',
-      symbol: asset.symbol,
-      qty: holdings,
-      price: currentPrice,
-      usd: sellUsd,
-      profitUsd: realizedProfit,
-      confidence: dipRatio,
-      smartLevelAtTrade: smartInfo.level
-    };
-    bot.tradeHistory.unshift(record);
-    if (bot.tradeHistory.length > 50) bot.tradeHistory.pop();
-
-    actionTaken = true;
-    msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) REALIZED GAINS: Sold ${asset.symbol} for $${sellUsd.toLocaleString()} (+$${realizedProfit.toLocaleString()} PnL)`;
-  } else if (holdings > 0 && shouldHoldForAppreciation) {
-    // HODL Logging or silence for clean telemetry
-    msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) HODLing ${asset.symbol}: Strong uptrend detected (+${market.change24h}%). Holding for long-term compounding value.`;
   }
+
+  // 2. OPPORTUNITY SCAN: If no position was sold and cash is available, evaluate candidate dip buys
+  if (!actionTaken && (S.cryptoPortfolio.cash || 0) >= 300) {
+    let bestCandidate: { asset: any; market: any; score: number; features: number[]; dipRatio: number } | null = null;
+    let highestScore = -Infinity;
+
+    for (const asset of priorityAssets) {
+      // Skip if we already hold this asset
+      const currentHolding = S.cryptoPortfolio.holdings[asset.id] || 0;
+      if (currentHolding > 0.0001) continue;
+
+      const market = getCryptoMarketData(asset.id, '15m');
+      if (!market || !market.history || market.history.length < 5) continue;
+
+      const currentPrice = market.price;
+      const low24h = market.low24h || currentPrice * 0.8;
+      const high24h = market.high24h || currentPrice * 1.2;
+      const priceRange = high24h - low24h || 1;
+      const dipRatio = Math.max(0, Math.min(1, (currentPrice - low24h) / priceRange));
+
+      const features = [
+        dipRatio,
+        Math.min(1, Math.max(0, market.change24h / 50 + 0.5)),
+        Math.min(1, currentPrice / high24h),
+        Math.min(1, asset.volatility),
+        bot.strategy === 'conservative' ? 0.25 : bot.strategy === 'momentum' ? 0.60 : 0.85,
+        Math.min(1, smartInfo.level / 10)
+      ];
+
+      let neuralScore = 0.5;
+      try {
+        neuralScore = quantModel.forward(features);
+      } catch (e) {
+        neuralScore = 0.5;
+      }
+
+      const neuralWeight = 0.35 + (smartInfo.level * 0.04);
+      const buyUrgencyScore = (1 - dipRatio) * (1 - neuralWeight) + neuralScore * neuralWeight;
+
+      if (buyUrgencyScore > highestScore) {
+        highestScore = buyUrgencyScore;
+        bestCandidate = { asset, market, score: buyUrgencyScore, features, dipRatio };
+      }
+    }
+
+    if (bestCandidate) {
+      const baseThreshold = bot.strategy === 'conservative' ? 0.52 : bot.strategy === 'momentum' ? 0.42 : 0.32;
+      const smartDiscount = (smartInfo.level - 1) * 0.015;
+      const buyThreshold = Math.max(0.22, baseThreshold - smartDiscount);
+
+      // Require minimum 4-second cadence between buys to prevent rapid cash depletion
+      const timeSinceLastTrade = Date.now() - (bot.lastTradeTimestamp || 0);
+
+      if (bestCandidate.score >= buyThreshold && timeSinceLastTrade >= 4000) {
+        const capitalMultiplier = intensity === 'conservative' ? 0.35 : intensity === 'aggressive' ? 0.70 : 0.50;
+        const maxTradeAlloc = 20000 + (smartInfo.level * 3500);
+        const tradeUsd = Math.min(S.cryptoPortfolio.cash, Math.min(maxTradeAlloc, Math.max(300, S.cryptoPortfolio.cash * capitalMultiplier)));
+
+        if (tradeUsd >= 150) {
+          const currentPrice = bestCandidate.market.price;
+          S.cryptoPortfolio.cash -= tradeUsd;
+          const tokensBought = tradeUsd / currentPrice;
+          S.cryptoPortfolio.holdings[bestCandidate.asset.id] = (S.cryptoPortfolio.holdings[bestCandidate.asset.id] || 0) + tokensBought;
+          bot.lastTradeTimestamp = Date.now();
+
+          if (!bot.openPositions) bot.openPositions = {};
+          bot.openPositions[bestCandidate.asset.id] = {
+            buyPrice: currentPrice,
+            features: [...bestCandidate.features],
+            time: Date.now()
+          };
+
+          bot.smartXp = (bot.smartXp || 50) + 8;
+
+          const record: AiCryptoTradeRecord = {
+            id: `trade-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+            time: Date.now(),
+            type: 'BUY',
+            symbol: bestCandidate.asset.symbol,
+            qty: tokensBought,
+            price: currentPrice,
+            usd: tradeUsd,
+            confidence: bestCandidate.score,
+            smartLevelAtTrade: smartInfo.level
+          };
+          bot.tradeHistory.unshift(record);
+          if (bot.tradeHistory.length > 50) bot.tradeHistory.pop();
+
+          actionTaken = true;
+          msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) ACCUMULATED ${bestCandidate.asset.symbol}: Bought ${tokensBought.toFixed(4)} tokens for $${tradeUsd.toLocaleString()} @ $${currentPrice.toLocaleString()}`;
+        }
+      }
+    }
+  }
+
+  // 3. Keep allocatedUsd consistent with actual total portfolio net worth
+  let currentHoldingsTotalValue = 0;
+  for (const [id, q] of Object.entries(S.cryptoPortfolio.holdings || {})) {
+    if ((q as number) > 0) {
+      const m = getCryptoMarketData(id, '15m');
+      currentHoldingsTotalValue += (q as number) * (m?.sellPrice || m?.price || 1);
+    }
+  }
+  bot.allocatedUsd = Math.round((S.cryptoPortfolio.cash || 0) + currentHoldingsTotalValue);
 
   // Continuous training epoch advancement per tick
   bot.smartXp = (bot.smartXp || 50) + 1;
@@ -538,6 +581,6 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
 
   return {
     executed: actionTaken,
-    message: actionTaken ? msg : `AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) evaluated ${asset.symbol} [Dip: ${Math.round(dipRatio * 100)}% · Neural: ${Math.round(neuralScore * 100)}%]. Monitoring entries.`
+    message: actionTaken ? msg : `AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) scanning 4 markets. Capital: $${bot.allocatedUsd.toLocaleString()} USD.`
   };
 }

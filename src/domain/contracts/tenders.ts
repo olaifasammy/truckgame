@@ -7,7 +7,7 @@
 
 import { LOCATIONS } from '../../data/world';
 import { REGIONAL_HUBS } from '../logistics/network';
-import { CARGO_TYPES } from '../cargo/registry';
+import { CARGO_TYPES } from '../freight/cargo/registry';
 
 export interface CorporateTender {
   id: string;
@@ -154,9 +154,9 @@ const CLIENT_TEMPLATES: ClientTemplate[] = [
 function getLaneDistance(cityA: string, cityB: string): number {
   const locA = LOCATIONS[cityA];
   const locB = LOCATIONS[cityB];
-  if (!locA || !locB) return 500;
-  const dx = locA.x - locB.x;
-  const dy = locA.y - locB.y;
+  if (!locA || !locB || !locA.coords || !locB.coords) return 500;
+  const dx = locA.coords[0] - locB.coords[0];
+  const dy = locA.coords[1] - locB.coords[1];
   return Math.round(Math.sqrt(dx * dx + dy * dy) * 1.8) + 120;
 }
 
@@ -181,7 +181,7 @@ export function getDynamicCorporateTenders(S: any): CorporateTender[] {
 
   CLIENT_TEMPLATES.forEach((tpl, idx) => {
     // Pick an unlocked region for this tender
-    const eligibleRegions = unlockedRegions.filter(r => citiesByRegion[r] && citiesByRegion[r].length >= 2);
+    const eligibleRegions = unlockedRegions.filter((r: string) => citiesByRegion[r] && citiesByRegion[r].length >= 2);
     if (eligibleRegions.length === 0) return;
     
     const regionIdx = (idx + cycleSeed) % eligibleRegions.length;

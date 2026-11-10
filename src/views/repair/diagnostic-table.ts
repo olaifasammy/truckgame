@@ -3,7 +3,7 @@ import { action, fmt, toast } from '../../core/ui';
 import { refresh } from '../../core/store';
 import { TRUCK_MODELS } from '../../domain/trucks/trucks.data';
 import { PART_LABELS } from '../../systems/calc';
-import { LOCATIONS } from '../../data/world';
+import { LOCATIONS, RegionName, resolveTruckRegion } from '../../data/world';
 
 export type DiagFilter = 'all' | 'critical' | 'warning' | 'optimal';
 export type DiagSort = 'wear' | 'health_asc' | 'health_desc' | 'id' | 'odo';
@@ -65,10 +65,11 @@ export function calculateTruckHealth(t: any) {
   return { avgHealth, minHealth, lowFluids, statusTier };
 }
 
-export function renderDiagnosticTable(S: any, repairsQueue: any[], lastScanTimestamp: number): string {
-  const fleet = S.fleet || [];
+export function renderDiagnosticTable(S: any, repairsQueue: any[], lastScanTimestamp: number, regionFilter: RegionName | 'All' = 'All'): string {
+  const allFleet = S.fleet || [];
+  const fleet = regionFilter === 'All' ? allFleet : allFleet.filter((t: any) => resolveTruckRegion(t) === regionFilter);
 
-  // 1. Calculate stats across entire fleet
+  // 1. Calculate stats across fleet in selected region
   let critCount = 0;
   let warnCount = 0;
   let optCount = 0;
@@ -135,7 +136,7 @@ export function renderDiagnosticTable(S: any, repairsQueue: any[], lastScanTimes
               FLEET OBD-II TELEMETRY SCANNER
             </div>
             <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:2px;">
-              Monitoring ${fleet.length} active tractor power units · Showing ${totalItems} matched
+              Monitoring ${fleet.length} active tractor power units ${regionFilter !== 'All' ? `stationed in ${regionFilter}` : ''} · Showing ${totalItems} matched
             </div>
           </div>
           <div style="display:flex; align-items:center; gap:8px;">
@@ -202,8 +203,8 @@ export function renderDiagnosticTable(S: any, repairsQueue: any[], lastScanTimes
       ${pageUnits.length === 0 ? `
         <div class="card" style="padding:32px; text-align:center; color:var(--mu); background:#0b1120; border-radius:10px;">
           <div style="font-size:24px; margin-bottom:8px;">🔍</div>
-          <div style="font-size:12px; font-weight:800; color:var(--tx);">No tractors found matching filter or search criteria</div>
-          <div style="font-size:10px; color:var(--mu); margin-top:4px;">Try selecting "ALL UNITS" or clearing your search query.</div>
+          <div style="font-size:12px; font-weight:800; color:var(--tx);">${fleet.length === 0 ? `No tractors currently stationed in ${regionFilter}` : 'No tractors found matching filter or search criteria'}</div>
+          <div style="font-size:10px; color:var(--mu); margin-top:4px;">${fleet.length === 0 ? `Transfer trucks to ${regionFilter} from the Fleet Depot or select "ALL" to inspect other divisions.` : 'Try selecting "ALL UNITS" or clearing your search query.'}</div>
         </div>
       ` : `
         <div style="display:flex; flex-direction:column; gap:8px;">
@@ -250,7 +251,7 @@ export function renderDiagnosticTable(S: any, repairsQueue: any[], lastScanTimes
                       </span>
                     </div>
                     <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:2px;">
-                      ${tm.brand} ${tm.name} (${tm.engine.hp} HP) · Base: <b>${locInfo?.name || t.loc}</b> · Odo: <span data-truck-odo="${t.id}" class="tabular-nums font-mono">${Math.round(t.odometer).toLocaleString()} km</span>
+                      ${tm.brand} ${tm.name} (${tm.engine.hp} HP) · Base: <b>${locInfo?.name || t.loc}</b> <span style="color:var(--gold); font-size:8px; font-weight:800;">[${resolveTruckRegion(t).toUpperCase()}]</span> · Odo: <span data-truck-odo="${t.id}" class="tabular-nums font-mono">${Math.round(t.odometer).toLocaleString()} km</span>
                     </div>
                   </div>
                   

@@ -278,7 +278,7 @@ export function syncLeafletMap(S: any) {
   });
 
   // 2. Render Open/Selected Job Offer Route Highlight
-  drawJobs.forEach(j => {
+  drawJobs.forEach((j: any) => {
     if (j.id !== openId) return;
     const pts = getRouteWaypoints(j.from, j.to);
     if (pts.length < 2) return;
@@ -293,7 +293,7 @@ export function syncLeafletMap(S: any) {
 
   // 3. Render Active Transit Lines & Moving Trucks
   const now = Date.now();
-  drawActive.forEach(j => {
+  drawActive.forEach((j: any) => {
     const pts = getRouteWaypoints(j.from, j.to);
     if (pts.length < 2) return;
 

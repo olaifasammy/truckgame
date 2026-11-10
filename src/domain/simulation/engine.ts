@@ -12,6 +12,7 @@ import { processLimitOrders } from '../finance/markets/crypto';
 import { onTruckArrival } from '../../systems/fleet';
 import { runAiAutoDispatch, runAiFleetMaintenance } from '../ai/ai.engine';
 import { runAiCryptoTradingTick } from '../ai/ai.quant';
+import { AI_SUBSCRIPTION_PLANS } from '../ai/ai.config';
 import { TRAIT_REGISTRY } from '../drivers/drivers.names';
 import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
@@ -138,10 +139,36 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
 
   // 6. AI Dispatch Automation (Continuous background matching when subscribed)
   let dispatchedCount = 0;
-  const isAiSubscribed = !!(st.aiState?.subscriptionActive && now < (st.aiState?.expiresTimestamp || 0));
+  let isAiSubscribed = !!(st.aiState?.subscriptionActive && now < (st.aiState?.expiresTimestamp || 0));
+
+  // Seamless auto-renewal: If subscription expired but auto-renew is enabled or positive treasury balance exists
+  if (!isAiSubscribed && st.aiState?.subscriptionActive && (st.aiState?.autoRenew || st.aiState?.planId === 'auto' || (st.money || 0) >= 5000)) {
+    const planId = st.aiState.planId || 'auto';
+    const plan = AI_SUBSCRIPTION_PLANS[planId] || AI_SUBSCRIPTION_PLANS['auto'];
+    const renewCost = plan?.priceUsd || 145000;
+    if ((st.money || 0) >= renewCost) {
+      st.money -= renewCost;
+      st.aiState.expiresTimestamp = now + (plan?.days || 30) * 86400 * 1000;
+      isAiSubscribed = true;
+      pushNote(st, `🔄 AI Enterprise License auto-renewed for ${plan?.days || 30} days (-$${renewCost.toLocaleString()}). Neural dispatching uninterrupted.`, {
+        title: 'LICENSE AUTO-RENEWED',
+        type: 'finance'
+      });
+    } else if ((st.money || 0) >= 5000) {
+      const dailyCost = 5000;
+      st.money -= dailyCost;
+      st.aiState.expiresTimestamp = now + 86400 * 1000;
+      isAiSubscribed = true;
+      pushNote(st, `⚡ Tactical 24h AI Dispatch extension applied (-$${dailyCost.toLocaleString()}). Operations maintained.`, {
+        title: 'TACTICAL DISPATCH EXTENSION',
+        type: 'finance'
+      });
+    }
+  }
+
   if (isAiSubscribed && st.aiState?.filters?.enabled !== false) {
     try {
-      const dispatchRes = runAiAutoDispatch(st);
+      const dispatchRes = runAiAutoDispatch(st, now);
       dispatchedCount = dispatchRes.dispatchedCount || 0;
     } catch (e) {
       console.error('Simulation: AI Dispatch error', e);

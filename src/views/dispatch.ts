@@ -23,7 +23,7 @@ let activeSubTab: 'dashboard' | 'strategy' | 'brain' | 'plans' | 'telemetry' = '
 let selectedPlan: '7d' | '1m' | 'auto' | 'year' = '1m';
 let includeMaintenance: boolean = true;
 let includeOfflineDispatch: boolean = true;
-let autoRenew: boolean = false;
+let autoRenew: boolean = true;
 let allowExtension: boolean = false;
 
 // Action Bindings

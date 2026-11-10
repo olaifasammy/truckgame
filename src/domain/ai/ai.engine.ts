@@ -10,11 +10,13 @@
  */
 
 import { AiFilterConfig, AiLogEntry } from './ai.types';
+import { AI_SUBSCRIPTION_PLANS } from './ai.config';
 import { why, replenish, completeJobs } from '../../systems/jobs';
 import { distKm } from '../../systems/calc';
 import { CARGO_TYPES } from '../freight/cargo/registry';
 import { getDispatchNeuralNetwork, trainOnHistoricalLogs } from './neuralNetwork';
 import { DispatchExecution } from '../dispatch/execution';
+import { FreightEngine } from '../freight/engine/generator';
 import { getCompanyProgression } from '../company/progression';
 import { isRegionUnlocked } from '../logistics/network';
 import { LOCATIONS } from '../../data/world';
@@ -220,7 +222,24 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
   if (!S.aiState) return { dispatchedCount: 0, message: 'AI State uninitialized' };
   
   const now = overrideNow || Date.now();
-  const isSubActive = !!(S.aiState.subscriptionActive && now < (S.aiState.expiresTimestamp || 0));
+  let isSubActive = !!(S.aiState.subscriptionActive && now < (S.aiState.expiresTimestamp || 0));
+
+  // Seamless auto-renewal fallback: If subscription expired but auto-renew or positive balance is available
+  if (!isSubActive && S.aiState.subscriptionActive && (S.aiState.autoRenew || S.aiState.planId === 'auto' || (S.money || 0) >= 5000)) {
+    const planId = S.aiState.planId || 'auto';
+    const plan = AI_SUBSCRIPTION_PLANS[planId] || AI_SUBSCRIPTION_PLANS['auto'];
+    const renewCost = plan?.priceUsd || 145000;
+    if ((S.money || 0) >= renewCost) {
+      S.money -= renewCost;
+      S.aiState.expiresTimestamp = now + (plan?.days || 30) * 86400 * 1000;
+      isSubActive = true;
+    } else if ((S.money || 0) >= 5000) {
+      S.money -= 5000;
+      S.aiState.expiresTimestamp = now + 86400 * 1000;
+      isSubActive = true;
+    }
+  }
+
   if (!isSubActive) {
     return { dispatchedCount: 0, message: 'AI Subscription Inactive or Expired' };
   }
@@ -271,7 +290,26 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
     return { dispatchedCount: 0, message: 'No idle trucks with drivers available' };
   }
 
-  // 4. Check if market freight board needs replenishment
+  // 4. Auto-refuel idle fleet units if low on diesel
+  if (filters.autoRefuel !== false) {
+    for (const truck of idleTrucks) {
+      const truckModel = TRUCK_MODELS[truck.modelId];
+      const tankCapacity = truckModel?.tankSize || 800;
+      const currentFuel = truck.fluids?.fuel !== undefined ? truck.fluids.fuel : tankCapacity;
+      if (currentFuel < tankCapacity * 0.40) {
+        const needed = Math.round(tankCapacity - currentFuel);
+        if (S.fuelBunker && S.fuelBunker.currentLiters >= needed) {
+          S.fuelBunker.currentLiters -= needed;
+          truck.fluids.fuel = tankCapacity;
+        } else if ((S.money || 0) >= needed * 1.45) {
+          S.money -= Math.round(needed * 1.45);
+          truck.fluids.fuel = tankCapacity;
+        }
+      }
+    }
+  }
+
+  // 5. Check if market freight board needs replenishment
   if (!S.jobs || S.jobs.length === 0) {
     try {
       replenish(S);
@@ -296,6 +334,30 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
       const score = scoreJobForTruck(S, truck, job, filters);
       if (score > -Infinity) {
         candidateJobs.push({ job, score });
+      }
+    }
+
+    // Fallback contract procurement: If no compatible jobs exist on the board for this truck's current location,
+    // generate an immediate matchable outbound consignment from truck.loc so fleet units never stall
+    if (candidateJobs.length === 0) {
+      const truckLoc = getLocationRecord(truck.loc);
+      if (truckLoc && isRegionUnlocked(S as any, truckLoc.region)) {
+        try {
+          const compatibleJob = FreightEngine.generate(S, {
+            forceRegion: truckLoc.region,
+            forceFrom: truck.loc,
+            vip: false
+          });
+          if (compatibleJob) {
+            if (!S.jobs) S.jobs = [];
+            S.jobs.unshift(compatibleJob);
+            marketJobs.unshift(compatibleJob);
+            const score = scoreJobForTruck(S, truck, compatibleJob, filters);
+            if (score > -Infinity) {
+              candidateJobs.push({ job: compatibleJob, score });
+            }
+          }
+        } catch (e) {}
       }
     }
 

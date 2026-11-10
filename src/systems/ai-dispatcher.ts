@@ -15,7 +15,7 @@ export function activateAiSuiteSystem(
   useFlb: boolean = false,
   includeMaintenance: boolean = true,
   includeOfflineDispatch: boolean = true,
-  autoRenew: boolean = false,
+  autoRenew: boolean = true,
   allowExtension: boolean = false
 ): boolean {
   let success = false;

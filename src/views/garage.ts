@@ -2,7 +2,7 @@ import { ic } from '../core/icons';
 import { action, fmt, dur, toast } from '../core/ui';
 import { refresh, set } from '../core/store';
 import { TRUCK_MODELS, TRAILERS, getTrailerIcon } from '../domain/trucks/trucks.data';
-import { CITIES, LOCATIONS, REGIONS, RegionName } from '../data/world';
+import { CITIES, LOCATIONS, REGIONS, RegionName, resolveTruckRegion } from '../data/world';
 import { stats, distKm } from '../systems/calc';
 import { refuel, repair, inspect, transport, refuelCost, repairCost, transportInfo, inspectCost } from '../systems/fleet';
 import { why } from '../systems/jobs';
@@ -23,7 +23,13 @@ let hitchModalTruckId: number | null = null;
 let garagePage = 1;
 const TRUCKS_PER_PAGE = 10;
 let garageFilter: 'all' | 'parked' | 'transit' | 'repair' = 'all';
-let garageRegionFilter: string = '';
+export let garageRegionFilter: RegionName | 'All' = 'All';
+
+export function setGarageRegionFilter(r: RegionName | 'All') {
+  garageRegionFilter = r;
+  garagePage = 1;
+  refresh();
+}
 
 const getLocInfo = (locKey: string) => {
   if (!locKey) return null;
@@ -34,11 +40,20 @@ const getLocInfo = (locKey: string) => {
       return LOCATIONS[k];
     }
   }
-  const euroCities = ['ROTTERDAM', 'MUNICH', 'INNSBRUCK', 'LYON', 'GOTHENBURG', 'BERLIN', 'PARIS', 'LONDON', 'MADRID', 'ROME', 'AMSTERDAM', 'FRANKFURT'];
-  if (euroCities.includes(upper) || /europe|germany|france|netherlands|austria|sweden|uk|spain|italy/i.test(locKey)) {
-    return { name: locKey, region: 'Europe', country: 'Europe', coords: [150, 50], latLng: [50, 5], elevation: 10, typicalWeather: 'clear', terrain: 'highway', avgTemp: 15, roadGrade: 1, description: 'European regional hub' };
-  }
-  return { name: locKey, region: 'Europe', country: 'Europe', coords: [150, 50], latLng: [50, 5], elevation: 10, typicalWeather: 'clear', terrain: 'highway', avgTemp: 15, roadGrade: 1, description: 'Regional hub' };
+  const reg = resolveTruckRegion(locKey);
+  return {
+    name: locKey,
+    region: reg,
+    country: REGIONS[reg]?.countryList?.split(',')[0]?.trim() || reg,
+    coords: [150, 50] as [number, number],
+    latLng: [50, 5] as [number, number],
+    elevation: 10,
+    typicalWeather: 'clear' as const,
+    terrain: 'highway' as const,
+    avgTemp: 15,
+    roadGrade: 1,
+    description: `${reg} regional logistics depot`
+  };
 };
 
 action('garage-page-prev', () => {
@@ -59,9 +74,21 @@ action('garage-filter', d => {
   refresh();
 });
 
-action('garage-region-select', d => {
-  garageRegionFilter = (d as any).value || 'all';
+action('garage-region', d => {
+  const reg = (d as any).region || 'All';
+  garageRegionFilter = reg as (RegionName | 'All');
   garagePage = 1;
+  const S = (window as any).__getStore?.();
+  if (S) S.activeRegionFilter = garageRegionFilter;
+  refresh();
+});
+
+action('garage-region-select', d => {
+  const val = (d as any).value || 'All';
+  garageRegionFilter = (val === 'all' ? 'All' : val) as (RegionName | 'All');
+  garagePage = 1;
+  const S = (window as any).__getStore?.();
+  if (S) S.activeRegionFilter = garageRegionFilter;
   refresh();
 });
 
@@ -341,7 +368,7 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
         ` : ''}
         
         <div style="font-size:10px; color:var(--mu); font-family:monospace; margin-bottom:6px; display:flex; justify-content:space-between;">
-          <span>EST. PORT DOCKING: ${new Date(t.availableAt).toLocaleTimeString()} (${dur(remaining)})</span>
+          <span>EST. PORT DOCKING: ${new Date(t.availableAt || now).toLocaleTimeString()} (${dur(remaining)})</span>
           <span>${Math.round(progress)}%</span>
         </div>
         <div class="bar" style="height:8px; background:rgba(255,255,255,0.05); border-radius:4px; overflow:hidden;">
@@ -369,7 +396,7 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
   const estimatedHours = Math.round(t.odometer / 58);
   const estimatedRangeKm = Math.round((t.fluids.fuel / (st.fuelConsumption || 32)) * 100);
 
-  const hasCompatibleJobs = S.jobs.some((j: any) => !why(S, t, j));
+  const hasCompatibleJobs = (S.jobs || []).some((j: any) => !why(S, t, j));
 
   return `
     <div style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);">
@@ -853,7 +880,7 @@ export default {
   label: 'Garage',
   render(S: GameState) {
     const busy = S.fleet.filter((t: any) => t.status === 'busy').length;
-    const upCost = upgradeGarageCost(S.garageLevel);
+    const upCost = upgradeGarageCost(S.garageLevel || 0);
     const canUp = S.money >= upCost;
     const readiness = S.fleet.length > 0 ? Math.round(((S.fleet.length - busy) / S.fleet.length) * 100) : 100;
 
@@ -870,15 +897,17 @@ export default {
 
     const repairUnitsCount = S.fleet.filter((t: any) => truckNeedsRepair(t)).length;
 
-    // Determine active regions with fleet units using authoritative LOCATIONS world data
-    const regionKeys: RegionName[] = ['Africa', 'Europe', 'America', 'Asia'];
-    const regionOptions = regionKeys;
-    if (!garageRegionFilter || !regionOptions.includes(garageRegionFilter as any)) {
-      garageRegionFilter = regionOptions[0];
+    // Authoritative region listing matching driver workforce
+    const regions: (RegionName | 'All')[] = ['All', 'America', 'Europe', 'Africa', 'Asia'];
+    if (!garageRegionFilter) {
+      garageRegionFilter = 'All';
     }
 
     // Filter fleet based on selected region
-    let fleetInRegion = S.fleet.filter((t: any) => getLocInfo(t.loc)?.region === garageRegionFilter);
+    let fleetInRegion = S.fleet;
+    if (garageRegionFilter !== 'All') {
+      fleetInRegion = S.fleet.filter((t: any) => resolveTruckRegion(t) === garageRegionFilter);
+    }
 
     let filteredFleet = fleetInRegion;
     if (garageFilter === 'parked') {
@@ -919,19 +948,19 @@ export default {
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
             <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">TOTAL UNITS</div>
             <div style="font-size:13px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;">
-              ${S.fleet.length} <span style="font-size:9px; color:var(--mu);">/ ${slots(S)}</span>
+              ${fleetInRegion.length} <span style="font-size:9px; color:var(--mu);">${garageRegionFilter !== 'All' ? `in ${garageRegionFilter}` : `/ ${slots(S)}`}</span>
             </div>
           </div>
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
             <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">PARKED AT HUB</div>
             <div style="font-size:13px; font-weight:900; color:var(--grn); font-family:monospace; margin-top:2px;">
-              ${S.fleet.length - busy} <span style="font-size:9px; color:var(--mu);">Ready</span>
+              ${fleetInRegion.filter((t: any) => t.status === 'idle').length} <span style="font-size:9px; color:var(--mu);">Ready</span>
             </div>
           </div>
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
             <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">IN TRANSIT</div>
             <div style="font-size:13px; font-weight:900; color:#38bdf8; font-family:monospace; margin-top:2px;">
-              ${busy} <span style="font-size:9px; color:var(--mu);">Active</span>
+              ${fleetInRegion.filter((t: any) => t.status === 'busy' || t.status === 'delivering').length} <span style="font-size:9px; color:var(--mu);">Active</span>
             </div>
           </div>
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
@@ -943,7 +972,19 @@ export default {
         </div>
       </div>
 
-      <!-- Fleet Status Filter Tabs & Region Selector Bar -->
+      <!-- Region Filter Pills (Matching Driver Management) -->
+      <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:8px; margin-bottom:10px;">
+        ${regions.map(r => {
+          const count = r === 'All' ? S.fleet.length : S.fleet.filter((t: any) => resolveTruckRegion(t) === r).length;
+          return `
+            <button class="btn ${garageRegionFilter === r ? 'gold' : 'alt'}" style="padding:6px 12px; font-size:10px; font-weight:800; white-space:nowrap;" data-act="garage-region" data-region="${r}">
+              ${r.toUpperCase()} (${count})
+            </button>
+          `;
+        }).join('')}
+      </div>
+
+      <!-- Fleet Status Filter Tabs -->
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px; flex-wrap:wrap;">
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <button class="btn ${garageFilter === 'all' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="all">
@@ -958,16 +999,6 @@ export default {
           <button class="btn ${garageFilter === 'repair' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="repair">
             SERVICE / REPAIR (${fleetInRegion.filter((t: any) => truckNeedsRepair(t)).length})
           </button>
-        </div>
-
-        <div>
-          <select id="garage-region-select" data-act="garage-region-select" style="background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:5px 8px; border-radius:6px; outline:none;">
-            ${regionOptions.map(reg => {
-              const count = S.fleet.filter((t: any) => getLocInfo(t.loc)?.region === reg).length;
-              const displayName = REGIONS[reg]?.name || reg;
-              return `<option value="${reg}" ${garageRegionFilter === reg ? 'selected' : ''}>${displayName} (${count} Units)</option>`;
-            }).join('')}
-          </select>
         </div>
       </div>
 

@@ -80,7 +80,20 @@ export function getCryptoMarketData(assetId: string, timeframe: Timeframe = '15m
     });
   }
 
-  const price = history[history.length - 1];
+  // Real-time second-by-second micro-volatility (oscillates ±0.4% - 1.2% naturally so spot trading and bots can scalp real price movement)
+  const secTime = Math.floor(Date.now() / 4000);
+  const secNoise = (Math.sin(secTime * 0.45 + seed) * 0.007 + Math.cos(secTime * 0.85) * 0.005) * (asset.volatility || 0.3);
+
+  const baseLatestPrice = history[history.length - 1];
+  const livePrice = Math.max(0.0001, baseLatestPrice * (1 + secNoise));
+  history[history.length - 1] = livePrice;
+  if (candles.length > 0) {
+    candles[candles.length - 1].close = livePrice;
+    candles[candles.length - 1].high = Math.max(candles[candles.length - 1].high, livePrice);
+    candles[candles.length - 1].low = Math.min(candles[candles.length - 1].low, livePrice);
+  }
+
+  const price = livePrice;
   const startPrice = history[0];
   const change24h = ((price - startPrice) / startPrice) * 100;
   const high24h = Math.max(...history);

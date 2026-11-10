@@ -174,7 +174,7 @@ export const DEFAULT_AI_STATE: AiState = {
   subscriptionActive: false,
   expiresTimestamp: 0,
   planId: '1m',
-  autoRenew: false,
+  autoRenew: true,
   maintenanceAddonActive: false,
   maintenanceExpiresTimestamp: 0,
   offlineDispatchActive: false,

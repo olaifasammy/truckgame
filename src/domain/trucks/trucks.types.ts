@@ -24,7 +24,10 @@ export interface TruckModel {
   baseWeight: number; // Tonnes (Unladen)
   maxGVW: number; // Tonnes (Gross Vehicle Weight)
   price: number;
+  priceUsd?: number;
+  hp?: number;
   haul: TrailerType[];
+  [key: string]: any;
 }
 
 export interface TruckPartState {
@@ -65,6 +68,10 @@ export interface Truck {
   color?: string; // cab paint hex
   fluids: TruckFluids;
   components: TruckComponents;
+  shippingMode?: string;
+  shippingOrigin?: string;
+  shippingVessel?: string;
+  shippingArrival?: number;
   upgrades: {
     ecoTuning: number; // 0-3
     performanceChip: number; // 0-3
@@ -73,4 +80,5 @@ export interface Truck {
     axleRatio?: 'highway_eco' | 'heavy_diff_lock';
     tireCompound?: 'highway_eco' | 'all_terrain_winter';
   };
+  [key: string]: any;
 }

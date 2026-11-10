@@ -29,6 +29,8 @@ export class FreightEngine {
     forceRegion?: RegionName; 
     forceFrom?: string;
     forceTo?: string;
+    forceTrailer?: string;
+    isBackhaul?: boolean;
     vip?: boolean; 
     isAuction?: boolean; 
     auctionDuration?: number; 
@@ -98,12 +100,21 @@ export class FreightEngine {
       const standardCargos = CARGO_TYPES.filter(c => c.baseValue < 30);
       const pool = standardCargos.length ? standardCargos : CARGO_TYPES;
 
-      // 75% probability to prioritize player's owned trailers
-      const ownedMatches = pool.filter(c => ownedTrailers.has(c.trailer));
-      if (ownedTrailers.size > 0 && ownedMatches.length > 0 && Math.random() < 0.75) {
-        cargo = rnd(ownedMatches);
-      } else {
-        cargo = rnd(pool);
+      if (options.forceTrailer) {
+        const trailerCargos = pool.filter(c => c.trailer === options.forceTrailer);
+        if (trailerCargos.length > 0) {
+          cargo = rnd(trailerCargos);
+        }
+      }
+
+      if (!cargo) {
+        // 75% probability to prioritize player's owned trailers
+        const ownedMatches = pool.filter(c => ownedTrailers.has(c.trailer));
+        if (ownedTrailers.size > 0 && ownedMatches.length > 0 && Math.random() < 0.75) {
+          cargo = rnd(ownedMatches);
+        } else {
+          cargo = rnd(pool);
+        }
       }
     }
 
@@ -353,7 +364,8 @@ export class FreightEngine {
         S.jobs.unshift(this.generate(S, {
           forceRegion: truckRegion,
           forceFrom: truck.loc,
-          forceTo: returnDest
+          forceTo: returnDest,
+          forceTrailer: truck.trailer || 'curtain'
         }));
       }
     }

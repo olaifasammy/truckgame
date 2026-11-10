@@ -382,6 +382,45 @@ export const LOCATIONS: Record<string, LocationInfo> = {
     roadGrade: 2.2,
     description: 'Nordic maritime terminal, sub-zero black ice highways, demanding winter tire traction.'
   },
+  LONDON: {
+    name: 'London',
+    region: 'Europe',
+    country: 'United Kingdom',
+    coords: [142, 48],
+    latLng: [51.5074, -0.1278],
+    elevation: 25,
+    typicalWeather: 'rain',
+    terrain: 'highway',
+    avgTemp: 12,
+    roadGrade: 1.0,
+    description: 'Capital of the UK, Thames gateway, major British container and logistics distribution hub.'
+  },
+  BERLIN: {
+    name: 'Berlin',
+    region: 'Europe',
+    country: 'Germany',
+    coords: [165, 50],
+    latLng: [52.5200, 13.4050],
+    elevation: 34,
+    typicalWeather: 'clear',
+    terrain: 'highway',
+    avgTemp: 13,
+    roadGrade: 1.2,
+    description: 'Central-Eastern European freight junction connecting Baltic and Alpine corridors.'
+  },
+  PARIS: {
+    name: 'Paris',
+    region: 'Europe',
+    country: 'France',
+    coords: [145, 60],
+    latLng: [48.8566, 2.3522],
+    elevation: 35,
+    typicalWeather: 'rain',
+    terrain: 'highway',
+    avgTemp: 15,
+    roadGrade: 1.5,
+    description: 'Ile-de-France economic powerhouse, high-volume logistics ring and distribution depot.'
+  },
 
   // ================= AMERICA =================
   CHICAGO: {
@@ -525,7 +564,7 @@ export const CITIES: Record<string, [number, number]> = Object.fromEntries(
 
 export const REGIONS: Record<RegionName, { name: string; countryList: string; icon: string }> = {
   Africa: { name: 'Africa (West & Sahel)', countryList: 'Nigeria, Ghana, Niger', icon: 'route' },
-  Europe: { name: 'Europe (Alpine & Atlantic)', countryList: 'Germany, Netherlands, Austria, France, Sweden', icon: 'route' },
+  Europe: { name: 'Europe (Alpine & Atlantic)', countryList: 'United Kingdom, Germany, Netherlands, Austria, France, Sweden', icon: 'route' },
   America: { name: 'North America (Interstate)', countryList: 'United States', icon: 'route' },
   Asia: { name: 'Asia (Pacific & Silk Road)', countryList: 'Japan, China, Kazakhstan', icon: 'route' }
 };
@@ -543,3 +582,70 @@ export const CARGO: Record<string, { icon: string; trailer: string }> = {
   'PHARMACEUTICAL VACCINES': { icon: 'snowflake', trailer: 'reefer' },
   'CRUDE OIL': { icon: 'fuel', trailer: 'tanker' }
 };
+
+/**
+ * Authoritative location-to-region resolver.
+ * Accurately maps any truck object or city/location string to its continent region.
+ */
+export function resolveTruckRegion(target: string | { loc?: string } | null | undefined): RegionName {
+  if (!target) return 'Africa';
+  const locKey = typeof target === 'string' ? target : target.loc || '';
+  if (!locKey) return 'Africa';
+  const upper = String(locKey).toUpperCase().trim();
+  
+  // 1. Direct key match in authoritative LOCATIONS
+  if (LOCATIONS[upper]?.region) {
+    return LOCATIONS[upper].region;
+  }
+
+  // 2. Exact match against location name
+  for (const k of Object.keys(LOCATIONS)) {
+    if (k.toUpperCase() === upper || LOCATIONS[k].name.toUpperCase() === upper) {
+      return LOCATIONS[k].region;
+    }
+  }
+
+  // 3. European cities and regional identifiers
+  const euroPatterns = [
+    'LONDON', 'ROTTERDAM', 'MUNICH', 'INNSBRUCK', 'LYON', 'GOTHENBURG',
+    'BERLIN', 'PARIS', 'MADRID', 'ROME', 'AMSTERDAM', 'FRANKFURT', 'VIENNA',
+    'WARSAW', 'BRUSSELS', 'MANCHESTER', 'BIRMINGHAM', 'GLASGOW', 'DUBLIN', 'ZURICH',
+    'EUROPE', 'UK', 'ENGLAND', 'BRITAIN', 'GERMANY', 'FRANCE', 'NETHERLANDS', 'AUSTRIA', 'SWEDEN', 'SPAIN', 'ITALY'
+  ];
+  if (euroPatterns.some(p => upper.includes(p))) {
+    return 'Europe';
+  }
+
+  // 4. North American cities and regional identifiers
+  const usPatterns = [
+    'CHICAGO', 'DENVER', 'DALLAS', 'LOS_ANGELES', 'LOS ANGELES', 'SALT_LAKE_CITY',
+    'SALT LAKE CITY', 'NEW_YORK', 'NEW YORK', 'HOUSTON', 'MIAMI', 'SEATTLE', 'ATLANTA',
+    'PHOENIX', 'DETROIT', 'AMERICA', 'USA', 'UNITED STATES', 'CANADA', 'TEXAS', 'CALIFORNIA'
+  ];
+  if (usPatterns.some(p => upper.includes(p))) {
+    return 'America';
+  }
+
+  // 5. Asian cities and regional identifiers
+  const asiaPatterns = [
+    'TOKYO', 'NAGOYA', 'NAGANO', 'SHANGHAI', 'ALMATY', 'BEIJING', 'SINGAPORE', 'SEOUL',
+    'BANGKOK', 'DUBAI', 'HONG KONG', 'ASIA', 'JAPAN', 'CHINA', 'KAZAKHSTAN'
+  ];
+  if (asiaPatterns.some(p => upper.includes(p))) {
+    return 'Asia';
+  }
+
+  // 6. African cities and regional identifiers
+  const africaPatterns = [
+    'LAGOS', 'IBADAN', 'ENUGU', 'ABUJA', 'KANO', 'MAIDUGURI', 'PORT_HARCOURT', 'PORT HARCOURT',
+    'SOKOTO', 'JOS', 'BENIN_CITY', 'BENIN CITY', 'ACCRA', 'KADUNA', 'ILORIN', 'MAKURDI',
+    'BAUCHI', 'LOKOJA', 'COTONOU', 'LOME', 'CALABAR', 'UYO', 'KATSINA', 'YOLA', 'MINNA',
+    'AFRICA', 'NIGERIA', 'GHANA', 'BENIN', 'TOGO'
+  ];
+  if (africaPatterns.some(p => upper.includes(p))) {
+    return 'Africa';
+  }
+
+  return 'Africa';
+}
+

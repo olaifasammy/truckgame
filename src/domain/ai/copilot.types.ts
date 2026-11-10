@@ -15,8 +15,9 @@ export interface CopilotTool {
   description: string;
   parameters: {
     type: 'object';
-    properties: Record<string, { type: string; description: string; enum?: string[] }>;
+    properties: Record<string, { type: string; description: string; enum?: string[]; items?: any }>;
     required?: string[];
   };
-  execute: (S: any, args: Record<string, any>) => { success: boolean; message: string; data?: any };
+  execute: (S: any, args: any) => { success: boolean; message: string; data?: any };
 }
+

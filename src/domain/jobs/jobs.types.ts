@@ -1,4 +1,5 @@
 import { TrailerType } from '../trucks/trucks.types';
+export type { FreightJob } from '../freight/types';
 
 export interface CargoItem {
   icon: string;

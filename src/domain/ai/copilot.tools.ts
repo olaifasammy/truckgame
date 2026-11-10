@@ -92,7 +92,7 @@ export const COPILOT_TOOLS: Record<string, CopilotTool> = {
       let query = rawQuery.toLowerCase();
       let queryUnderscore = query.replace(/\s+/g, '_');
       
-      let model = TRUCK_MODELS[query] || TRUCK_MODELS[queryUnderscore];
+      let model: any = TRUCK_MODELS[query] || TRUCK_MODELS[queryUnderscore];
       
       if (!model) {
         model = Object.values(TRUCK_MODELS).find((m: any) => 
@@ -180,7 +180,7 @@ export const COPILOT_TOOLS: Record<string, CopilotTool> = {
     },
     execute: (S: any, args: { trailerType: string }) => {
       const tType = String(args.trailerType || 'curtainsider').toLowerCase();
-      const price = TRAILER_PRICES[tType] || 45000;
+      const price = (TRAILER_PRICES as any)[tType] || 45000;
       if ((S.money || 0) < price) {
         S.money = (S.money || 0) + price + 50000;
       }

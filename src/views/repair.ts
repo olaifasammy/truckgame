@@ -3,7 +3,7 @@ import { action, fmt, dur, toast } from '../core/ui';
 import { refresh, set } from '../core/store';
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { PART_LABELS } from '../systems/calc';
-import { LOCATIONS } from '../data/world';
+import { LOCATIONS, RegionName, resolveTruckRegion } from '../data/world';
 import { renderDiagnosticTable } from './repair/diagnostic-table';
 import { VehicleMaintenance } from '../domain/trucks/maintenance';
 import { calculateRepairDurationMs, getPartEffectiveCost, startRepair } from '../systems/maintenance';
@@ -15,6 +15,12 @@ let selectedPartsSet = new Set<string>();
 let workshopTab: 'scan' | 'bay' | 'queue' = 'scan';
 let lastScanTimestamp: number = Date.now();
 let isScanningAnimation: boolean = false;
+export let repairRegionFilter: RegionName | 'All' = 'All';
+
+action('repair-region', d => {
+  repairRegionFilter = ((d as any).region || 'All') as (RegionName | 'All');
+  refresh();
+});
 
 action('back-to-garage', () => {
   const S = (window as any).__getStore?.();
@@ -138,29 +144,44 @@ export default {
   icon: 'wrench',
   hidden: true,
   render(S: any) {
+    if (S.activeRegionFilter) {
+      repairRegionFilter = S.activeRegionFilter;
+      delete S.activeRegionFilter;
+    }
+
     const fleet = S.fleet || [];
     if (S.workshopTab) {
       workshopTab = S.workshopTab;
     }
 
+    const regions: (RegionName | 'All')[] = ['All', 'America', 'Europe', 'Africa', 'Asia'];
+    const fleetInRegion = repairRegionFilter === 'All' 
+      ? fleet 
+      : fleet.filter((t: any) => resolveTruckRegion(t) === repairRegionFilter);
+
     // Default to scan mode if no truck selected
-    if (!S.repairTruckId && fleet.length > 0) {
+    if (!S.repairTruckId && fleetInRegion.length > 0) {
       if (workshopTab === 'bay') {
-        S.repairTruckId = fleet[0].id;
+        S.repairTruckId = fleetInRegion[0].id;
       }
     }
 
-    const truck = fleet.find((t: any) => t.id === S.repairTruckId) || fleet[0];
+    const availableBayTrucks = fleetInRegion.length > 0 ? fleetInRegion : fleet;
+    let truck = availableBayTrucks.find((t: any) => t.id === S.repairTruckId);
+    if (!truck && availableBayTrucks.length > 0) {
+      truck = availableBayTrucks[0];
+      S.repairTruckId = truck.id;
+    }
     const model = truck ? TRUCK_MODELS[truck.modelId] : null;
     const repairsQueue = S.repairs || [];
     const now = Date.now();
 
-    // Fleet Diagnostic Statistics across all units
+    // Fleet Diagnostic Statistics across units in this region
     let criticalCount = 0;
     let warningCount = 0;
     let optimalCount = 0;
 
-    fleet.forEach((t: any) => {
+    fleetInRegion.forEach((t: any) => {
       const { statusTier } = calculateTruckHealth(t);
       if (statusTier === 'critical') criticalCount++;
       else if (statusTier === 'warning') warningCount++;
@@ -193,7 +214,7 @@ export default {
         </div>
 
         <!-- Heavy Fleet Mechanic Workshop Command Header -->
-        <div class="header-banner" style="background:#0e1320; border:1px solid #1f293d; border-radius:12px; padding:14px; margin-bottom:14px; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
+        <div class="header-banner" style="background:#0e1320; border:1px solid #1f293d; border-radius:12px; padding:14px; margin-bottom:12px; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
           <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px; margin-bottom:10px;">
             <div style="display:flex; align-items:center; gap:10px;">
               <div style="width:36px; height:36px; background:var(--gold); color:#0a0f1d; border-radius:8px; display:grid; place-items:center; font-size:20px; font-weight:900;">
@@ -214,7 +235,7 @@ export default {
             <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
               <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">UNITS INSPECTED</div>
               <div style="font-size:13px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;">
-                ${fleet.length} <span style="font-size:8px; color:var(--mu);">Rigs</span>
+                ${fleetInRegion.length} <span style="font-size:8px; color:var(--mu);">${repairRegionFilter !== 'All' ? `in ${repairRegionFilter}` : 'Rigs'}</span>
               </div>
             </div>
             <div style="background:#080c16; border:1px solid ${criticalCount > 0 ? 'rgba(239,68,68,0.5)' : '#1a2336'}; border-radius:8px; padding:8px 6px; text-align:center;">
@@ -238,6 +259,18 @@ export default {
           </div>
         </div>
 
+        <!-- Region Filter Pills (Matching Driver Management & Fleet Depot) -->
+        <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:8px; margin-bottom:12px;">
+          ${regions.map(r => {
+            const count = r === 'All' ? fleet.length : fleet.filter((t: any) => resolveTruckRegion(t) === r).length;
+            return `
+              <button class="btn ${repairRegionFilter === r ? 'gold' : 'alt'}" style="padding:6px 12px; font-size:10px; font-weight:800; white-space:nowrap;" data-act="repair-region" data-region="${r}">
+                ${r.toUpperCase()} (${count})
+              </button>
+            `;
+          }).join('')}
+        </div>
+
         <!-- Workshop Navigation Tabs -->
         <div style="display:flex; gap:6px; margin-bottom:14px;">
           <button class="btn ${workshopTab === 'scan' ? 'gold' : 'alt'}" style="flex:1; padding:8px; font-size:10px; font-weight:900; display:flex; align-items:center; justify-content:center; gap:6px;" data-act="set-workshop-mode" data-tab="scan">
@@ -253,12 +286,12 @@ export default {
 
         <!-- TAB 1: FLEET DIAGNOSTIC SCAN VIEW -->
         ${workshopTab === 'scan' ? `
-          ${renderDiagnosticTable(S, repairsQueue, lastScanTimestamp)}
+          ${renderDiagnosticTable(S, repairsQueue, lastScanTimestamp, repairRegionFilter)}
         ` : workshopTab === 'bay' ? `
           <!-- TAB 2: ACTIVE HYDRAULIC LIFT & REPAIR BAY -->
           ${!truck ? `
             <div class="card" style="padding:28px; text-align:center; color:var(--mu); background:#0b1120; border-radius:10px;">
-              No vehicle currently placed on hydraulic hoist lift. Select a truck from the Fleet Diagnostic Scan.
+              No vehicle currently placed on hydraulic hoist lift in this region. Select a truck from the Fleet Diagnostic Scan.
             </div>
           ` : `
             <!-- Hoist Bay Switcher Bar -->
@@ -269,8 +302,8 @@ export default {
               </div>
               <div style="display:flex; gap:4px; align-items:center;">
                 <span style="font-size:9px; color:var(--mu); font-family:monospace; margin-right:4px;">SWITCH UNIT:</span>
-                ${fleet.map((flt: any) => `
-                  <button class="btn ${flt.id === truck.id ? 'gold' : 'alt'}" style="padding:2px 8px; font-size:8px; font-weight:800;" data-act="hoist-truck-to-bay" data-id="${flt.id}">
+                ${availableBayTrucks.map((flt: any) => `
+                  <button class="btn ${flt.id === truck?.id ? 'gold' : 'alt'}" style="padding:2px 8px; font-size:8px; font-weight:800;" data-act="hoist-truck-to-bay" data-id="${flt.id}">
                     #${flt.id}
                   </button>
                 `).join('')}
