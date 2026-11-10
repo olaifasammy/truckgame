@@ -47,6 +47,20 @@ try {
 
 let lastRenderedTab = '';
 let lastRenderTime = 0;
+let isPopStateNav = false;
+
+if (!history.state) {
+  history.replaceState({ tab: S.tab || 'company' }, '', `#${S.tab || 'company'}`);
+}
+
+window.addEventListener('popstate', (e) => {
+  const targetTab = e.state?.tab || 'company';
+  isPopStateNav = true;
+  set(st => {
+    st.tab = targetTab;
+  });
+  isPopStateNav = false;
+});
 
 function renderApp(st: any) {
   try {
@@ -71,6 +85,10 @@ function renderApp(st: any) {
 
     const targetTab = st.tab || 'company';
     const view = find(targetTab && find(targetTab) ? targetTab : 'company');
+    
+    if (!isPopStateNav && lastRenderedTab && lastRenderedTab !== targetTab) {
+      history.pushState({ tab: targetTab }, '', `#${targetTab}`);
+    }
     
     // Prevent view re-render disruption if user is actively typing in an input, textarea, or select
     const activeEl = document.activeElement;
