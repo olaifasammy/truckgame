@@ -127,24 +127,41 @@ export default {
         ${(financeTab === 'banking' || financeTab === 'loans') ? renderLoansTab(S) : ''}
 
         ${financeTab === 'fuel' ? `
-          <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:14px; margin-bottom:14px;">
-            <div style="font-size:9px; color:var(--gold); font-weight:800;">HQ FUEL BUNKER</div>
-            <div style="font-size:18px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:4px;">${bunker.currentLiters.toLocaleString()}L / ${bunker.maxCapacity.toLocaleString()}L</div>
-            <div style="height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden; margin-top:10px;">
-              <div style="width:${(bunker.currentLiters/bunker.maxCapacity)*100}%; height:100%; background:var(--gold);"></div>
+          <div style="background:#0f172a; border:1px solid #1e293b; border-radius:12px; padding:18px; margin-bottom:16px;">
+            <div style="font-size:10px; color:var(--gold); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">HQ Enterprise Fuel Bunker</div>
+            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:6px;">
+              <div style="font-size:24px; font-weight:900; color:var(--tx); font-family:monospace;">${bunker.currentLiters.toLocaleString()}<span style="font-size:12px; color:var(--mu); font-weight:700;"> / ${bunker.maxCapacity.toLocaleString()} L</span></div>
+              <div style="font-size:10px; color:var(--mu); font-weight:700;">AVG COST: <span style="color:var(--tx);">$${bunker.avgCostPerLiter || '0.00'}/L</span></div>
             </div>
-            <div style="display:flex; gap:8px; margin-top:14px;">
-              <button class="btn gold" style="flex:1; padding:8px; font-size:9px;" data-act="buy-wholesale-fuel" data-liters="5000">REFILL 5,000L</button>
-              <button class="btn alt" style="flex:1; padding:8px; font-size:9px;" data-act="upgrade-fuel-bunker">UPGRADE TANK</button>
+            <div style="height:8px; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden; margin-top:14px; border:1px solid rgba(255,255,255,0.05);">
+              <div style="width:${Math.min(100, (bunker.currentLiters/bunker.maxCapacity)*100)}%; height:100%; background:linear-gradient(90deg, var(--gold-dim), var(--gold));"></div>
+            </div>
+            <div style="display:flex; gap:10px; margin-top:18px;">
+              <button class="btn gold" style="flex:1; padding:10px; font-size:10px;" data-act="buy-wholesale-fuel" data-liters="5000">REFILL 5,000L</button>
+              <button class="btn alt" style="flex:1; padding:10px; font-size:10px;" data-act="upgrade-fuel-bunker">EXPAND BUNKER</button>
             </div>
           </div>
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-            ${Object.entries(REGIONAL_FUEL_SPOT).map(([city, p]) => `
-              <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:10px;">
-                <div style="font-size:11px; font-weight:800; color:var(--tx);">${city}</div>
-                <div style="font-size:12px; font-weight:900; color:var(--gold); font-family:monospace; margin-top:2px;">$${p.diesel}/L</div>
-              </div>
-            `).join('')}
+
+          <div class="card" style="padding:16px; margin:0; width:100%;">
+            <div style="font-size:10px; color:var(--mu); font-weight:800; text-transform:uppercase; margin-bottom:12px; letter-spacing:0.5px;">Regional Diesel Spot Markets</div>
+            <table style="width:100%; border-collapse:collapse;">
+              <thead>
+                <tr style="border-bottom:1px solid var(--line);">
+                  <th style="text-align:left; padding:8px 0; font-size:9px; color:var(--mu); text-transform:uppercase;">Hub Location</th>
+                  <th style="text-align:right; padding:8px 0; font-size:9px; color:var(--mu); text-transform:uppercase;">Diesel Spot</th>
+                  <th style="text-align:right; padding:8px 0; font-size:9px; color:var(--mu); text-transform:uppercase;">Change</th>
+                </tr>
+              </thead>
+              <tbody style="font-size:12px;">
+                ${Object.entries(REGIONAL_FUEL_SPOT).map(([city, p]) => `
+                  <tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
+                    <td style="padding:10px 0; font-weight:700; color:var(--tx);">${city}</td>
+                    <td style="padding:10px 0; text-align:right; font-weight:900; color:var(--gold); font-family:monospace;">$${p.diesel.toFixed(2)}/L</td>
+                    <td style="padding:10px 0; text-align:right; color:var(--grn); font-size:10px; font-weight:700;">+0.02</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
           </div>
         ` : ''}
 

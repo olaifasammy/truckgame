@@ -10,6 +10,8 @@
 import type { RealisticOpts } from './trucks.realistic.shared';
 import { makePalette, nextUid, baseDefs, svgHead, spinWheel, badgeColor, axleGroup } from './trucks.realistic.shared';
 import { getRealisticAmericanSvg } from './trucks.realistic.american';
+import { getRealisticVanSvg } from './trucks.realistic.vans';
+import { getRealisticRigidSvg } from './trucks.realistic.rigids';
 import { hasRealisticTrailer, trailerLayout, renderRealisticTrailer } from './trucks.realistic.trailers';
 import { pickCabSpec } from './trucks.realistic.brands';
 import type { EuroStyle } from './trucks.realistic.brands';
@@ -38,7 +40,16 @@ export function getRealisticTruckSvg(
   opts: RealisticOpts = {}
 ): string | null {
   const spec = pickCabSpec(model);
-  if (!spec || !hasRealisticTruck(model, trailerType)) return null;
+  if (!spec) return null;
+  
+  const isRigid = (spec.family === 'euro' && spec.euro.rigid) || (spec.family === 'american' && spec.us.rigid) || (trailerType && trailerType.startsWith('rigid_'));
+  
+  if (isRigid && (spec.family === 'euro' || spec.family === 'american')) {
+    return getRealisticRigidSvg(model, axle, trailerType || 'rigid_box', opts);
+  }
+
+  if (spec.family === 'van') return getRealisticVanSvg(spec.van, opts);
+  if (!hasRealisticTruck(model, trailerType)) return null;
   if (spec.family === 'american') return getRealisticAmericanSvg(spec.us, axle, trailerType, opts);
   return getRealisticEuroSvg(spec.euro, axle, trailerType, opts);
 }

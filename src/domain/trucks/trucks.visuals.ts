@@ -82,15 +82,15 @@ export function isRigidModel(model: any, trailerType?: string | null): boolean {
  * - If trailerType is provided: renders complete connected tractor + trailer rig (viewBox="0 0 340 70" or 440 for LCV).
  */
 export function getTruckSilhouetteSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4', trailerType?: string | null, paint?: string): string {
+  const real = getRealisticTruckSvg(model, axle || model?.axle, trailerType, { paint, accent: accentColor });
+  if (real) return real;
+
   if (isSprinterModel(model)) {
     return getSprinterVanSvg(model, accentColor);
   }
   if (isRigidModel(model, trailerType)) {
     return getRigidTruckSvg(model, accentColor, axle || model?.axle);
   }
-
-  const real = getRealisticTruckSvg(model, axle || model?.axle, trailerType, { paint });
-  if (real) return real;
 
   const isAmerican = model.region === 'America';
   const is6x4 = axle === '6x4' || axle === '6x2' || axle === '8x4';

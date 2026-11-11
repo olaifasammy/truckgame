@@ -164,7 +164,14 @@ export const transport = (id: number, city: string) => set(S => {
 export const onTruckArrival = (S: any, truckId: number) => {
   const t = S.fleet.find((x: any) => x.id === truckId);
   if (!t) return;
-  t.status = 'idle';
+  
+  // Only set to idle if no other active jobs are currently assigned to this truck 
+  // (Prevents clearing 'busy' status during Round-Trip Leg transitions)
+  const stillActive = (S.active || []).some((a: any) => a.truck === truckId);
+  if (!stillActive) {
+    t.status = 'idle';
+  }
+  
   processScheduledRepair(S, truckId);
 };
 

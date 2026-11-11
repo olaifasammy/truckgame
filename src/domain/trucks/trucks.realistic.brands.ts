@@ -30,6 +30,7 @@ export interface EuroStyle {
   mirrorCam: boolean;
   steelBumper: boolean;
   skirt: boolean;
+  rigid?: boolean;
 }
 
 export type UsHood = 'long' | 'aero' | 'short';
@@ -52,11 +53,23 @@ export interface AmericanStyle {
   grille: UsGrille;
   bumper: 'chrome' | 'steel' | 'aero';
   bulldog: boolean;
+  rigid?: boolean;
+}
+
+export interface VanStyle {
+  brand: string;
+  badge: string;
+  electric: boolean;
+  paint: string;
+  accent: string;
+  highRoof: boolean;
+  boxBody: boolean;
 }
 
 export type CabSpec =
   | { family: 'euro'; euro: EuroStyle }
-  | { family: 'american'; us: AmericanStyle };
+  | { family: 'american'; us: AmericanStyle }
+  | { family: 'van'; van: VanStyle };
 
 const AMERICAN_BRANDS = new Set(['Kenworth', 'Peterbilt', 'Freightliner', 'Mack', 'Ford']);
 
@@ -121,6 +134,20 @@ function euroStyle(model: any, text: string, electric: boolean, v8: boolean): Eu
   if (!dayCab && !classic && !vocational && /xxl|gigaspace|super space|lion s|streamspace|space cab|highline/.test(text)) s = { ...s, rearX: 188 };
   if (dayCab) s = { ...s, rearX: 158, sleeperWindow: false, deflector: 'none', roofY: Math.max(s.roofY, 56) };
   return s;
+}
+
+function vanStyle(model: any): VanStyle {
+  const brand = String(model.brand || '');
+  const name = String(model.name || '').toLowerCase();
+  return {
+    brand,
+    badge: badgeOf(model),
+    electric: /electric|bev|ev/.test(name),
+    paint: brand === 'Mercedes-Benz' ? '#dfe3e8' : '#2b4a6f',
+    accent: '#c0392b',
+    highRoof: /high roof|l2h2|l3h3|high-roof/.test(name),
+    boxBody: /box|chassis cab|chassis-cab/.test(name)
+  };
 }
 
 /** Asian cab-overs: Japanese (Hino / Isuzu / Fuso) are upright and compact, Chinese (Howo / FAW) are big and boxy. */
@@ -242,10 +269,20 @@ export function pickCabSpec(model: any): CabSpec | null {
   const electric = model.engine?.fuelType === 'Electric' || /electric|eactros|etgx|\bbev\b|ecascadia|579ev|t680e/.test(text);
   const v8 = model.engine?.cylinders === 8 || /\bv8\b/.test(text);
 
-  if (model.region === 'Europe') return { family: 'euro', euro: euroStyle(model, text, electric, v8) };
+  if (/sprinter|van|box truck/.test(text)) {
+    return { family: 'van', van: vanStyle(model) };
+  }
+
+  if (model.region === 'Europe') {
+    const s = euroStyle(model, text, electric, v8);
+    if (/npr|canter|dutro|daily|elf|p250|l320|atego|tgl|lf_210|xb_electric/.test(text)) s.rigid = true;
+    return { family: 'euro', euro: s };
+  }
   if (model.region === 'America' && AMERICAN_BRANDS.has(brand)) {
     if (/k100e|\b362\b|_362/.test(text)) return { family: 'euro', euro: coeStyle(model, electric, v8) };
-    return { family: 'american', us: usStyle(model, text, electric, v8) };
+    const s = usStyle(model, text, electric, v8);
+    if (/t480|220|536|m2|md7|520|terrapro/.test(text)) s.rigid = true;
+    return { family: 'american', us: s };
   }
   const asian = new Set(['Hino', 'Isuzu', 'Mitsubishi Fuso', 'SINOTRUK', 'FAW']);
   if (asian.has(brand)) return { family: 'euro', euro: asiaStyle(model, text, electric, v8) };

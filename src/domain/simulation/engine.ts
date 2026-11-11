@@ -63,6 +63,34 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
     console.error('Simulation: Limit orders error', e);
   }
 
+  // 2.5 Authoritative Fleet & Active Job Integrity Audit (Self-Healing)
+  // Ensures S.active only contains valid jobs for existing trucks, and no duplicates.
+  if (st.active && st.active.length > 0) {
+    const validFleetIds = new Set((st.fleet || []).map((t: any) => t.id));
+    const processedTruckIds = new Set<number>();
+    
+    st.active = st.active.filter((a: any) => {
+      // 1. Purge jobs for non-existent trucks
+      if (!validFleetIds.has(a.truck)) return false;
+      
+      // 2. Prevent duplicate active jobs for the same truck (Zombie job cleanup)
+      if (processedTruckIds.has(a.truck)) {
+        console.warn(`Simulation: Purged duplicate active job for Truck #${a.truck}`);
+        return false;
+      }
+      
+      processedTruckIds.add(a.truck);
+
+      // 3. Status Synchronization: Ensure truck is marked 'busy' if it has an active job
+      const truck = st.fleet.find((t: any) => t.id === a.truck);
+      if (truck && truck.status === 'idle') {
+        truck.status = 'busy';
+      }
+      
+      return true;
+    });
+  }
+
   // 3. Freight Consignment Arrivals & Job Completions
   let done: any[] = [];
   let auctionChanged = false;
@@ -84,9 +112,7 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
     bidChanged = !!jobResult.bidChanged;
     
     if (done.length > 0) {
-      done.forEach((job: any) => {
-        onTruckArrival(st, job.truck || job.id);
-      });
+      // _finalizeJob already handles status=idle and processScheduledRepair
       toast(`Delivered ${done.length} consignment${done.length > 1 ? 's' : ''}`, 'success');
     }
   } catch (e) {
