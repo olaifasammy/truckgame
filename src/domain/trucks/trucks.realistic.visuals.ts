@@ -20,7 +20,7 @@ export type { RealisticOpts } from './trucks.realistic.shared';
 export { DEFAULT_PAINT } from './trucks.realistic.shared';
 export { pickCabSpec } from './trucks.realistic.brands';
 
-export type TruckFamily = 'euro' | 'american' | null;
+export type TruckFamily = 'euro' | 'american' | 'van' | null;
 
 export function pickTruckFamily(model: any): TruckFamily {
   const spec = pickCabSpec(model);

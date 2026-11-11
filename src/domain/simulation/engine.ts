@@ -40,6 +40,7 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
     return {
       doneCount: 0,
       auctionsChanged: false,
+      bidChanged: false,
       repairsCount: 0,
       dispatchedCount: 0,
       botTraded: false,

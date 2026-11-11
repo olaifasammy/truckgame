@@ -17,6 +17,7 @@ export interface GameState {
   repairs?: any[];
   jobs?: any[];
   depots?: string[];
+  hubFacilities?: Record<string, any>;
   repairTruckId?: number | null;
   workshopTab?: string;
   tab?: string;

@@ -16,7 +16,9 @@ import { FleetService } from '../application/services/fleet';
 import { Truck } from '../domain/trucks/trucks.types';
 import { GameState } from '../types/state';
 import { DEEPWATER_PORTS, getMaritimeShippingQuote, bookMaritimeShipping } from '../domain/fleet/shipping';
-import { isRegionUnlocked } from '../domain/logistics/network';
+import { isRegionUnlocked, REGIONAL_HUBS } from '../domain/logistics/network';
+import { renderHubConsole, activeGarageHubId, setActiveGarageHub } from './garage/hub-console';
+import { isCityUnlockedHub, getHubForCity } from '../domain/hubs/hub-facility';
 import { DispatchActions } from '../domain/dispatch/actions';
 
 let openId: number | null = null, panel: string | null = null;
@@ -24,10 +26,15 @@ let hitchModalTruckId: number | null = null;
 let garagePage = 1;
 const TRUCKS_PER_PAGE = 10;
 let garageFilter: 'all' | 'parked' | 'transit' | 'repair' = 'all';
-export let garageRegionFilter: RegionName = 'America';
+export let garageRegionFilter: RegionName = 'Africa';
 
 export function setGarageRegionFilter(r: RegionName) {
   garageRegionFilter = r;
+  const S = (window as any).__getStore?.();
+  if (S) {
+    const hubsInNewRegion = REGIONAL_HUBS.filter(h => h.region === r && (S.depots || []).includes(h.id));
+    setActiveGarageHub(hubsInNewRegion[0]?.id || '');
+  }
   garagePage = 1;
   refresh();
 }
@@ -76,20 +83,28 @@ action('garage-filter', d => {
 });
 
 action('garage-region', d => {
-  const reg = (d as any).region || 'America';
+  const reg = (d as any).region || 'Africa';
   garageRegionFilter = reg as RegionName;
-  garagePage = 1;
   const S = (window as any).__getStore?.();
-  if (S) S.activeRegionFilter = garageRegionFilter;
+  if (S) {
+    S.activeRegionFilter = garageRegionFilter;
+    const hubsInNewRegion = REGIONAL_HUBS.filter(h => h.region === garageRegionFilter && (S.depots || []).includes(h.id));
+    setActiveGarageHub(hubsInNewRegion[0]?.id || '');
+  }
+  garagePage = 1;
   refresh();
 });
 
 action('garage-region-select', d => {
-  const val = (d as any).value || 'America';
+  const val = (d as any).value || 'Africa';
   garageRegionFilter = val as RegionName;
-  garagePage = 1;
   const S = (window as any).__getStore?.();
-  if (S) S.activeRegionFilter = garageRegionFilter;
+  if (S) {
+    S.activeRegionFilter = garageRegionFilter;
+    const hubsInNewRegion = REGIONAL_HUBS.filter(h => h.region === garageRegionFilter && (S.depots || []).includes(h.id));
+    setActiveGarageHub(hubsInNewRegion[0]?.id || '');
+  }
+  garagePage = 1;
   refresh();
 });
 
@@ -179,7 +194,9 @@ action('sell-truck', d => {
 
       if (truck.driverId) {
         const drv = (S.drivers || []).find((x: any) => x.id === truck.driverId);
-        if (drv) drv.truckId = null;
+        if (drv) {
+          drv.assignedTruckId = null;
+        }
       }
 
       S.fleet.splice(idx, 1);
@@ -737,9 +754,10 @@ function truck(S: any, t: any) {
     const remaining = Math.max(0, (t.availableAt || now) - now);
     parkingLocationText = `🚚 Delivery in Transit: Factory ➔ ${cityName} (ETA: ${dur(remaining)})`;
   } else {
-    const isOwnedHub = (S.depots || []).some((depotId: string) => depotId.toLowerCase().includes(t.loc.toLowerCase()));
+    const isOwnedHub = isCityUnlockedHub(S, t.loc);
+    const hubDef = getHubForCity(t.loc);
     if (isOwnedHub) {
-      parkingLocationText = `🏢 Parked at ${cityName} Logistics Terminal · Berth #${berthNum}`;
+      parkingLocationText = `🏢 Parked at ${hubDef?.name || `${cityName} Terminal`} · Berth #${berthNum}`;
     } else {
       parkingLocationText = `📍 Staged at ${cityName} Freight Depot · Bay #${berthNum}`;
     }
@@ -938,7 +956,6 @@ export default {
     const busy = S.fleet.filter((t: any) => t.status === 'busy').length;
     const upCost = upgradeGarageCost(S.garageLevel || 0);
     const canUp = S.money >= upCost;
-    const readiness = S.fleet.length > 0 ? Math.round(((S.fleet.length - busy) / S.fleet.length) * 100) : 100;
 
     // Helper to check if truck needs servicing or is in repair
     const truckNeedsRepair = (t: Truck) => {
@@ -953,23 +970,38 @@ export default {
 
     const repairUnitsCount = S.fleet.filter((t: any) => truckNeedsRepair(t)).length;
 
-    // Authoritative region listing matching driver workforce
-    const regions: RegionName[] = ['America', 'Europe', 'Africa', 'Asia'];
-    if (!garageRegionFilter) {
-      garageRegionFilter = 'America';
+    // Authoritative region listing - only show unlocked regions
+    const allRegions: RegionName[] = ['Africa', 'Europe', 'America', 'Asia'];
+    const unlockedRegions: RegionName[] = allRegions.filter(r => isRegionUnlocked(S, r));
+    const activeUnlockedRegions: RegionName[] = unlockedRegions.length > 0 ? unlockedRegions : ['Africa'];
+
+    if (!garageRegionFilter || !activeUnlockedRegions.includes(garageRegionFilter)) {
+      garageRegionFilter = activeUnlockedRegions[0];
     }
 
-    // Filter fleet based on selected region
-    const fleetInRegion = S.fleet.filter((t: any) => resolveTruckRegion(t) === garageRegionFilter);
+    // Only look at unlocked hubs in the active region
+    const unlockedHubsInRegion = REGIONAL_HUBS.filter(h => h.region === garageRegionFilter && (S.depots || []).includes(h.id));
+    if (!activeGarageHubId || !unlockedHubsInRegion.some(h => h.id === activeGarageHubId)) {
+      setActiveGarageHub(unlockedHubsInRegion[0]?.id || '');
+    }
+    const selectedHub = unlockedHubsInRegion.find(h => h.id === activeGarageHubId) || null;
 
-    let filteredFleet = fleetInRegion;
+    // Strict Region >> Hub fleet scoping: only trucks stationed at the selected unlocked hub
+    const fleetInScope = selectedHub
+      ? S.fleet.filter((t: any) => (t.loc || '').toUpperCase() === selectedHub.city.toUpperCase())
+      : [];
+
+    let filteredFleet = fleetInScope;
     if (garageFilter === 'parked') {
-      filteredFleet = fleetInRegion.filter((t: any) => t.status === 'idle');
+      filteredFleet = fleetInScope.filter((t: any) => t.status === 'idle');
     } else if (garageFilter === 'transit') {
-      filteredFleet = fleetInRegion.filter((t: any) => t.status === 'busy' || t.status === 'delivering');
+      filteredFleet = fleetInScope.filter((t: any) => t.status === 'busy' || t.status === 'delivering');
     } else if (garageFilter === 'repair') {
-      filteredFleet = fleetInRegion.filter((t: any) => truckNeedsRepair(t));
+      filteredFleet = fleetInScope.filter((t: any) => truckNeedsRepair(t));
     }
+
+    const hubBusy = fleetInScope.filter((t: any) => t.status === 'busy' || t.status === 'delivering').length;
+    const readiness = fleetInScope.length > 0 ? Math.round(((fleetInScope.length - hubBusy) / fleetInScope.length) * 100) : 100;
 
     const totalPages = Math.max(1, Math.ceil(filteredFleet.length / TRUCKS_PER_PAGE));
     if (garagePage > totalPages) garagePage = totalPages;
@@ -1001,19 +1033,19 @@ export default {
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
             <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">TOTAL UNITS</div>
             <div style="font-size:13px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;">
-              ${fleetInRegion.length} <span style="font-size:9px; color:var(--mu);">in ${garageRegionFilter}</span>
+              ${fleetInScope.length} <span style="font-size:9px; color:var(--mu);">${selectedHub ? `in ${selectedHub.city}` : `in ${garageRegionFilter}`}</span>
             </div>
           </div>
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
             <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">PARKED AT HUB</div>
             <div style="font-size:13px; font-weight:900; color:var(--grn); font-family:monospace; margin-top:2px;">
-              ${fleetInRegion.filter((t: any) => t.status === 'idle').length} <span style="font-size:9px; color:var(--mu);">Ready</span>
+              ${fleetInScope.filter((t: any) => t.status === 'idle').length} <span style="font-size:9px; color:var(--mu);">Ready</span>
             </div>
           </div>
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
             <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">IN TRANSIT</div>
             <div style="font-size:13px; font-weight:900; color:#38bdf8; font-family:monospace; margin-top:2px;">
-              ${fleetInRegion.filter((t: any) => t.status === 'busy' || t.status === 'delivering').length} <span style="font-size:9px; color:var(--mu);">Active</span>
+              ${fleetInScope.filter((t: any) => t.status === 'busy' || t.status === 'delivering').length} <span style="font-size:9px; color:var(--mu);">Active</span>
             </div>
           </div>
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
@@ -1025,9 +1057,9 @@ export default {
         </div>
       </div>
 
-      <!-- Region Filter Pills (Matching Driver Management) -->
+      <!-- Region Filter Pills (Only Unlocked Regions) -->
       <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:8px; margin-bottom:10px;">
-        ${regions.map(r => {
+        ${activeUnlockedRegions.map(r => {
           const count = S.fleet.filter((t: any) => resolveTruckRegion(t) === r).length;
           return `
             <button class="btn ${garageRegionFilter === r ? 'gold' : 'alt'}" style="padding:6px 12px; font-size:10px; font-weight:800; white-space:nowrap;" data-act="garage-region" data-region="${r}">
@@ -1037,20 +1069,23 @@ export default {
         }).join('')}
       </div>
 
+      <!-- LEVEL 2: REGIONS >> HUB TERMINAL CONSOLE -->
+      ${renderHubConsole(S, garageRegionFilter)}
+
       <!-- Fleet Status Filter Tabs -->
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px; flex-wrap:wrap;">
         <div style="display:flex; gap:6px; flex-wrap:wrap;">
           <button class="btn ${garageFilter === 'all' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="all">
-            ALL (${fleetInRegion.length})
+            ALL (${fleetInScope.length})
           </button>
           <button class="btn ${garageFilter === 'parked' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="parked">
-            PARKED (${fleetInRegion.filter((t: any) => t.status === 'idle').length})
+            PARKED (${fleetInScope.filter((t: any) => t.status === 'idle').length})
           </button>
           <button class="btn ${garageFilter === 'transit' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="transit">
-            EN-ROUTE (${fleetInRegion.filter((t: any) => t.status === 'busy' || t.status === 'delivering').length})
+            EN-ROUTE (${fleetInScope.filter((t: any) => t.status === 'busy' || t.status === 'delivering').length})
           </button>
           <button class="btn ${garageFilter === 'repair' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="repair">
-            SERVICE / REPAIR (${fleetInRegion.filter((t: any) => truckNeedsRepair(t)).length})
+            SERVICE / REPAIR (${fleetInScope.filter((t: any) => truckNeedsRepair(t)).length})
           </button>
         </div>
       </div>
@@ -1058,7 +1093,11 @@ export default {
       <!-- Paginated Trucks List -->
       ${currentTrucks.length > 0 
         ? currentTrucks.map((t: any) => truck(S, t)).join('')
-        : `<div style="padding:24px; text-align:center; background:#0b101d; border:1px dashed #1e2638; border-radius:10px; color:var(--mu); font-family:monospace; font-size:11px;">No vehicles found in this filter category.</div>`}
+        : `<div style="padding:28px 20px; text-align:center; background:#0b101d; border:1px dashed #1e2638; border-radius:10px; color:var(--mu); font-family:monospace; font-size:11px; line-height:1.6;">
+            ${selectedHub 
+              ? `No tractors currently stationed at <b>${selectedHub.name}</b>.<br><span style="font-size:10px; color:rgba(255,255,255,0.4);">Trucks dispatched with consignments to ${selectedHub.city} will park here upon arrival and await new jobs, or you can relocate a tractor here.</span>`
+              : 'No vehicles found in this filter category.'}
+          </div>`}
 
       <!-- Bottom Center Pagination Bar -->
       <div style="display:flex; justify-content:center; align-items:center; margin:16px 0; gap:12px; font-family:monospace; font-size:10px;">

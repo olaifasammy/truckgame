@@ -15,6 +15,7 @@ import {
 } from '../domain/fleet/subcontracting';
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { LOCATIONS } from '../data/world';
+import { ensureHubFacilities } from '../domain/hubs/hub-facility';
 
 let hubTab: 'regions' | 'hubs' | 'routes' | 'tenders' = 'regions';
 
@@ -51,6 +52,7 @@ action('buy-regional-hub', d => {
     S.money -= hub.cost;
     if (!S.depots) S.depots = [];
     if (!S.depots.includes(hubId)) S.depots.push(hubId);
+    ensureHubFacilities(S);
     toast(`${hub.name} acquired! Regional berths (+${hub.berths}) and logistics base active in ${hub.city}.`, 'success');
   });
 });

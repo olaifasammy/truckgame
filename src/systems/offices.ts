@@ -8,7 +8,8 @@ export const slots = (S: any) => {
   const officeSlots = (S.offices || []).reduce((a: number, id: string) => a + (OFFICES[id]?.slots || 0), 0);
   const depotSlots = (S.depots || []).reduce((a: number, id: string) => {
     const hub = REGIONAL_HUBS.find(h => h.id === id);
-    return a + (hub?.berths || 4);
+    const extra = S.hubFacilities?.[id]?.extraBerths || 0;
+    return a + (hub?.berths || 4) + extra;
   }, 0);
   return BASE_SLOTS + (S.garageLevel * 2) + officeSlots + depotSlots;
 };

@@ -58,6 +58,7 @@ if (typeof document !== 'undefined') {
 }
 
 export function toast(msg: string, type: 'info' | 'success' | 'err' = 'info') {
+  if (typeof document === 'undefined') return;
   const t = $('toast');
   if (!t) return;
   

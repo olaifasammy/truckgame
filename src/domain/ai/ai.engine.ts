@@ -21,6 +21,7 @@ import { getCompanyProgression } from '../company/progression';
 import { isRegionUnlocked } from '../logistics/network';
 import { LOCATIONS } from '../../data/world';
 import { TRUCK_MODELS } from '../trucks/trucks.data';
+import { getHubFacilityForCity } from '../hubs/hub-facility';
 import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
 
@@ -298,7 +299,11 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
       const currentFuel = truck.fluids?.fuel !== undefined ? truck.fluids.fuel : tankCapacity;
       if (currentFuel < tankCapacity * 0.40) {
         const needed = Math.round(tankCapacity - currentFuel);
-        if (S.fuelBunker && S.fuelBunker.currentLiters >= needed) {
+        const hubFacility = getHubFacilityForCity(S, truck.loc);
+        if (hubFacility && hubFacility.fuelLiters >= needed) {
+          hubFacility.fuelLiters -= needed;
+          truck.fluids.fuel = tankCapacity;
+        } else if (S.fuelBunker && S.fuelBunker.currentLiters >= needed) {
           S.fuelBunker.currentLiters -= needed;
           truck.fluids.fuel = tankCapacity;
         } else if ((S.money || 0) >= needed * 1.45) {

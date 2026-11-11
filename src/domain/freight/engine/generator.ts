@@ -135,7 +135,7 @@ export class FreightEngine {
     } else if (tender) {
       // If it's a tender but no region is specified, spread it across unlocked regions
       // based on tender ID to ensure stability but variation.
-      const tenderSeed = (tender.id || '').split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+      const tenderSeed = (tender.id || '').split('').reduce((a: number, b: string) => a + b.charCodeAt(0), 0);
       targetRegion = unlockedRegions[tenderSeed % unlockedRegions.length];
     } else {
       targetRegion = rnd(unlockedRegions);

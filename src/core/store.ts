@@ -1,6 +1,7 @@
 import { createTruck } from '../domain/trucks/trucks.physics';
 import { LOCATIONS } from '../data/world';
 import { DEFAULT_AI_STATE } from '../domain/ai/ai.config';
+import { ensureHubFacilities } from '../domain/hubs/hub-facility';
 
 const KEY = 'sam.v3';
 
@@ -88,6 +89,7 @@ function fix(state: any) {
   if (!state.fuelBunker) state.fuelBunker = { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
   if (state.fuelBunkerLevel === undefined) state.fuelBunkerLevel = 0;
   if (!state.depots) state.depots = ['hub_lagos'];
+  ensureHubFacilities(state);
   if (!state.unlockedRegions || state.unlockedRegions.length === 0) {
     state.unlockedRegions = ['Africa'];
   }

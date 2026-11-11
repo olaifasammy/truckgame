@@ -13,6 +13,7 @@ import { vehicleDeliveryTemplate } from '../notifications/templates';
 import { getDispatchEligibilityError } from './validation';
 import { FreightEngine } from '../freight/engine/generator';
 import { LOCATIONS } from '../../data/world';
+import { isCityUnlockedHub, getHubForCity, getHubFacilityForCity } from '../hubs/hub-facility';
 
 import { getDispatchNeuralNetwork } from '../ai/neuralNetwork';
 
@@ -147,9 +148,19 @@ export const DispatchExecution = {
     const neededFuel = Math.max(0, tankCapacity - currentFuel);
     if (neededFuel <= 0) return;
 
-    if (!S.fuelBunker) S.fuelBunker = { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
-    const fromBunker = Math.min(neededFuel, S.fuelBunker.currentLiters || 0);
-    if (fromBunker > 0) S.fuelBunker.currentLiters -= fromBunker;
+    // Check if the truck is departing from an owned hub with a fuel tank
+    const hubFacility = getHubFacilityForCity(S, t.loc);
+    let fromBunker = 0;
+    let fuelSourceLabel = 'Depot Fuel Bunker';
+
+    if (hubFacility && hubFacility.fuelLiters > 0) {
+      fromBunker = Math.min(neededFuel, hubFacility.fuelLiters);
+      hubFacility.fuelLiters -= fromBunker;
+      fuelSourceLabel = `${t.loc} Hub Fuel Tank`;
+    } else if (S.fuelBunker && S.fuelBunker.currentLiters > 0) {
+      fromBunker = Math.min(neededFuel, S.fuelBunker.currentLiters);
+      S.fuelBunker.currentLiters -= fromBunker;
+    }
     
     const stillNeeded = neededFuel - fromBunker;
     let stationCost = 0;
@@ -160,9 +171,9 @@ export const DispatchExecution = {
     t.fluids.fuel = tankCapacity;
     
     const msg = stillNeeded > 0 
-      ? `Topped up tank (${fromBunker}L Bunker, ${stillNeeded}L station: -$${stationCost}).`
-      : `Filled tank (800L) from Depot Fuel Bunker.`;
-    pushNote(S, `${t.name} ${msg}`, { title: 'AUTO-REFUEL', type: 'ops' });
+      ? `Topped up tank (${Math.round(fromBunker)}L from ${fuelSourceLabel}, ${Math.round(stillNeeded)}L station: -$${stationCost}).`
+      : `Filled tank (800L) from ${fuelSourceLabel} ($0 cash).`;
+    pushNote(S, `${t.name}: ${msg}`, { title: 'AUTO-REFUEL', type: 'ops' });
   },
 
   /**
@@ -229,11 +240,16 @@ export const DispatchExecution = {
       const drv = (S.drivers || []).find((x: any) => x.id === t.driverId);
       const st = stats(S, t, a.weight || 0, a.env);
       
-      // If it's a Round-Trip Leg 1, the truck is now at 'to'.
-      // If it's Leg 2 or a normal trip, it's at 'to' (or back at 'from' for Round Trip Leg 2).
-      t.loc = a.to; 
-      if (a.isRoundTrip && a.currentLeg === 2) {
+      const isDestinationUnlockedHub = isCityUnlockedHub(S, a.to);
+      const destHub = getHubForCity(a.to);
+
+      // If destination is an unlocked hub owned by the player, it parks at that hub and awaits new jobs!
+      if (isDestinationUnlockedHub) {
+        t.loc = a.to; 
+      } else if (a.isRoundTrip && a.currentLeg === 2) {
         t.loc = a.from;
+      } else {
+        t.loc = a.to;
       }
 
       processScheduledRepair(S, t.id);
@@ -254,7 +270,8 @@ export const DispatchExecution = {
       }
 
       // Handle Round Trip Leg Transition
-      if (a.isRoundTrip && a.currentLeg === 1) {
+      // If destination is an unlocked player hub, the truck DOES NOT bounce back; it simply parks at this hub!
+      if (a.isRoundTrip && a.currentLeg === 1 && !isDestinationUnlockedHub) {
         // Start Leg 2 immediately
         const now = Date.now();
         const routeEnvLeg2 = getRouteEnv(a.to, a.from);
@@ -280,6 +297,13 @@ export const DispatchExecution = {
       } else {
         t.status = 'idle';
         if (a.isShipperTanker) t.trailer = null;
+        if (isDestinationUnlockedHub) {
+          pushNote(S, `🏢 Unit #${t.id} (${t.name}) docked at ${destHub?.name || a.to} Terminal Hub. Tractor parked at berth and awaiting new outbound freight consignments.`, {
+            title: 'HUB ARRIVAL & DOCKING',
+            type: 'ops',
+            priority: 1
+          });
+        }
       }
     }
 
@@ -293,7 +317,34 @@ export const DispatchExecution = {
     S.stats.earned += finalPay;
     S.stats.km += a.km;
     
-    if (a.isRoundTrip) {
+    const isDestinationUnlockedHub = isCityUnlockedHub(S, a.to);
+    const destHub = getHubForCity(a.to);
+
+    if (isDestinationUnlockedHub) {
+      S.reputation = (S.reputation || 0) + (a.isAuctionWon ? 45 : 20);
+      pushNote(S, `Consignment Delivered to ${destHub?.name || a.to} Hub: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });
+
+      // Generate immediate outbound consignments departing from this new hub
+      if (t && a.to && LOCATIONS[a.to] && (S.jobs || []).length < 17) {
+        const destRegion = LOCATIONS[a.to].region;
+        try {
+          const outboundJob = FreightEngine.generate(S, {
+            forceRegion: destRegion,
+            forceFrom: a.to
+          });
+          if (outboundJob) {
+            if (!S.jobs) S.jobs = [];
+            S.jobs.unshift(outboundJob);
+            pushNote(S, `Freight manifest ready at ${destHub?.name || a.to}: outbound to ${LOCATIONS[outboundJob.to]?.name || outboundJob.to}. Available on Freight Board.`, {
+              title: 'OUTBOUND MANIFEST READY',
+              type: 'ops'
+            });
+          }
+        } catch (e) {
+          console.error('Failed to generate outbound haul', e);
+        }
+      }
+    } else if (a.isRoundTrip) {
       if (a.currentLeg === 1) {
         S.reputation = (S.reputation || 0) + 15;
         pushNote(S, `🔄 Round-Trip Segment 1 Completed: ${a.from} → ${a.to}. Outbound freight delivered. Commencing return leg with ${a.returnCargoName || 'Backhaul'}. Payment: +$${finalPay.toLocaleString()}`, {

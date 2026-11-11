@@ -10,6 +10,7 @@ import { disc } from './perks';
 import { slots } from './offices';
 import { createTruck } from '../domain/trucks/trucks.physics';
 import { LOCATIONS } from '../data/world';
+import { getHubFacilityForCity } from '../domain/hubs/hub-facility';
 
 export const FUEL_PRICE = 2.5;
 export const inspectCost = () => Math.round(500 * disc('scanner'));
@@ -18,7 +19,9 @@ export const refuelCost = (t: any, S?: any) => {
   const model = TRUCK_MODELS[t.modelId] || { tankSize: 800 };
   const needed = Math.max(0, model.tankSize - (t.fluids?.fuel || 0));
   if (needed <= 0) return 0;
-  const bunkerLiters = S?.fuelBunker?.currentLiters || 0;
+  const hubFacility = S ? getHubFacilityForCity(S, t.loc) : null;
+  const hubTankLiters = hubFacility?.fuelLiters || 0;
+  const bunkerLiters = hubTankLiters > 0 ? hubTankLiters : (S?.fuelBunker?.currentLiters || 0);
   const cashNeeded = Math.max(0, needed - bunkerLiters);
   return Math.round(cashNeeded * FUEL_PRICE * disc('fuelcard'));
 };
@@ -61,19 +64,27 @@ export const refuel = (id: number) => set(S => {
   const needed = Math.max(0, model.tankSize - (t.fluids?.fuel || 0));
   if (needed <= 0) return toast('Fuel tank is already at 100% capacity', 'info');
 
-  const bunker = S.fuelBunker;
-  let fromBunker = 0;
-  if (bunker && bunker.currentLiters > 0) {
-    fromBunker = Math.min(bunker.currentLiters, needed);
-    bunker.currentLiters -= fromBunker;
+  const hubFacility = getHubFacilityForCity(S, t.loc);
+  let fromTank = 0;
+  let sourceName = 'Commercial Station';
+
+  if (hubFacility && hubFacility.fuelLiters > 0) {
+    fromTank = Math.min(hubFacility.fuelLiters, needed);
+    hubFacility.fuelLiters -= fromTank;
+    sourceName = `${t.loc} Hub Fuel Tank`;
+  } else if (S.fuelBunker && S.fuelBunker.currentLiters > 0) {
+    fromTank = Math.min(S.fuelBunker.currentLiters, needed);
+    S.fuelBunker.currentLiters -= fromTank;
+    sourceName = 'HQ Fuel Bunker';
   }
 
-  const remaining = needed - fromBunker;
+  const remaining = needed - fromTank;
   let cashCost = 0;
   if (remaining > 0) {
     cashCost = Math.round(remaining * FUEL_PRICE * disc('fuelcard'));
     if (!pay(S, cashCost, `Commercial Station Refuel Unit #${id} (${t.name})`)) {
-      if (bunker) bunker.currentLiters += fromBunker;
+      if (hubFacility && fromTank > 0) hubFacility.fuelLiters += fromTank;
+      else if (S.fuelBunker && fromTank > 0) S.fuelBunker.currentLiters += fromTank;
       return;
     }
     if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
@@ -81,10 +92,10 @@ export const refuel = (id: number) => set(S => {
   }
 
   t.fluids.fuel = model.tankSize;
-  if (fromBunker > 0 && remaining > 0) {
-    toast(`Refueled: ${Math.round(fromBunker)}L HQ Bunker + ${Math.round(remaining)}L Station ($${cashCost.toLocaleString()})`, 'success');
-  } else if (fromBunker > 0) {
-    toast(`Refueled ${Math.round(fromBunker)}L from HQ Fuel Bunker! ($0 cash)`, 'success');
+  if (fromTank > 0 && remaining > 0) {
+    toast(`Refueled: ${Math.round(fromTank)}L from ${sourceName} ($0) + ${Math.round(remaining)}L Station ($${cashCost.toLocaleString()})`, 'success');
+  } else if (fromTank > 0) {
+    toast(`Refueled ${Math.round(fromTank)}L from ${sourceName}! ($0 cash)`, 'success');
   } else {
     toast(`Refueled ${Math.round(needed)}L at Commercial Station (-$${cashCost.toLocaleString()})`, 'success');
   }
