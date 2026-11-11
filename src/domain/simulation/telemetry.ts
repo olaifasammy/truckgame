@@ -44,6 +44,19 @@ export function syncLiveDomTelemetry(st: any, now: number): void {
     if (el.textContent !== formatted) el.textContent = formatted;
   });
 
+  // Tender Reset Countdown Timers
+  document.querySelectorAll('[data-tender-reset-eta]').forEach(el => {
+    const targetTime = +(el as HTMLElement).dataset.tenderResetEta!;
+    const diff = Math.max(0, targetTime - now);
+    const totalSeconds = Math.floor(diff / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const formatted = `${hours}:${pad(minutes)}:${pad(seconds)}`;
+    if (el.textContent !== formatted) el.textContent = formatted;
+  });
+
   // 4. Live Auction Bids, Winner Badges, and Border Highlights
   document.querySelectorAll('[data-auc-bid]').forEach(el => {
     const aucId = +(el as HTMLElement).dataset.aucBid!;

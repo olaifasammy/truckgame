@@ -22,6 +22,15 @@ export const dur = (ms: number): string => {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
+export const formatTimer = (ms: number): string => {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${hours}:${pad(minutes)}:${pad(seconds)}`;
+};
+
 const actions = new Map<string, (dataset: DOMStringMap) => void>();
 export const action = (name: string, fn: (dataset: DOMStringMap) => void) => actions.set(name, fn);
 

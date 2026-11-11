@@ -1,5 +1,5 @@
 import { refresh, set } from '../../core/store';
-import { action, toast, fmt, dur } from '../../core/ui';
+import { action, toast, fmt, dur, formatTimer } from '../../core/ui';
 import { takeJob, replenish } from '../../systems/jobs';
 import { renderMap } from './map';
 import { renderJobCard } from './job-card';
@@ -256,11 +256,12 @@ export default {
                   return `<span style="font-size:8px; font-weight:900; color:var(--grn); font-family:monospace; background:rgba(34,197,94,0.1); border:1px solid var(--grn); padding:2px 6px; border-radius:4px;">PREMIUM TENDERS ACTIVE</span>`;
                 }
                 const remaining = Math.max(0, 5 - (limit.count || 0));
-                const nextReset = Math.ceil((limit.windowStart + (5 * 3600000) - Date.now()) / 60000);
+                const resetTargetTime = limit.windowStart + (5 * 3600000);
+                const remainingMs = Math.max(0, resetTargetTime - Date.now());
                 return `
                   <div style="font-size:8px; font-weight:800; color:var(--mu); font-family:monospace;">
                     FREE TENDER QUOTA: <b style="color:${remaining > 0 ? 'var(--grn)' : '#ef4444'};">${remaining}/5</b>
-                    ${remaining === 0 && nextReset > 0 ? `· RESET IN ${nextReset}m` : ''}
+                    ${remaining === 0 ? `· RESET IN <span data-tender-reset-eta="${resetTargetTime}">${formatTimer(remainingMs)}</span>` : ''}
                   </div>
                 `;
               })()}
