@@ -147,28 +147,9 @@ export function renderHubConsole(S: any, currentRegion: RegionName): string {
   // STRICT RULE: Only show hubs that the user has unlocked/acquired
   const unlockedHubsInRegion = REGIONAL_HUBS.filter(h => h.region === currentRegion && (S.depots || []).includes(h.id));
 
-  // We no longer auto-select the first hub if empty, because empty means "Enroute View"
+  const hasNoHubs = unlockedHubsInRegion.length === 0;
   
-  // If no hubs are unlocked in this region yet
-  if (unlockedHubsInRegion.length === 0) {
-    return `
-      <div style="background:#0a0f1d; border:1px dashed #1a2336; border-radius:10px; padding:18px 16px; margin-bottom:14px; text-align:center;">
-        <div style="font-size:22px; margin-bottom:6px;">🏢</div>
-        <div style="font-size:12px; font-weight:900; color:var(--tx); text-transform:uppercase;">No Terminal Hubs Acquired in ${currentRegion}</div>
-        <div style="font-size:10px; color:var(--mu); font-family:monospace; margin:4px auto 12px; max-width:420px; line-height:1.4;">
-          You hold commercial operating authority in ${currentRegion}. Acquire a regional terminal hub in the Network view to unlock parking berths, dedicated fuel bunkers, and local freight staging.
-        </div>
-        <button class="btn gold" style="padding:6px 16px; font-size:10px; font-weight:900;" data-act="tab" data-id="network">
-          ACQUIRE ${currentRegion.toUpperCase()} TERMINAL HUBS
-        </button>
-      </div>
-    `;
-  }
-
-  const selectedHub = unlockedHubsInRegion.find(h => h.id === activeGarageHubId) || unlockedHubsInRegion[0];
-  const facility = getHubFacility(S, selectedHub.id);
-
-  return `
+  const hubSelectorBar = `
     <!-- LEVEL 2: REGION >> UNLOCKED HUB SELECTOR BAR -->
     <div style="background:#0a0f1d; border:1px solid #1a2336; border-radius:10px; padding:10px 12px; margin-bottom:12px;">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -204,6 +185,34 @@ export function renderHubConsole(S: any, currentRegion: RegionName): string {
         }).join('')}
       </div>
     </div>
+  `;
+
+  if (hasNoHubs && !activeGarageHubId) {
+    return hubSelectorBar + `
+      <div style="background:#0a0f1d; border:1px dashed #1a2336; border-radius:10px; padding:18px 16px; margin-bottom:14px; text-align:center;">
+        <div style="font-size:22px; margin-bottom:6px;">🏢</div>
+        <div style="font-size:12px; font-weight:900; color:var(--tx); text-transform:uppercase;">No Terminal Hubs Acquired in ${currentRegion}</div>
+        <div style="font-size:10px; color:var(--mu); font-family:monospace; margin:4px auto 12px; max-width:420px; line-height:1.4;">
+          You hold commercial operating authority in ${currentRegion}. Acquire a regional terminal hub in the Network view to unlock parking berths, dedicated fuel bunkers, and local freight staging.
+        </div>
+        <button class="btn gold" style="padding:6px 16px; font-size:10px; font-weight:900;" data-act="tab" data-id="network">
+          ACQUIRE ${currentRegion.toUpperCase()} TERMINAL HUBS
+        </button>
+      </div>
+    `;
+  }
+
+  if (!activeGarageHubId) {
+    return hubSelectorBar;
+  }
+
+  const selectedHub = unlockedHubsInRegion.find(h => h.id === activeGarageHubId);
+  if (!selectedHub) return hubSelectorBar; // Fallback if hub somehow not found or not owned
+
+  const facility = getHubFacility(S, selectedHub.id);
+
+  return `
+    ${hubSelectorBar}
 
     <!-- DEDICATED HUB MANAGEMENT CONSOLE FOR SELECTED HUB -->
     <div style="background:#0e1320; border:1px solid rgba(193,154,91,0.4); border-radius:12px; padding:14px; margin-bottom:14px; box-shadow:0 8px 24px rgba(0,0,0,0.4);">

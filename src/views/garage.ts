@@ -18,7 +18,7 @@ import { GameState } from '../types/state';
 import { DEEPWATER_PORTS, getMaritimeShippingQuote, bookMaritimeShipping } from '../domain/fleet/shipping';
 import { isRegionUnlocked, REGIONAL_HUBS } from '../domain/logistics/network';
 import { renderHubConsole, activeGarageHubId, setActiveGarageHub } from './garage/hub-console';
-import { isCityUnlockedHub, getHubForCity } from '../domain/hubs/hub-facility';
+import { isCityUnlockedHub, getHubForCity, getTrucksAtHub } from '../domain/hubs/hub-facility';
 import { DispatchActions } from '../domain/dispatch/actions';
 import { CARGO_TYPES } from '../domain/freight/cargo/registry';
 import { renderCargoBadge } from '../domain/freight/cargo/cargo-svgs';
@@ -252,10 +252,10 @@ const bar = (label: string, value: number, barColor: string, formattedText: stri
 };
 
 const cell = (label: string, value: string, subvalue?: string) => `
-  <div style="background:#0a0f1d; padding:8px 10px; border-radius:6px; border:1px solid #1f293d;">
-    <div style="font-size:8px; text-transform:uppercase; color:var(--mu); letter-spacing:0.5px; font-weight:700;">${label}</div>
-    <div style="font-size:11px; font-weight:800; color:var(--tx); font-family:monospace; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${value}</div>
-    ${subvalue ? `<div style="font-size:8px; color:var(--mu); margin-top:1px;">${subvalue}</div>` : ''}
+  <div style="background:#0a0f1d; padding:6px 8px; border-radius:6px; border:1px solid #1f293d; min-width:0; display:flex; flex-direction:column; justify-content:center;">
+    <div style="font-size:7px; text-transform:uppercase; color:var(--mu); letter-spacing:0.4px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${label}</div>
+    <div style="font-size:10px; font-weight:800; color:var(--tx); font-family:monospace; margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${value}</div>
+    ${subvalue ? `<div style="font-size:7px; color:var(--mu); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${subvalue}</div>` : ''}
   </div>
 `;
 
@@ -464,7 +464,11 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
   const estimatedHours = Math.round(t.odometer / 58);
   const estimatedRangeKm = Math.round((t.fluids.fuel / (st.fuelConsumption || 32)) * 100);
 
-  const hasCompatibleJobs = (S.jobs || []).some((j: any) => !why(S, t, j));
+  const getCompHealth = (id: string) => {
+    const c = t.components[id as keyof typeof t.components];
+    if (typeof c === 'number') return c;
+    return c?.health ?? 100;
+  };
 
   return `
     <div style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08);">
@@ -510,16 +514,16 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
       `}
 
       <!-- Heavy Vehicle Technical Specification Grid -->
-      <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; margin-bottom:12px;">
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(85px, 1fr)); gap:4px; margin-bottom:12px;">
         ${cell('ENGINE', m.engine.name, `${m.engine.displacement}L · ${m.engine.cylinders === 8 ? 'V8' : 'I6'}`)}
         ${cell('POWER', `${m.engine.hp} HP`, `@ 1,900 RPM`)}
         ${cell('TORQUE', `${m.engine.torque} Nm`, `Peak Output`)}
-        ${cell('TRANSMISSION', t.upgrades?.gearbox === '16spd_crawler' ? '16-Spd Crawler' : '12-Spd Automated', t.upgrades?.gearbox === '16spd_crawler' ? 'Vocational Heavy' : 'Direct Drive')}
-        ${cell('AXLE RATIO', t.upgrades?.axleRatio === 'heavy_diff_lock' ? '3.42:1 Diff Lock' : '2.64:1 Highway', m.axle)}
-        ${cell('CRUISE RANGE', `~${estimatedRangeKm} km`, `Calculated`)}
-        ${cell('LIFETIME ODO', `<span data-truck-odo="${t.id}">${Math.round(t.odometer).toLocaleString()} km</span>`, 'Total Distance')}
-        ${cell('ENGINE HOURS', `${estimatedHours} hrs`, `Cumulative Run`)}
-        ${cell('FUEL RATE', `${st.fuelConsumption.toFixed(1)} L/100`, `Telematics Avg`)}
+        ${cell('GEARBOX', t.upgrades?.gearbox === '16spd_crawler' ? '16-Spd Crawler' : '12-Spd Auto', t.upgrades?.gearbox === '16spd_crawler' ? 'Vocational' : 'Direct')}
+        ${cell('AXLE', t.upgrades?.axleRatio === 'heavy_diff_lock' ? '3.42:1 Lock' : '2.64:1 High', m.axle)}
+        ${cell('RANGE', `~${estimatedRangeKm} km`, `Calculated`)}
+        ${cell('ODO', `<span data-truck-odo="${t.id}">${Math.round(t.odometer).toLocaleString()} km</span>`, 'Total Dist')}
+        ${cell('HOURS', `${estimatedHours} hrs`, `Cumulative`)}
+        ${cell('CONSUMP', `${st.fuelConsumption.toFixed(1)} L/100`, `Avg Rate`)}
       </div>
 
       <!-- Powertrain Engineering & Consumables Breakdown -->
@@ -530,22 +534,22 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
         </div>
 
         <!-- Consumables Levels Row -->
-        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-bottom:10px;">
-          <div style="background:#111827; border:1px solid #1f293d; padding:6px 8px; border-radius:6px;">
-            <div style="font-size:7px; color:var(--mu); font-weight:700;">DIESEL FUEL</div>
-            <div style="font-size:11px; font-weight:800; color:var(--tx); font-family:monospace;">${t.fluids.fuel}L <span style="font-size:8px; color:var(--mu);">(${fuelPctVal}%)</span></div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(70px, 1fr)); gap:4px; margin-bottom:10px;">
+          <div style="background:#111827; border:1px solid #1f293d; padding:4px 6px; border-radius:6px; min-width:0;">
+            <div style="font-size:6px; color:var(--mu); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">DIESEL FUEL</div>
+            <div style="font-size:10px; font-weight:800; color:var(--tx); font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.fluids.fuel}L <span style="font-size:7px; color:var(--mu);">(${fuelPctVal}%)</span></div>
           </div>
-          <div style="background:#111827; border:1px solid #1f293d; padding:6px 8px; border-radius:6px;">
-            <div style="font-size:7px; color:var(--mu); font-weight:700;">ADBLUE / DEF</div>
-            <div style="font-size:11px; font-weight:800; color:#38bdf8; font-family:monospace;">${t.fluids.adBlue || 100}%</div>
+          <div style="background:#111827; border:1px solid #1f293d; padding:4px 6px; border-radius:6px; min-width:0;">
+            <div style="font-size:6px; color:var(--mu); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">ADBLUE / DEF</div>
+            <div style="font-size:10px; font-weight:800; color:#38bdf8; font-family:monospace;">${t.fluids.adBlue || 100}%</div>
           </div>
-          <div style="background:#111827; border:1px solid #1f293d; padding:6px 8px; border-radius:6px;">
-            <div style="font-size:7px; color:var(--mu); font-weight:700;">ENGINE COOLANT</div>
-            <div style="font-size:11px; font-weight:800; color:${(t.fluids.coolant || 100) < 25 ? '#ef4444' : 'var(--grn)'}; font-family:monospace;">${t.fluids.coolant || 100}%</div>
+          <div style="background:#111827; border:1px solid #1f293d; padding:4px 6px; border-radius:6px; min-width:0;">
+            <div style="font-size:6px; color:var(--mu); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">COOLANT</div>
+            <div style="font-size:10px; font-weight:800; color:${(t.fluids.coolant || 100) < 25 ? '#ef4444' : 'var(--grn)'}; font-family:monospace;">${t.fluids.coolant || 100}%</div>
           </div>
-          <div style="background:#111827; border:1px solid #1f293d; padding:6px 8px; border-radius:6px;">
-            <div style="font-size:7px; color:var(--mu); font-weight:700;">LUBE OIL</div>
-            <div style="font-size:11px; font-weight:800; color:${(t.fluids.oil || 40) < 15 ? '#ef4444' : 'var(--tx)'}; font-family:monospace;">${t.fluids.oil || 40}L</div>
+          <div style="background:#111827; border:1px solid #1f293d; padding:4px 6px; border-radius:6px; min-width:0;">
+            <div style="font-size:6px; color:var(--mu); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">LUBE OIL</div>
+            <div style="font-size:10px; font-weight:800; color:${(t.fluids.oil || 40) < 15 ? '#ef4444' : 'var(--tx)'}; font-family:monospace;">${t.fluids.oil || 40}L</div>
           </div>
         </div>
 
@@ -579,14 +583,14 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
           <div>
-            ${bar('ENGINE / BLOCK', t.components.engine.health, t.components.engine.health < 70 ? 'var(--red)' : 'var(--grn)', `${t.components.engine.health}%`)}
-            ${bar('TRANSMISSION', t.components.transmission.health, t.components.transmission.health < 75 ? 'var(--red)' : 'var(--grn)', `${t.components.transmission.health}%`)}
-            ${bar('BRAKE SYSTEM', t.components.brakes.health, t.components.brakes.health < 60 ? 'var(--red)' : 'var(--grn)', `${t.components.brakes.health}%`, t.components.brakes.health < 60)}
+            ${bar('ENGINE / BLOCK', getCompHealth('engine'), getCompHealth('engine') < 70 ? 'var(--red)' : 'var(--grn)', `${getCompHealth('engine')}%`)}
+            ${bar('TRANSMISSION', getCompHealth('transmission'), getCompHealth('transmission') < 75 ? 'var(--red)' : 'var(--grn)', `${getCompHealth('transmission')}%`)}
+            ${bar('BRAKE SYSTEM', getCompHealth('brakes'), getCompHealth('brakes') < 60 ? 'var(--red)' : 'var(--grn)', `${getCompHealth('brakes')}%`, getCompHealth('brakes') < 60)}
           </div>
           <div>
-            ${bar('TIRE TREAD', t.components.tires.health, t.components.tires.health < 40 ? 'var(--red)' : 'var(--grn)', `${t.components.tires.health}%`, t.components.tires.health < 40)}
-            ${bar('SUSPENSION', t.components.suspension.health, t.components.suspension.health < 80 ? 'var(--red)' : 'var(--grn)', `${t.components.suspension.health}%`)}
-            ${bar('EXHAUST / DPF', t.components.exhaust.health, t.components.exhaust.health < 70 ? 'var(--red)' : 'var(--grn)', `${t.components.exhaust.health}%`)}
+            ${bar('TIRE TREAD', getCompHealth('tires'), getCompHealth('tires') < 40 ? 'var(--red)' : 'var(--grn)', `${getCompHealth('tires')}%`, getCompHealth('tires') < 40)}
+            ${bar('SUSPENSION', getCompHealth('suspension'), getCompHealth('suspension') < 80 ? 'var(--red)' : 'var(--grn)', `${getCompHealth('suspension')}%`)}
+            ${bar('EXHAUST / DPF', getCompHealth('exhaust'), getCompHealth('exhaust') < 70 ? 'var(--red)' : 'var(--grn)', `${getCompHealth('exhaust')}%`)}
           </div>
         </div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;">
@@ -608,7 +612,14 @@ function truck(S: GameState, t: Truck) {
   const now = Date.now();
   const open = openId === t.id;
   const busy = !!a || t.status === 'delivering';
-  const needsService = Object.values(t.components).some((c: any) => c.health < 75) || (t.fluids.fuel / m.tankSize) < 0.25;
+  
+  const getCompHealth = (id: string) => {
+    const c = t.components[id as keyof typeof t.components];
+    if (typeof c === 'number') return c;
+    return (c as any)?.health ?? 100;
+  };
+
+  const needsService = ['engine', 'transmission', 'brakes', 'tires', 'suspension', 'exhaust'].some(k => getCompHealth(k) < 75) || (t.fluids.fuel / m.tankSize) < 0.25;
 
   return `
     <div class="card" style="margin-bottom:10px; border:1px solid ${open ? 'var(--gold)' : needsService ? 'rgba(193,154,91,0.3)' : 'var(--line)'};">
@@ -802,7 +813,23 @@ export default {
     const now = Date.now();
     const activeList = (S.active || []).filter((a: any) => {
       const truckObj = (S.fleet || []).find((t: any) => t.id === a.truck);
-      return truckObj && resolveTruckRegion(truckObj) === garageRegionFilter;
+      if (!truckObj) return false;
+      const truckReg = resolveTruckRegion(truckObj);
+      return truckReg === garageRegionFilter;
+    });
+
+    // FIND TRUCKS THAT ARE IDLE OR DELIVERING BUT NOT AT AN OWNED HUB
+    const unstationedTrucks = S.fleet.filter((t: any) => {
+      if (resolveTruckRegion(t) !== garageRegionFilter) return false;
+      
+      // If moving cargo, it's already in activeList
+      const isEnroute = S.active.some((a: any) => a.truck === t.id);
+      if (isEnroute) return false;
+
+      // If at an owned hub, it shows up in the specific hub view
+      if (isCityUnlockedHub(S, t.loc)) return false;
+
+      return true;
     });
 
     let fleetInScope: any[] = [];
@@ -812,7 +839,7 @@ export default {
     let readiness = 100;
 
     if (selectedHub) {
-      fleetInScope = S.fleet.filter((t: any) => (t.loc || '').toUpperCase() === selectedHub.city.toUpperCase());
+      fleetInScope = getTrucksAtHub(S, selectedHub.city);
       filteredFleet = fleetInScope;
       if (garageFilter === 'parked') filteredFleet = fleetInScope.filter((t: any) => t.status === 'idle');
       else if (garageFilter === 'repair') filteredFleet = fleetInScope.filter((t: any) => truckNeedsRepair(t));
@@ -886,11 +913,36 @@ export default {
 
       ${!selectedHub ? `
         <div class="sec" style="margin:16px 0 8px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">${garageRegionFilter.toUpperCase()} ACTIVE CONSIGNMENTS EN-ROUTE</span>
-          <span style="font-size:9px; color:var(--mu); font-family:monospace;">${activeList.length} TRUCKS MOVING</span>
+          <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">${garageRegionFilter.toUpperCase()} REGIONAL LOGISTICS VIEW</span>
+          <span style="font-size:9px; color:var(--mu); font-family:monospace;">${activeList.length} EN-ROUTE · ${unstationedTrucks.length} UNSTATIONED</span>
         </div>
 
         <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
+          <!-- 1. Render Unstationed/Parked-Outside-Hub Trucks first so they can be dealt with -->
+          ${unstationedTrucks.map((t: any) => {
+            const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
+            return `
+              <div style="background:rgba(239,68,68,0.05); border:1px dashed #ef444480; border-radius:8px; padding:10px; cursor:pointer;" data-act="truck-toggle" data-id="${t.id}">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                  <div style="display:flex; align-items:center; gap:10px;">
+                    <div style="font-size:18px;">⚠️</div>
+                    <div>
+                      <div style="font-size:12px; font-weight:900; color:var(--tx);">${m.name} (#${t.id})</div>
+                      <div style="font-size:9px; color:#f87171; font-family:monospace; font-weight:800;">
+                        PARKED AT EXTERNAL TERMINAL: ${t.loc}
+                      </div>
+                    </div>
+                  </div>
+                  <div style="text-align:right;">
+                    <div style="font-size:10px; font-weight:800; color:var(--mu);">IDLE / NO HUB</div>
+                    <div style="font-size:8px; color:var(--mu); font-family:monospace;">TAP TO MANAGE</div>
+                  </div>
+                </div>
+              </div>
+            `;
+          }).join('')}
+
+          <!-- 2. Render Active Consignments -->
           ${activeList.length > 0 ? activeList.map((a: any) => {
             const truckObj = (S.fleet || []).find((t: any) => t.id === a.truck);
             const drv = (S.drivers || []).find((d: any) => d.id === truckObj?.driverId);
@@ -929,12 +981,12 @@ export default {
                 </div>
               </div>
             `;
-          }).join('') : `
+          }).join('') : (unstationedTrucks.length === 0 ? `
             <div style="padding:40px 20px; text-align:center; background:#0b101d; border:1px dashed #1e2638; border-radius:10px; color:var(--mu); font-family:monospace; font-size:11px; line-height:1.6;">
-              No trucks currently en-route in the ${garageRegionFilter} region.<br>
+              No trucks currently en-route or unstationed in the ${garageRegionFilter} region.<br>
               <span style="font-size:10px; color:rgba(255,255,255,0.4);">Select a terminal hub above to manage stationed fleet units.</span>
             </div>
-          `}
+          ` : '')}
         </div>
       ` : `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px; flex-wrap:wrap;">

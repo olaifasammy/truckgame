@@ -63,9 +63,9 @@ export function getHubFacility(S: any, hubId: string): HubFacility {
  */
 export function getHubForCity(city: string): RegionalHub | undefined {
   if (!city) return undefined;
-  const upper = city.toUpperCase().trim();
+  const upper = city.toUpperCase().trim().replace(/\s+/g, '_');
   return REGIONAL_HUBS.find(h => 
-    h.city.toUpperCase() === upper || 
+    h.city.toUpperCase().replace(/\s+/g, '_') === upper || 
     h.id.toUpperCase() === upper ||
     h.id.toUpperCase().includes(upper)
   );
@@ -106,10 +106,17 @@ export function getHubTotalBerths(S: any, hubId: string): number {
  */
 export function getTrucksAtHub(S: any, hubCity: string): any[] {
   if (!S || !S.fleet || !hubCity) return [];
-  const upperCity = hubCity.toUpperCase().trim();
+  const upperCity = hubCity.toUpperCase().trim().replace(/\s+/g, '_');
+  
+  // Find the hub definition for this city to get its ID
+  const hubDef = REGIONAL_HUBS.find(h => h.city.toUpperCase().replace(/\s+/g, '_') === upperCity);
+  const hubIdUpper = hubDef?.id.toUpperCase();
+
   return S.fleet.filter((t: any) => {
-    const loc = (t.loc || '').toUpperCase().trim();
-    return loc === upperCity;
+    if (t.status === 'busy' || t.status === 'delivering') return false;
+    const loc = (t.loc || '').toUpperCase().trim().replace(/\s+/g, '_');
+    // Match by city name OR by Hub ID
+    return loc === upperCity || (hubIdUpper && loc === hubIdUpper);
   });
 }
 

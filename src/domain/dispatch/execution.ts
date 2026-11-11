@@ -236,13 +236,13 @@ export const DispatchExecution = {
     const km = a.km + (a.dh || 0);
     const cargo = CARGO_TYPES.find(c => c.id === a.cargoId);
 
+    const isDestinationUnlockedHub = isCityUnlockedHub(S, a.to);
+    const destHub = getHubForCity(a.to);
+
     if (t) {
       const drv = (S.drivers || []).find((x: any) => x.id === t.driverId);
       const st = stats(S, t, a.weight || 0, a.env);
       
-      const isDestinationUnlockedHub = isCityUnlockedHub(S, a.to);
-      const destHub = getHubForCity(a.to);
-
       // If destination is an unlocked hub owned by the player, it parks at that hub and awaits new jobs!
       if (isDestinationUnlockedHub) {
         t.loc = a.to; 
@@ -270,9 +270,8 @@ export const DispatchExecution = {
       }
 
       // Handle Round Trip Leg Transition
-      // If destination is an unlocked player hub, the truck DOES NOT bounce back; it simply parks at this hub!
       if (a.isRoundTrip && a.currentLeg === 1 && !isDestinationUnlockedHub) {
-        // Start Leg 2 immediately
+        // Start Leg 2 immediately (Standard Round Trip to external city)
         const now = Date.now();
         const routeEnvLeg2 = getRouteEnv(a.to, a.from);
         const stLeg2 = stats(S, t, a.weight || 0, routeEnvLeg2);
@@ -293,17 +292,50 @@ export const DispatchExecution = {
         });
         
         t.status = 'busy';
-        // Note: We don't set t.status to 'idle' if we are starting leg 2.
+        t.loc = a.to; // Update location to the turnaround point
+      } else if (!isDestinationUnlockedHub) {
+        // CRITICAL FIX: Truck delivered to an UNOWNED city. 
+        // We MUST force an immediate deadhead return to the origin hub.
+        const now = Date.now();
+        const dhKm = a.km || distKm(a.to, a.from); // Return distance
+        const stReturn = stats(S, t, 0); // Empty return
+        
+        // HASTE: Speed up empty deadhead returns to base (35% faster) since they don't generate pay
+        const returnDuration = Math.round(tripMs(dhKm, stReturn.topSpeed) * 0.65);
+
+        S.active.push({
+          id: S.nextId++,
+          kind: 'move',
+          cargo: 'Terminal Return (Deadhead)',
+          from: a.to,
+          to: a.from,
+          dh: 0,
+          km: dhKm,
+          pay: 0,
+          truck: t.id,
+          start: now,
+          end: now + returnDuration,
+          status: 'returning'
+        });
+
+        t.status = 'busy';
+        t.loc = a.to; // Logically at destination before starting return
+        pushNote(S, `⚠️ ${t.name} delivered to external city (${a.to}). No owned hub facility found. Unit is deadheading back to ${a.from} Terminal.`, {
+          title: 'AUTO-RETURN DISPATCH',
+          type: 'ops',
+          priority: 1
+        });
       } else {
+        // Destination IS an unlocked player hub
         t.status = 'idle';
+        t.loc = a.to; // Parked at the hub
         if (a.isShipperTanker) t.trailer = null;
-        if (isDestinationUnlockedHub) {
-          pushNote(S, `🏢 Unit #${t.id} (${t.name}) docked at ${destHub?.name || a.to} Terminal Hub. Tractor parked at berth and awaiting new outbound freight consignments.`, {
-            title: 'HUB ARRIVAL & DOCKING',
-            type: 'ops',
-            priority: 1
-          });
-        }
+        
+        pushNote(S, `🏢 Unit #${t.id} (${t.name}) docked at ${destHub?.name || a.to} Terminal Hub. Tractor parked at berth and awaiting new outbound freight consignments.`, {
+          title: 'HUB ARRIVAL & DOCKING',
+          type: 'ops',
+          priority: 1
+        });
       }
     }
 
@@ -317,9 +349,6 @@ export const DispatchExecution = {
     S.stats.earned += finalPay;
     S.stats.km += a.km;
     
-    const isDestinationUnlockedHub = isCityUnlockedHub(S, a.to);
-    const destHub = getHubForCity(a.to);
-
     if (isDestinationUnlockedHub) {
       S.reputation = (S.reputation || 0) + (a.isAuctionWon ? 45 : 20);
       pushNote(S, `Consignment Delivered to ${destHub?.name || a.to} Hub: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });

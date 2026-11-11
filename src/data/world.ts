@@ -1,3 +1,5 @@
+import { REGIONAL_HUBS } from '../domain/logistics/network';
+
 export type RegionName = 'Africa' | 'Europe' | 'America' | 'Asia';
 
 export interface LocationInfo {
@@ -598,6 +600,14 @@ export function resolveTruckRegion(target: string | { loc?: string } | null | un
     return LOCATIONS[upper].region;
   }
 
+  // 1b. Check for Hub ID matches (Normalize underscores)
+  const normUpper = upper.replace(/\s+/g, '_');
+  const hubMatch = (REGIONAL_HUBS || []).find(h => 
+    h.id.toUpperCase() === normUpper || 
+    h.city.toUpperCase().replace(/\s+/g, '_') === normUpper
+  );
+  if (hubMatch) return hubMatch.region;
+
   // 2. Exact match against location name
   for (const k of Object.keys(LOCATIONS)) {
     if (k.toUpperCase() === upper || LOCATIONS[k].name.toUpperCase() === upper) {
@@ -629,7 +639,7 @@ export function resolveTruckRegion(target: string | { loc?: string } | null | un
   // 5. Asian cities and regional identifiers
   const asiaPatterns = [
     'TOKYO', 'NAGOYA', 'NAGANO', 'SHANGHAI', 'ALMATY', 'BEIJING', 'SINGAPORE', 'SEOUL',
-    'BANGKOK', 'DUBAI', 'HONG KONG', 'ASIA', 'JAPAN', 'CHINA', 'KAZAKHSTAN'
+    'BANGKOK', 'DUBAI', 'HONG KONG', 'ASIA', 'JAPAN', 'CHINA', 'KAZAKHSTAN', 'SHIYAN', 'XI_AN'
   ];
   if (asiaPatterns.some(p => upper.includes(p))) {
     return 'Asia';
@@ -640,7 +650,7 @@ export function resolveTruckRegion(target: string | { loc?: string } | null | un
     'LAGOS', 'IBADAN', 'ENUGU', 'ABUJA', 'KANO', 'MAIDUGURI', 'PORT_HARCOURT', 'PORT HARCOURT',
     'SOKOTO', 'JOS', 'BENIN_CITY', 'BENIN CITY', 'ACCRA', 'KADUNA', 'ILORIN', 'MAKURDI',
     'BAUCHI', 'LOKOJA', 'COTONOU', 'LOME', 'CALABAR', 'UYO', 'KATSINA', 'YOLA', 'MINNA',
-    'AFRICA', 'NIGERIA', 'GHANA', 'BENIN', 'TOGO'
+    'AFRICA', 'NIGERIA', 'GHANA', 'BENIN', 'TOGO', 'LAG_HUB', 'ABJ_HUB', 'KAN_HUB'
   ];
   if (africaPatterns.some(p => upper.includes(p))) {
     return 'Africa';
