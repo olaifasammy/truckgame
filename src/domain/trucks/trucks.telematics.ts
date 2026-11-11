@@ -178,12 +178,15 @@ export function getTruckTelematics(
 
   if (pctCompleted < 3.8) {
     // Phase 1: Cargo Loading & Inspection
-    state = 'loading';
-    phase = 'Terminal Loading';
-    stateLabel = 'CARGO DOCK LOADING & WEIGHBRIDGE';
-    stateDescription = `Docked at ${activeJob.from} terminal warehouse. Securing ${activeJob.cargo} payload (${activeJob.weight || 18}t) & validating bridge axle weights.`;
-    stateBadgeColor = '#38bdf8';
-    stateIcon = '📦';
+    const isRepositioning = activeJob.kind === 'move' || !activeJob.cargoId;
+    state = isRepositioning ? 'parking' : 'loading';
+    phase = isRepositioning ? 'Staging for Transit' : 'Terminal Loading';
+    stateLabel = isRepositioning ? 'PRE-TRIP INSPECTION / STAGING' : 'CARGO DOCK LOADING & WEIGHBRIDGE';
+    stateDescription = isRepositioning
+      ? `Unit staged at ${activeJob.from} depot. Performing multi-point safety inspection and air system pressure check before repositioning deadhead.`
+      : `Docked at ${activeJob.from} terminal warehouse. Securing ${activeJob.cargo} payload (${activeJob.weight || 18}t) & validating bridge axle weights.`;
+    stateBadgeColor = isRepositioning ? '#94a3b8' : '#38bdf8';
+    stateIcon = isRepositioning ? '📋' : '📦';
     speedKmh = 0;
     throttlePct = 0;
     brakePct = 100;
@@ -254,12 +257,15 @@ export function getTruckTelematics(
     brakeTempC = 240;
   } else if (pctCompleted >= 97.5) {
     // Phase 6: Consignee Dock Unloading
-    state = 'unloading';
-    phase = 'Final Bay Unloading';
-    stateLabel = 'CONSIGNEE DOCK BAY UNLOADING';
-    stateDescription = `Reversed into ${activeJob.to} receiving dock bay #4. Digital consignment bill of lading signed; palletized cargo extraction in progress.`;
-    stateBadgeColor = '#38bdf8';
-    stateIcon = '🏁';
+    const isRepositioning = activeJob.kind === 'move' || !activeJob.cargoId;
+    state = isRepositioning ? 'parking' : 'unloading';
+    phase = isRepositioning ? 'Final Docking' : 'Final Bay Unloading';
+    stateLabel = isRepositioning ? 'TERMINAL ARRIVAL / SHUTDOWN' : 'CONSIGNEE DOCK BAY UNLOADING';
+    stateDescription = isRepositioning
+      ? `Repositioning complete. Unit arrived at ${activeJob.to} hub terminal; engaging parking brake and performing post-trip diagnostic shutdown.`
+      : `Reversed into ${activeJob.to} receiving dock bay #4. Digital consignment bill of lading signed; palletized cargo extraction in progress.`;
+    stateBadgeColor = isRepositioning ? '#94a3b8' : '#38bdf8';
+    stateIcon = isRepositioning ? '🅿️' : '🏁';
     speedKmh = 0;
     throttlePct = 0;
     brakePct = 100;

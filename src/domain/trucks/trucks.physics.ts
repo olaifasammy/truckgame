@@ -4,15 +4,15 @@ import { Driver } from '../drivers/drivers.types';
 import { TRAIT_REGISTRY } from '../drivers/drivers.names';
 
 export const PART_WEAR_COEFFICIENTS: Record<string, number> = {
-  engine: 0.0001,
-  transmission: 0.00008,
-  brakes: 0.00015,
-  tires: 0.0002,
-  windshield: 0.00002,
-  oilFilter: 0.0005,
-  fuelFilter: 0.0004,
-  airFilter: 0.0003,
-  suspension: 0.00012
+  engine: 0.0005,
+  transmission: 0.0004,
+  brakes: 0.0008,
+  tires: 0.0012,
+  windshield: 0.0001,
+  oilFilter: 0.0025,
+  fuelFilter: 0.0020,
+  airFilter: 0.0015,
+  suspension: 0.0006
 };
 
 export interface EnvironmentalConditions {

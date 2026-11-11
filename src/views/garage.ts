@@ -314,6 +314,17 @@ function panelHtml(S: GameState, t: Truck, busy: boolean) {
       ? Object.values(DEEPWATER_PORTS).filter(p => p.region !== originPort.region && isRegionUnlocked(S, p.region))
       : [];
 
+    const truckRegion = LOCATIONS[t.loc]?.region;
+    // Filter available destinations to ONLY owned hubs in the SAME region
+    const ownedHubsInRegion = (S.depots || []).map((depotId: string) => {
+      const cityKey = depotId.replace('hub_', '').toUpperCase();
+      // Handle special cases if city keys don't match exactly
+      if (cityKey === 'LOS ANGELES') return 'LOS_ANGELES';
+      return cityKey;
+    }).filter((cityKey: string) => {
+      return cityKey !== t.loc && LOCATIONS[cityKey]?.region === truckRegion;
+    });
+
     return `
       <div style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08); background:#0a0f1d; padding:12px; border-radius:8px; border:1px solid #1f293d;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -321,39 +332,38 @@ function panelHtml(S: GameState, t: Truck, busy: boolean) {
           <span style="font-size:9px; color:var(--mu); font-family:monospace;">BILL OF LADING TRANSIT</span>
         </div>
 
-        <!-- Quick Location Dropdown Transfer -->
-        <div style="margin-bottom:12px; background:#070a12; border:1px solid #161e2e; border-radius:6px; padding:8px 10px;">
-          <div style="font-size:8px; font-weight:800; color:var(--mu); text-transform:uppercase; margin-bottom:4px;">Select Destination Terminal Location</div>
-          <div style="display:flex; gap:6px;">
-            <select id="transfer-city-${t.id}" style="flex:1; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:6px 8px; border-radius:6px; outline:none;">
-              ${Object.keys(CITIES).filter(c => c !== t.loc && LOCATIONS[c]?.region === LOCATIONS[t.loc]?.region).map(c => {
-                const loc = LOCATIONS[c];
-                return `<option value="${c}">${loc?.name || c} (${loc?.region || ''})</option>`;
-              }).join('')}
-            </select>
-            <button class="btn gold" style="padding:6px 12px; font-size:10px; font-weight:900;" onclick="const sel = document.getElementById('transfer-city-${t.id}'); if(sel) { window.__actions?.get('move')?.({ id: '${t.id}', city: sel.value }); }">
-              TRANSFER
-            </button>
+        <!-- Terminal Transfer Dropdown -->
+        <div style="margin-bottom:12px; background:#070a12; border:1px solid #161e2e; border-radius:6px; padding:12px;">
+          <div style="font-size:9px; font-weight:800; color:var(--mu); text-transform:uppercase; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+            <span>📍 SELECT DESTINATION TERMINAL</span>
+            <span style="font-size:7px; color:var(--gold); background:rgba(193,154,91,0.1); padding:2px 6px; border-radius:4px;">OWNED HUBS ONLY</span>
           </div>
+          
+          ${ownedHubsInRegion.length > 0 ? `
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <select id="transfer-city-${t.id}" style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:11px; font-weight:700; padding:10px; border-radius:8px; outline:none; appearance:none;">
+                ${ownedHubsInRegion.map(c => {
+                  const loc = LOCATIONS[c];
+                  const info = transportInfo(S, t, c);
+                  return `<option value="${c}">${loc?.name || c} — ${info.km}km (ETA: ${dur(info.ms)})</option>`;
+                }).join('')}
+              </select>
+              <button class="btn gold" style="width:100%; padding:10px; font-size:11px; font-weight:900; letter-spacing:0.5px;" onclick="const sel = document.getElementById('transfer-city-${t.id}'); if(sel) { window.__actions?.get('move')?.({ id: '${t.id}', city: sel.value }); }">
+                CONFIRM RELOCATION & DISPATCH
+              </button>
+            </div>
+          ` : `
+            <div style="padding:16px; text-align:center; background:rgba(239,68,68,0.05); border:1px dashed rgba(239,68,68,0.3); border-radius:8px;">
+              <div style="font-size:11px; font-weight:800; color:#f87171;">NO OTHER HUBS IN ${truckRegion?.toUpperCase()}</div>
+              <div style="font-size:9px; color:var(--mu); margin-top:4px; line-height:1.4;">
+                To relocate this tractor via highway, you must first purchase another hub terminal in the same region.
+              </div>
+            </div>
+          `}
         </div>
 
-        <div style="font-size:9px; font-weight:800; color:var(--mu); text-transform:uppercase; margin-bottom:6px;">Or Select Regional Terminal Grid:</div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; max-height:180px; overflow-y:auto; padding-right:2px;">
-          ${Object.keys(CITIES).filter(c => c !== t.loc && LOCATIONS[c]?.region === LOCATIONS[t.loc]?.region).map(c => {
-            const i = transportInfo(S, t, c);
-            const loc = LOCATIONS[c];
-            return `
-              <button class="btn alt" style="display:flex; flex-direction:column; align-items:flex-start; padding:8px 10px; text-align:left; border-radius:6px;" data-act="move" data-id="${t.id}" data-city="${c}" ${i.why ? 'disabled' : ''}>
-                <div style="font-size:11px; font-weight:800; color:var(--tx);">${loc?.name || c} <span style="font-size:8px; color:var(--gold); font-family:monospace;">[${loc?.region || 'Regional'}]</span></div>
-                <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:2px;">
-                  ${i.km} km · ETA ${dur(i.ms)}
-                </div>
-              </button>
-            `;
-          }).join('')}
-        </div>
-        <div style="font-size:8px; color:var(--mu); font-family:monospace; margin-top:6px; text-align:center;">
-          ✓ Intra-regional highway transit only · Cross-continental highway deadhead prohibited
+        <div style="font-size:8px; color:var(--mu); font-family:monospace; margin-top:6px; text-align:center; padding:0 12px; line-height:1.4;">
+          ✓ Intra-regional relocation only · Payout includes deadhead fuel compensation · Fleet maintenance active at destination hub
         </div>
 
         ${originPort ? `
@@ -912,9 +922,40 @@ export default {
       ${renderHubConsole(S, garageRegionFilter)}
 
       ${!selectedHub ? `
-        <div class="sec" style="margin:16px 0 8px; display:flex; justify-content:space-between; align-items:center;">
-          <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">${garageRegionFilter.toUpperCase()} REGIONAL LOGISTICS VIEW</span>
-          <span style="font-size:9px; color:var(--mu); font-family:monospace;">${activeList.length} EN-ROUTE · ${unstationedTrucks.length} UNSTATIONED</span>
+        <!-- Regional Logistics Strategic Overview -->
+        <div style="background:#0e1320; border:1px solid #1f293d; border-radius:10px; padding:16px; margin-bottom:14px; position:relative; overflow:hidden;">
+          <div style="display:flex; justify-content:space-between; align-items:flex-end;">
+            <div>
+              <div style="display:flex; align-items:center; gap:8px; font-size:10px; font-weight:800; color:var(--gold); letter-spacing:1.2px; text-transform:uppercase; margin-bottom:4px;">
+                <span style="display:inline-block; width:8px; height:8px; background:var(--gold); border-radius:50%; box-shadow:0 0 8px var(--gold);"></span>
+                ${garageRegionFilter.toUpperCase()} ACTIVE LOGISTICS NETWORK
+              </div>
+              <div style="font-size:18px; font-weight:900; color:var(--tx); letter-spacing:-0.2px;">
+                Regional Operational Intelligence
+              </div>
+            </div>
+            <div style="text-align:right;">
+              <div style="font-size:8px; color:var(--mu); text-transform:uppercase; font-family:monospace; font-weight:700; letter-spacing:0.5px; margin-bottom:2px;">FLEET DEPLOYMENT</div>
+              <div style="font-size:16px; font-weight:900; color:var(--tx); font-family:monospace;">
+                ${activeList.length}<span style="font-size:10px; color:var(--mu); font-weight:600; margin-left:4px;">UNITS ACTIVE IN CORRIDOR</span>
+              </div>
+            </div>
+          </div>
+          
+          <div style="margin-top:12px; display:flex; gap:16px; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px;">
+            <div style="display:flex; flex-direction:column;">
+              <span style="font-size:8px; color:var(--mu); text-transform:uppercase; font-weight:700;">TOTAL CAPACITY</span>
+              <span style="font-size:11px; font-weight:800; color:var(--tx); font-family:monospace;">${S.fleet.filter((t: any) => resolveTruckRegion(t) === garageRegionFilter).length} TRACTORS</span>
+            </div>
+            <div style="display:flex; flex-direction:column;">
+              <span style="font-size:8px; color:var(--mu); text-transform:uppercase; font-weight:700;">EXTERNAL STAGING</span>
+              <span style="font-size:11px; font-weight:800; color:${unstationedTrucks.length > 0 ? '#f87171' : 'var(--grn)'}; font-family:monospace;">${unstationedTrucks.length} UNSTATIONED</span>
+            </div>
+            <div style="display:flex; flex-direction:column; margin-left:auto; text-align:right;">
+              <span style="font-size:8px; color:var(--mu); text-transform:uppercase; font-weight:700;">NETWORK STATUS</span>
+              <span style="font-size:9px; font-weight:900; color:var(--gold); font-family:monospace;">✓ OPTIMAL THROUGHPUT</span>
+            </div>
+          </div>
         </div>
 
         <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
@@ -1010,7 +1051,14 @@ export default {
         ` : ''}
       `}
 
-      ${openId !== null ? truck(S, S.fleet.find((x: any) => x.id === openId)) : ''}
+      ${(() => {
+        if (openId === null) return '';
+        const targetTruck = S.fleet.find((x: any) => x.id === openId);
+        if (!targetTruck) return '';
+        // If we are in hub view and the truck is already visible in the paged list, don't double-render it
+        if (selectedHub && currentTrucks.some(ct => ct.id === targetTruck.id)) return '';
+        return truck(S, targetTruck);
+      })()}
       ${activeJobSelectorTruckId !== null ? renderJobSelectorOverlay(S) : ''}
       ${renderHitchModal(S)}
       ${renderTelematicsOverlay(S)}

@@ -183,17 +183,54 @@ export function syncUsage(t: any, km: number, metrics: any, env?: EnvironmentalC
   const transLoss = parseFloat(((km / 1000) * 0.8).toFixed(1));
   t.fluids.transmissionOil = Math.max(0, Math.round((t.fluids.transmissionOil !== undefined ? t.fluids.transmissionOil : 100) - transLoss));
 
-  // Serious Road Accident Simulation (Rare event)
-  if (S && Math.random() < 0.0001) {
-    const damage = 40 + Math.random() * 30;
-    Object.values(t.components).forEach((c: any) => {
-      c.health = Math.max(0, parseFloat((c.health - damage).toFixed(2)));
-    });
-    pushNote(S, `SERIOUS ROAD ACCIDENT: Unit #${t.id} (${t.name}) was involved in a major collision. Critical damage sustained to all components.`, {
-      title: 'MAJOR COLLISION',
-      type: 'alert',
-      priority: 2
-    });
+  // --- INCIDENT SIMULATION ---
+  // We use a more realistic weighted probability for road incidents.
+  // Factors: distance, component health, weather, driver skill.
+  const tireHealth = (t.components?.tires?.health || 100) / 100;
+  const engineHealth = (t.components?.engine?.health || 100) / 100;
+  const brakesHealth = (t.components?.brakes?.health || 100) / 100;
+  
+  const riskMultiplier = (env?.weather === 'snow' ? 2.5 : env?.weather === 'rain' ? 1.5 : 1.0);
+  const healthRisk = (2 - tireHealth) * (2 - brakesHealth) * (2 - engineHealth);
+  
+  const baseIncidentChance = (km / 1000) * 0.008 * riskMultiplier * healthRisk;
+  const roll = Math.random();
+
+  if (S && roll < baseIncidentChance) {
+    if (roll < baseIncidentChance * 0.05) {
+      // 5% of incidents are MAJOR ACCIDENTS
+      const damage = 35 + Math.random() * 40;
+      Object.values(t.components).forEach((c: any) => {
+        c.health = Math.max(0, parseFloat((c.health - damage).toFixed(2)));
+      });
+      const fine = 2500 + Math.floor(Math.random() * 5000);
+      S.money = Math.max(0, S.money - fine);
+      pushNote(S, `MAJOR ROAD ACCIDENT: Unit #${t.id} (${t.name}) collided with another vehicle. Total loss of cargo and severe chassis damage. Insurance deductible + towing: -$${fine.toLocaleString()}`, {
+        title: 'CRITICAL ACCIDENT',
+        type: 'alert',
+        priority: 2
+      });
+      S.reputation = Math.max(0, (S.reputation || 0) - 50);
+    } else if (roll < baseIncidentChance * 0.4) {
+      // 35% are MECHANICAL BREAKDOWNS (due to low health)
+      const towFee = 850 + Math.floor(Math.random() * 1200);
+      S.money = Math.max(0, S.money - towFee);
+      t.components.engine.health = Math.max(5, t.components.engine.health - 15);
+      pushNote(S, `MECHANICAL BREAKDOWN: ${t.name} suffered a drivetrain failure near ${t.loc}. Roadside assistance and emergency towing: -$${towFee.toLocaleString()}`, {
+        title: 'BREAKDOWN',
+        type: 'ops',
+        priority: 1
+      });
+    } else {
+      // 60% are MINOR INCIDENTS (Tire blowout, mirror clip, etc.)
+      const minorCost = 200 + Math.floor(Math.random() * 600);
+      S.money = Math.max(0, S.money - minorCost);
+      t.components.tires.health = Math.max(0, t.components.tires.health - 10);
+      pushNote(S, `MINOR INCIDENT: Tire blowout on ${t.name} during transit. Emergency mobile repair: -$${minorCost.toLocaleString()}`, {
+        title: 'ROADSIDE REPAIR',
+        type: 'ops'
+      });
+    }
   }
 
   t.odometer += km;

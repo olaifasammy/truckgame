@@ -17,6 +17,7 @@ let activeChassisFilter: string = 'all';
 let selectedModelKey: string | null = null;
 let configQuantity = 1;
 let configTrailer: TrailerType | 'none' = 'none';
+let configRegion: RegionName | null = null;
 let configDestination = 'LAGOS';
 
 // Mature, Authentic Manufacturer Profile Metadata
@@ -179,19 +180,39 @@ action('filter-chassis', d => {
 action('inspect-truck', d => {
   selectedModelKey = (d as any).model;
   configQuantity = 1;
-  const m = selectedModelKey ? TRUCK_MODELS[selectedModelKey] : null;
-  configTrailer = m && m.haul.length > 0 ? m.haul[0] : 'none';
+  configTrailer = 'none'; // Default to Bobtail to prevent accidental purchases
   
   const S = (window as any).__getStore?.();
   if (S) {
     const owned = getOwnedHubs(S);
     if (owned.length > 0) {
-      configDestination = owned[0].city;
+      const firstHub = owned[0];
+      configRegion = firstHub.region;
+      configDestination = firstHub.city;
     } else {
+      configRegion = 'Africa';
       configDestination = 'LAGOS';
     }
   } else {
+    configRegion = 'Africa';
     configDestination = 'LAGOS';
+  }
+  refresh();
+});
+
+action('config-region', d => {
+  const newRegion = (d as any).region as RegionName;
+  configRegion = newRegion;
+  
+  const S = (window as any).__getStore?.();
+  if (S) {
+    const owned = getOwnedHubs(S);
+    const hubsInRegion = owned.filter(h => h.region === newRegion);
+    if (hubsInRegion.length > 0) {
+      configDestination = hubsInRegion[0].city;
+    } else {
+      configDestination = ''; // No hubs in this region
+    }
   }
   refresh();
 });
@@ -709,35 +730,56 @@ function renderConfiguratorModal(S: any, inspectedModel: TruckModel | null, tota
 
         <!-- 1. Trailer Attachment Specification -->
         <div style="margin-bottom:14px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <span style="font-size:10px; font-weight:800; color:var(--tx); text-transform:uppercase; letter-spacing:0.5px;">1. Fifth-Wheel Trailer Coupling</span>
-            <span style="font-size:10px; color:var(--mu); font-family:monospace;">${configTrailer === 'none' ? 'Tractor Only' : (TRAILERS[configTrailer as keyof typeof TRAILERS] || configTrailer)}</span>
           </div>
-          <div style="display:flex; flex-wrap:wrap; gap:6px;">
-            <button class="btn ${configTrailer === 'none' ? 'gold' : 'alt'}" style="padding:6px 10px; font-size:10px; font-weight:800;" data-act="config-trailer" data-trailer="none">
-              Bobtail (No Trailer)
-            </button>
+          <select style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:11px; font-weight:700; padding:10px; border-radius:8px; outline:none; appearance:none;" onchange="window.__actions?.get('config-trailer')?.({ trailer: this.value })">
+            <option value="none" ${configTrailer === 'none' ? 'selected' : ''}>Bobtail (No Trailer)</option>
             ${inspectedModel.haul.map((h: string) => `
-              <button class="btn ${configTrailer === h ? 'gold' : 'alt'}" style="padding:6px 10px; font-size:10px; font-weight:800;" data-act="config-trailer" data-trailer="${h}">
+              <option value="${h}" ${configTrailer === h ? 'selected' : ''}>
                 ${TRAILERS[h as keyof typeof TRAILERS] || h} (+${fmt(TRAILER_PRICES[h as TrailerType] || 15000)})
-              </button>
+              </option>
             `).join('')}
-          </div>
+          </select>
         </div>
 
         <!-- 2. Delivery Destination Depot -->
         <div style="margin-bottom:14px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-            <span style="font-size:10px; font-weight:800; color:var(--tx); text-transform:uppercase; letter-spacing:0.5px;">2. Terminal Depot Delivery</span>
-            <span style="font-size:10px; color:var(--gold); font-family:monospace; font-weight:700;">${configDestination} DEPOT</span>
+          <div style="font-size:10px; font-weight:800; color:var(--tx); text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">2. Regional Logistics & Depot Delivery</div>
+          
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+            <!-- Region Selection -->
+            <div>
+              <div style="font-size:8px; color:var(--mu); text-transform:uppercase; margin-bottom:4px; font-weight:700;">OPERATING REGION</div>
+              <select style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:8px; border-radius:6px; outline:none; appearance:none;" onchange="window.__actions?.get('config-region')?.({ region: this.value })">
+                ${['Africa', 'Europe', 'America', 'Asia'].filter(r => isRegionUnlocked(S, r as RegionName)).map(r => `
+                  <option value="${r}" ${configRegion === r ? 'selected' : ''}>${r.toUpperCase()}</option>
+                `).join('')}
+              </select>
+            </div>
+
+            <!-- Hub Selection (Filtered by Region) -->
+            <div>
+              <div style="font-size:8px; color:var(--mu); text-transform:uppercase; margin-bottom:4px; font-weight:700;">HUB TERMINAL</div>
+              <select style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:8px; border-radius:6px; outline:none; appearance:none;" onchange="window.__actions?.get('config-dest')?.({ city: this.value })">
+                ${(() => {
+                  const regionHubs = getOwnedHubs(S).filter(h => h.region === configRegion);
+                  if (regionHubs.length === 0) return '<option value="">NO HUBS AVAILABLE</option>';
+                  return regionHubs.map(hub => `
+                    <option value="${hub.city}" ${configDestination === hub.city ? 'selected' : ''}>
+                      ${hub.city} DEPOT
+                    </option>
+                  `).join('');
+                })()}
+              </select>
+            </div>
           </div>
-          <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:4px;">
-            ${getOwnedHubs(S).map(hub => `
-              <button class="btn ${configDestination === hub.city ? 'gold' : 'alt'}" style="padding:6px 12px; font-size:10px; font-weight:800; white-space:nowrap;" data-act="config-dest" data-city="${hub.city}">
-                ${hub.city}
-              </button>
-            `).join('')}
-          </div>
+          
+          ${getOwnedHubs(S).filter(h => h.region === configRegion).length === 0 ? `
+            <div style="margin-top:8px; padding:8px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.2); border-radius:6px; font-size:9px; color:#f87171; text-align:center; font-weight:700;">
+              ⚠️ NO OWNED HUBS IN THIS REGION. PLEASE SELECT ANOTHER REGION OR PURCHASE A HUB.
+            </div>
+          ` : ''}
         </div>
 
         <!-- 3. Fleet Order Batch Quantity Stepper -->
@@ -777,8 +819,8 @@ function renderConfiguratorModal(S: any, inspectedModel: TruckModel | null, tota
         </div>
 
         <!-- Order Confirmation CTA -->
-        <button class="btn gold" style="width:100%; padding:12px; font-size:12px; font-weight:900; letter-spacing:0.5px; text-transform:uppercase;" data-act="execute-batch-buy" ${!canAfford || !hasSpace ? 'disabled' : ''}>
-          ${!hasSpace ? 'TERMINAL BERTH CAPACITY EXCEEDED' : !canAfford ? 'INSUFFICIENT OPERATING CAPITAL' : `EXECUTE COMMERCIAL PURCHASE (${fmt(totalPrice)})`}
+        <button class="btn gold" style="width:100%; padding:12px; font-size:12px; font-weight:900; letter-spacing:0.5px; text-transform:uppercase;" data-act="execute-batch-buy" ${!canAfford || !hasSpace || !configDestination ? 'disabled' : ''}>
+          ${!hasSpace ? 'TERMINAL BERTH CAPACITY EXCEEDED' : !canAfford ? 'INSUFFICIENT OPERATING CAPITAL' : !configDestination ? 'SELECT VALID DELIVERY DEPOT' : `EXECUTE COMMERCIAL PURCHASE (${fmt(totalPrice)})`}
         </button>
       </div>
     </div>

@@ -5,7 +5,7 @@ import { CARGO_TYPES } from '../cargo/registry';
 import { CITIES, LOCATIONS, RegionName } from '../../../data/world';
 import { rnd, toast } from '../../../core/ui';
 import { BiddingEngine } from '../bids/engine';
-import { distKm, getRouteEnv } from '../../../systems/calc';
+import { distKm, getRouteEnv, fuelCostForTrip } from '../../../systems/calc';
 import { getCompanyProgression } from '../../company/progression';
 import { SAMPLE_TENDERS } from '../../logistics/network';
 import { getDynamicCorporateTenders } from '../../contracts/tenders';
@@ -231,7 +231,23 @@ export class FreightEngine {
     }
 
     const calculatedPay = tender ? Math.round((tender.ratePerDelivery || 15000) * (0.94 + Math.random() * 0.12)) : Math.round(baseKm * rate);
-    const pay = Math.max(450, calculatedPay);
+    
+    // DEADHEAD FUEL PRICING: If destination is NOT a hub, calculate return fuel cost and add it to pay
+    let deadheadFuelCompensation = 0;
+    const isDestinationHub = ownedHubsInRegion.includes(to);
+    if (!isDestinationHub && S && S.fleet && S.fleet.length > 0) {
+      // Find nearest owned hub in region
+      const nearestHub = ownedHubsInRegion.sort((a, b) => distKm(to, a) - distKm(to, b))[0];
+      if (nearestHub) {
+        const dhKm = distKm(to, nearestHub);
+        // Estimate fuel cost for an average truck returning empty
+        const avgTruck = S.fleet[0];
+        const fuelLiters = fuelCostForTrip(dhKm, avgTruck, 0, routeEnv);
+        deadheadFuelCompensation = Math.round(fuelLiters * 1.35); // Add fuel cost + 35% operational overhead
+      }
+    }
+
+    const pay = Math.max(450, calculatedPay + deadheadFuelCompensation);
 
     // Dedicated 2-Way Round-Trip Turnaround Contracts
     const isRoundTrip = !options.isAuction && !options.tenderId && Math.random() < 0.25;

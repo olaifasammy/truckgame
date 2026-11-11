@@ -252,9 +252,9 @@ export const DispatchExecution = {
         t.loc = a.to;
       }
 
-      processScheduledRepair(S, t.id);
       syncUsage(t, km, st, a.env, S);
       applyWear(t, km, a.weight || 0, a.env, drv);
+      processScheduledRepair(S, t.id);
 
       if (drv) {
         drv.fatigue = 0; drv.hosHours = 0; drv.hosRestUntil = null;
@@ -295,9 +295,20 @@ export const DispatchExecution = {
         t.loc = a.to; // Update location to the turnaround point
       } else if (!isDestinationUnlockedHub) {
         // CRITICAL FIX: Truck delivered to an UNOWNED city. 
-        // We MUST force an immediate deadhead return to the origin hub.
+        // We MUST force an immediate deadhead return to the origin hub or the nearest regional hub.
         const now = Date.now();
-        const dhKm = a.km || distKm(a.to, a.from); // Return distance
+        
+        // Find the most logical return destination (Nearest Owned Hub)
+        const ownedHubs = (S.depots || []).map((id: string) => {
+          const hubKey = id.replace('hub_', '').toUpperCase();
+          return hubKey === 'LOS ANGELES' ? 'LOS_ANGELES' : hubKey;
+        });
+        
+        const nearestHub = ownedHubs
+          .filter((h: string) => LOCATIONS[h] && LOCATIONS[h].region === LOCATIONS[a.to].region)
+          .sort((a_hub: string, b_hub: string) => distKm(a.to, a_hub) - distKm(a.to, b_hub))[0] || a.from;
+
+        const dhKm = distKm(a.to, nearestHub); // Return distance to nearest hub
         const stReturn = stats(S, t, 0); // Empty return
         
         // HASTE: Speed up empty deadhead returns to base (35% faster) since they don't generate pay
@@ -308,7 +319,7 @@ export const DispatchExecution = {
           kind: 'move',
           cargo: 'Terminal Return (Deadhead)',
           from: a.to,
-          to: a.from,
+          to: nearestHub,
           dh: 0,
           km: dhKm,
           pay: 0,
@@ -320,7 +331,7 @@ export const DispatchExecution = {
 
         t.status = 'busy';
         t.loc = a.to; // Logically at destination before starting return
-        pushNote(S, `⚠️ ${t.name} delivered to external city (${a.to}). No owned hub facility found. Unit is deadheading back to ${a.from} Terminal.`, {
+        pushNote(S, `⚠️ ${t.name} delivered to external city (${a.to}). Unit is deadheading to nearest terminal (${nearestHub}).`, {
           title: 'AUTO-RETURN DISPATCH',
           type: 'ops',
           priority: 1
@@ -341,11 +352,14 @@ export const DispatchExecution = {
 
     if (a.kind === 'move') return;
 
+    // --- LOGISTICS ANALYTICS: ENSURE WE DON'T DOUBLE-COUNT DEADHEADS ---
+    S.loads++;
+    // -----------------------------------------------------------------
+
     // Financials
     let finalPay = a.pay;
     
     S.money += finalPay;
-    S.loads++;
     S.stats.earned += finalPay;
     S.stats.km += a.km;
     
