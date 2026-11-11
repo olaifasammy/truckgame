@@ -147,11 +147,8 @@ export function renderHubConsole(S: any, currentRegion: RegionName): string {
   // STRICT RULE: Only show hubs that the user has unlocked/acquired
   const unlockedHubsInRegion = REGIONAL_HUBS.filter(h => h.region === currentRegion && (S.depots || []).includes(h.id));
 
-  // If active hub is invalid or not in unlocked list, auto-select the first unlocked hub
-  if (!activeGarageHubId || !unlockedHubsInRegion.some(h => h.id === activeGarageHubId)) {
-    activeGarageHubId = unlockedHubsInRegion[0]?.id || '';
-  }
-
+  // We no longer auto-select the first hub if empty, because empty means "Enroute View"
+  
   // If no hubs are unlocked in this region yet
   if (unlockedHubsInRegion.length === 0) {
     return `
@@ -184,8 +181,12 @@ export function renderHubConsole(S: any, currentRegion: RegionName): string {
         <span style="font-size:8px; color:var(--mu); font-family:monospace;">SELECT OPERATIONAL HUB</span>
       </div>
 
-      <!-- Hub Selector Buttons (Only Unlocked Hubs, No 'All Hubs' option) -->
+      <!-- Hub Selector Buttons -->
       <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:4px;">
+        <button class="btn ${!activeGarageHubId ? 'gold' : 'alt'}" style="padding:6px 12px; font-size:10px; font-weight:800; white-space:nowrap; border-radius:6px; display:flex; align-items:center; gap:6px;" data-act="garage-hub-select" data-hub-id="">
+          <span>🛰️</span>
+          <span>EN-ROUTE</span>
+        </button>
         ${unlockedHubsInRegion.map(hub => {
           const totalBerths = getHubTotalBerths(S, hub.id);
           const trucksAtThisHub = getTrucksAtHub(S, hub.city);

@@ -20,6 +20,8 @@ import { isRegionUnlocked, REGIONAL_HUBS } from '../domain/logistics/network';
 import { renderHubConsole, activeGarageHubId, setActiveGarageHub } from './garage/hub-console';
 import { isCityUnlockedHub, getHubForCity } from '../domain/hubs/hub-facility';
 import { DispatchActions } from '../domain/dispatch/actions';
+import { CARGO_TYPES } from '../domain/freight/cargo/registry';
+import { renderCargoBadge } from '../domain/freight/cargo/cargo-svgs';
 
 let openId: number | null = null, panel: string | null = null;
 let hitchModalTruckId: number | null = null;
@@ -30,11 +32,7 @@ export let garageRegionFilter: RegionName = 'Africa';
 
 export function setGarageRegionFilter(r: RegionName) {
   garageRegionFilter = r;
-  const S = (window as any).__getStore?.();
-  if (S) {
-    const hubsInNewRegion = REGIONAL_HUBS.filter(h => h.region === r && (S.depots || []).includes(h.id));
-    setActiveGarageHub(hubsInNewRegion[0]?.id || '');
-  }
+  setActiveGarageHub(''); // Default to Enroute when changing regions
   garagePage = 1;
   refresh();
 }
@@ -85,12 +83,7 @@ action('garage-filter', d => {
 action('garage-region', d => {
   const reg = (d as any).region || 'Africa';
   garageRegionFilter = reg as RegionName;
-  const S = (window as any).__getStore?.();
-  if (S) {
-    S.activeRegionFilter = garageRegionFilter;
-    const hubsInNewRegion = REGIONAL_HUBS.filter(h => h.region === garageRegionFilter && (S.depots || []).includes(h.id));
-    setActiveGarageHub(hubsInNewRegion[0]?.id || '');
-  }
+  setActiveGarageHub('');
   garagePage = 1;
   refresh();
 });
@@ -98,12 +91,7 @@ action('garage-region', d => {
 action('garage-region-select', d => {
   const val = (d as any).value || 'Africa';
   garageRegionFilter = val as RegionName;
-  const S = (window as any).__getStore?.();
-  if (S) {
-    S.activeRegionFilter = garageRegionFilter;
-    const hubsInNewRegion = REGIONAL_HUBS.filter(h => h.region === garageRegionFilter && (S.depots || []).includes(h.id));
-    setActiveGarageHub(hubsInNewRegion[0]?.id || '');
-  }
+  setActiveGarageHub('');
   garagePage = 1;
   refresh();
 });
@@ -198,55 +186,62 @@ action('sell-truck', d => {
           drv.assignedTruckId = null;
         }
       }
-
+      
+      S.money += resaleValue;
       S.fleet.splice(idx, 1);
-      S.money = (S.money || 0) + resaleValue;
-
-      toast(`✅ Sold Truck #${truckId} (${truck.name || model?.name || 'Vehicle'}) for $${resaleValue.toLocaleString()} resale value! Funds added to treasury.`, 'success');
+      toast(`Truck sold for $${resaleValue.toLocaleString()}. Funds credited to treasury.`, 'success');
     });
     refresh();
   }
 });
 
-action('unhitch-trailer', d => {
-  FleetService.hitchTrailer(+(d as any).id, null);
-  refresh();
-});
-
-action('open-hitch-modal', d => {
-  hitchModalTruckId = +(d as any).id;
-  refresh();
-});
-
-action('close-hitch-modal', () => {
-  hitchModalTruckId = null;
-  refresh();
-});
+action('open-hitch-modal', d => { hitchModalTruckId = +(d as any).id; refresh(); });
+action('close-hitch-modal', () => { hitchModalTruckId = null; refresh(); });
 
 action('hitch-trailer', d => {
-  FleetService.hitchTrailer(+(d as any).id, (d as any).trailer as any);
+  const truckId = +(d as any).id;
+  const trailerType = (d as any).trailer;
+  set(S => {
+    const t = S.fleet.find((x: any) => x.id === truckId);
+    if (!t) return;
+    const yardIdx = (S.trailers || []).indexOf(trailerType);
+    if (yardIdx === -1) return toast('Trailer no longer in HQ yard.', 'err');
+    if (t.trailer) S.trailers.push(t.trailer);
+    t.trailer = trailerType;
+    S.trailers.splice(yardIdx, 1);
+    toast(`Trailer coupled to Unit #${truckId}.`, 'success');
+  });
   hitchModalTruckId = null;
+  refresh();
+});
+
+action('unhitch-trailer', d => {
+  const truckId = +(d as any).id;
+  set(S => {
+    const t = S.fleet.find((x: any) => x.id === truckId);
+    if (!t || !t.trailer) return;
+    if (!S.trailers) S.trailers = [];
+    S.trailers.push(t.trailer);
+    t.trailer = null;
+    toast(`Trailer unhitched and returned to HQ storage yard.`, 'info');
+  });
   refresh();
 });
 
 action('book-roro-shipping', d => {
   const truckId = +(d as any).id;
-  const toCity = (d as any).city;
+  const destCity = (d as any).city;
   set(S => {
-    bookMaritimeShipping(S, truckId, toCity);
+    bookMaritimeShipping(S, truckId, destCity);
   });
   refresh();
 });
 
-
-const meter = (label: string, value: number, formattedText: string, alertThreshold = 30) => {
-  const isAlert = value < alertThreshold;
-  const barColor = isAlert ? 'var(--red)' : value < 60 ? 'var(--gold)' : 'var(--grn)';
-  
+const bar = (label: string, value: number, barColor: string, formattedText: string, isAlert?: boolean) => {
   return `
-    <div style="background:#0a0f1d; padding:8px 10px; border-radius:6px; border:1px solid #1f293d;">
-      <div style="display:flex; justify-content:space-between; font-size:9px; margin-bottom:4px; font-weight:700;">
-        <span style="color:var(--mu); text-transform:uppercase; letter-spacing:0.3px;">${label}</span>
+    <div style="margin-bottom:8px;">
+      <div style="display:flex; justify-content:space-between; margin-bottom:3px; font-size:9px; font-family:monospace;">
+        <span style="color:var(--mu); font-weight:700;">${label}</span>
         <span style="color:${isAlert ? 'var(--red)' : 'var(--tx)'}; font-family:monospace; font-weight:800;">${formattedText}</span>
       </div>
       <div style="height:4px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;">
@@ -549,302 +544,129 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
             <div style="font-size:11px; font-weight:800; color:${(t.fluids.coolant || 100) < 25 ? '#ef4444' : 'var(--grn)'}; font-family:monospace;">${t.fluids.coolant || 100}%</div>
           </div>
           <div style="background:#111827; border:1px solid #1f293d; padding:6px 8px; border-radius:6px;">
-            <div style="font-size:7px; color:var(--mu); font-weight:700;">TRANSMISSION FLUID</div>
-            <div style="font-size:11px; font-weight:800; color:var(--gold); font-family:monospace;">${t.fluids.transmissionOil || 100}%</div>
+            <div style="font-size:7px; color:var(--mu); font-weight:700;">LUBE OIL</div>
+            <div style="font-size:11px; font-weight:800; color:${(t.fluids.oil || 40) < 15 ? '#ef4444' : 'var(--tx)'}; font-family:monospace;">${t.fluids.oil || 40}L</div>
           </div>
         </div>
 
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:8px;">
-          <span style="font-size:9px; color:var(--mu);">Low coolant risks engine thermal shutdown during desert heatwaves.</span>
-          <button class="btn alt" style="padding:4px 8px; font-size:8px; font-weight:800; color:var(--grn); border-color:rgba(34,197,94,0.3);" data-act="top-up-consumables" data-id="${t.id}" ${busy ? 'disabled' : ''}>
-            💧 FLUSH & REFILL FLUIDS ($450)
+        <!-- Powertrain Upgrades Options -->
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+          <div>
+            <div style="font-size:8px; color:var(--mu); font-weight:700; margin-bottom:4px;">HEAVY-HAUL GEARBOX</div>
+            <select style="width:100%; background:#111827; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:800; padding:6px; border-radius:4px; outline:none;" onchange="window.__actions?.get('set-powertrain-gearbox')?.({ id: '${t.id}', gearbox: this.value })" ${busy ? 'disabled' : ''}>
+              <option value="standard" ${t.upgrades?.gearbox === 'standard' ? 'selected' : ''}>Standard 12-Spd</option>
+              <option value="16spd_crawler" ${t.upgrades?.gearbox === '16spd_crawler' ? 'selected' : ''}>16-Spd Crawler ($12k)</option>
+            </select>
+          </div>
+          <div>
+            <div style="font-size:8px; color:var(--mu); font-weight:700; margin-bottom:4px;">REAR AXLE DIFFERENTIAL</div>
+            <select style="width:100%; background:#111827; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:800; padding:6px; border-radius:4px; outline:none;" onchange="window.__actions?.get('set-powertrain-axle')?.({ id: '${t.id}', ratio: this.value })" ${busy ? 'disabled' : ''}>
+              <option value="standard" ${t.upgrades?.axleRatio === 'standard' ? 'selected' : ''}>Highway 2.64:1</option>
+              <option value="heavy_diff_lock" ${t.upgrades?.axleRatio === 'heavy_diff_lock' ? 'selected' : ''}>Heavy 3.42:1 ($8k)</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn alt" style="width:100%; margin-top:10px; padding:6px; font-size:9px; font-weight:800;" data-act="top-up-consumables" data-id="${t.id}">
+          TOP UP ALL CONSUMABLES (OIL, COOLANT, ADBLUE)
+        </button>
+      </div>
+
+      <!-- Component Condition & Preventive Maintenance -->
+      <div style="background:#0a0f1d; border:1px solid #1e293b; padding:10px 12px; border-radius:8px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="color:var(--gold); font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">SYSTEMS DIAGNOSTICS & COMPONENT HEALTH</span>
+          <span style="font-size:8px; font-family:monospace; color:${avgCond < 85 ? 'var(--gold)' : 'var(--mu)'};">AVG HEALTH: ${avgCond}%</span>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div>
+            ${bar('ENGINE / BLOCK', t.components.engine.health, t.components.engine.health < 70 ? 'var(--red)' : 'var(--grn)', `${t.components.engine.health}%`)}
+            ${bar('TRANSMISSION', t.components.transmission.health, t.components.transmission.health < 75 ? 'var(--red)' : 'var(--grn)', `${t.components.transmission.health}%`)}
+            ${bar('BRAKE SYSTEM', t.components.brakes.health, t.components.brakes.health < 60 ? 'var(--red)' : 'var(--grn)', `${t.components.brakes.health}%`, t.components.brakes.health < 60)}
+          </div>
+          <div>
+            ${bar('TIRE TREAD', t.components.tires.health, t.components.tires.health < 40 ? 'var(--red)' : 'var(--grn)', `${t.components.tires.health}%`, t.components.tires.health < 40)}
+            ${bar('SUSPENSION', t.components.suspension.health, t.components.suspension.health < 80 ? 'var(--red)' : 'var(--grn)', `${t.components.suspension.health}%`)}
+            ${bar('EXHAUST / DPF', t.components.exhaust.health, t.components.exhaust.health < 70 ? 'var(--red)' : 'var(--grn)', `${t.components.exhaust.health}%`)}
+          </div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;">
+          <button class="btn gold" style="padding:8px; font-size:10px; font-weight:900;" data-act="hoist-truck-to-bay" data-id="${t.id}">
+            HOIST TO REPAIR BAY
+          </button>
+          <button class="btn alt" style="padding:8px; font-size:10px; font-weight:800;" data-act="inspect" data-id="${t.id}" ${busy ? 'disabled' : ''}>
+            RUN OBD-II SCAN ($${inspectCost()})
           </button>
         </div>
-
-        <!-- Gearbox, Differential & Tire Selector Controls -->
-        <div style="display:flex; flex-direction:column; gap:6px;">
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <div style="font-size:10px; font-weight:800; color:var(--tx);">Gearbox: ${t.upgrades?.gearbox === '16spd_crawler' ? '16-Speed Heavy Crawler' : '12-Speed Automated Highway'}</div>
-              <div style="font-size:8px; color:var(--mu);">16-speed adds low crawler ratios for heavy 50t+ lowboys & grades.</div>
-            </div>
-            <div style="display:flex; gap:4px;">
-              <button class="btn ${t.upgrades?.gearbox !== '16spd_crawler' ? 'gold' : 'alt'}" style="padding:3px 8px; font-size:8px; font-weight:800;" data-act="set-powertrain-gearbox" data-id="${t.id}" data-gearbox="12spd_highway" ${busy ? 'disabled' : ''}>
-                12-SPD
-              </button>
-              <button class="btn ${t.upgrades?.gearbox === '16spd_crawler' ? 'gold' : 'alt'}" style="padding:3px 8px; font-size:8px; font-weight:800;" data-act="set-powertrain-gearbox" data-id="${t.id}" data-gearbox="16spd_crawler" ${busy ? 'disabled' : ''}>
-                16-SPD CRAWLER ($12.5k)
-              </button>
-            </div>
-          </div>
-
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <div style="font-size:10px; font-weight:800; color:var(--tx);">Axle Differential: ${t.upgrades?.axleRatio === 'heavy_diff_lock' ? '3.42:1 Inter-Axle Diff Lock' : '2.64:1 Highway Eco'}</div>
-              <div style="font-size:8px; color:var(--mu);">Diff lock provides +15% wet/snow traction; 2.64 saves 6% highway fuel.</div>
-            </div>
-            <div style="display:flex; gap:4px;">
-              <button class="btn ${t.upgrades?.axleRatio !== 'heavy_diff_lock' ? 'gold' : 'alt'}" style="padding:3px 8px; font-size:8px; font-weight:800;" data-act="set-powertrain-axle" data-id="${t.id}" data-ratio="highway_eco" ${busy ? 'disabled' : ''}>
-                2.64 ECO
-              </button>
-              <button class="btn ${t.upgrades?.axleRatio === 'heavy_diff_lock' ? 'gold' : 'alt'}" style="padding:3px 8px; font-size:8px; font-weight:800;" data-act="set-powertrain-axle" data-id="${t.id}" data-ratio="heavy_diff_lock" ${busy ? 'disabled' : ''}>
-                3.42 DIFF LOCK ($8.5k)
-              </button>
-            </div>
-          </div>
-
-          <div style="display:flex; justify-content:space-between; align-items:center;">
-            <div>
-              <div style="font-size:10px; font-weight:800; color:var(--tx);">Tires: ${t.upgrades?.tireCompound === 'all_terrain_winter' ? '❄️ All-Terrain Winter M+S' : '🍃 Low Rolling Resistance Eco'}</div>
-              <div style="font-size:8px; color:var(--mu);">Winter treads prevent jackknife/black ice; Eco saves 8% fuel.</div>
-            </div>
-            <div style="display:flex; gap:4px;">
-              <button class="btn ${t.upgrades?.tireCompound !== 'all_terrain_winter' ? 'gold' : 'alt'}" style="padding:3px 8px; font-size:8px; font-weight:800;" data-act="set-powertrain-tires" data-id="${t.id}" data-compound="highway_eco" ${busy ? 'disabled' : ''}>
-                ECO TIRES ($4.5k)
-              </button>
-              <button class="btn ${t.upgrades?.tireCompound === 'all_terrain_winter' ? 'gold' : 'alt'}" style="padding:3px 8px; font-size:8px; font-weight:800;" data-act="set-powertrain-tires" data-id="${t.id}" data-compound="all_terrain_winter" ${busy ? 'disabled' : ''}>
-                WINTER M+S ($6.0k)
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
-
-      <!-- Fifth Wheel Coupling & Trailer Management -->
-      <div style="background:#0a0f1d; border:1px solid #1e293b; padding:10px 12px; border-radius:8px; margin-bottom:12px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-          <span style="color:var(--gold); font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">FIFTH WHEEL COUPLING STATUS</span>
-          <span style="font-size:8px; font-family:monospace; color:var(--mu);">SAE J700 PIN</span>
-        </div>
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div style="display:flex; align-items:center; gap:8px;">
-            <span style="font-size:18px;">${t.trailer ? getTrailerIcon(t.trailer) : '🚛'}</span>
-            <div>
-              <div style="font-size:11px; font-weight:800; color:var(--tx);">
-                ${t.trailer ? (TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer) : 'Bobtail (No Trailer Attached)'}
-              </div>
-              <div style="font-size:8px; color:var(--mu); font-family:monospace; margin-top:1px;">
-                Endorsements: ${m.haul.map((h: any) => TRAILERS[h as keyof typeof TRAILERS] || h).join(' · ')}
-              </div>
-            </div>
-          </div>
-          <div style="display:flex; gap:6px;">
-            ${t.trailer ? `
-              <button class="btn alt" style="padding:4px 8px; font-size:9px; font-weight:800; color:var(--red); border-color:rgba(239,68,68,0.3);" data-act="unhitch-trailer" data-id="${t.id}" ${busy ? 'disabled' : ''}>
-                UNHITCH
-              </button>
-            ` : ''}
-            <button class="btn gold" style="padding:4px 10px; font-size:9px; font-weight:900;" data-act="open-hitch-modal" data-id="${t.id}" ${busy ? 'disabled' : ''}>
-              ${t.trailer ? 'SWAP' : 'HITCH TRAILER'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Custom Livery & Paint Color Selector -->
-      <div style="background:#0a0f1d; border:1px solid #1e293b; padding:10px 12px; border-radius:8px; margin-bottom:12px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <span style="color:var(--gold); font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">CUSTOM LIVERY & CAB PAINT</span>
-          <span style="font-size:8px; font-family:monospace; color:var(--mu);">RGB HEX FINISH</span>
-        </div>
-        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
-          ${['#2b4a6f', '#c0392b', '#c9a24f', '#27ae60', '#111827', '#e5e7eb', '#d97706', '#7c3aed', '#0284c7', '#db2777'].map(c => `
-            <button class="btn alt" style="width:24px; height:24px; border-radius:50%; background:${c}; border:2px solid ${t.color === c ? 'var(--gold)' : 'rgba(255,255,255,0.2)'}; padding:0; cursor:pointer;" data-act="set-truck-color" data-id="${t.id}" data-color="${c}" title="Paint ${c}"></button>
-          `).join('')}
-        </div>
-      </div>
-
-      <!-- Primary Dispatch Action -->
-      <button class="btn gold" style="width:100%; margin-bottom:12px; padding:10px; font-weight:900; font-size:11px; letter-spacing:0.5px; text-transform:uppercase;" data-act="dispatch" data-id="${t.id}" ${hasCompatibleJobs && !busy ? '' : 'disabled'}>
-        ${ic('send')} ${busy ? 'TRACTOR CURRENTLY IN TRANSIT' : hasCompatibleJobs ? 'DISPATCH ON COMPATIBLE FREIGHT LOAD' : 'NO COMPATIBLE FREIGHT LOADS ON BOARD'}
-      </button>
-
-      <!-- Terminal Maintenance & Fleet Actions -->
-      <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:6px;">
-        <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px;" data-act="refuel" data-id="${t.id}" ${busy || fuelPctVal >= 99 ? 'disabled' : ''}>
-          ${ic('fuel')}
-          <span style="font-size:8px; font-weight:800;">${fuelPctVal < 99 ? fmt(refuelCost(t)) : 'FULL'}</span>
-          <span style="font-size:7px; color:var(--mu);">REFUEL</span>
-        </button>
-
-        ${(() => {
-          const compValues = Object.values(t.components || {}).map((c: any) => typeof c === 'number' ? c : c?.health ?? 100);
-          const minCompHealth = compValues.length > 0 ? Math.min(...compValues) : 100;
-          const needsService = avgCond < 85 || minCompHealth < 65 || (t.fluids?.coolant || 100) < 60 || (t.fluids?.oil || 40) < 25;
-          const isScheduled = S.repairs?.some((r: any) => r.truckId === t.id && r.scheduled);
-          const isRepairing = t.status === 'repair' || S.repairs?.some((r: any) => r.truckId === t.id && !r.scheduled);
-
-          if (isRepairing) {
-            return `
-              <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px; border-color:#ef4444; background:rgba(239,68,68,0.15);" data-act="hoist-truck-to-bay" data-id="${t.id}">
-                ${ic('wrench')}
-                <span style="font-size:8px; font-weight:900; color:#ef4444;">ON HOIST</span>
-                <span style="font-size:7px; color:#fca5a5;">VIEW BAY</span>
-              </button>
-            `;
-          }
-          if (isScheduled) {
-            return `
-              <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px; border-color:#38bdf8; background:rgba(56,189,248,0.12);" data-act="hoist-truck-to-bay" data-id="${t.id}">
-                ${ic('wrench')}
-                <span style="font-size:8px; font-weight:900; color:#38bdf8;">SCHEDULED</span>
-                <span style="font-size:7px; color:#93c5fd;">ON ARRIVAL</span>
-              </button>
-            `;
-          }
-          if (needsService) {
-            return `
-              <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px; border-color:rgba(239,68,68,0.5); background:rgba(239,68,68,0.12);" data-act="hoist-truck-to-bay" data-id="${t.id}">
-                ${ic('wrench')}
-                <span style="font-size:8px; font-weight:900; color:#ef4444;">SERVICE DUE</span>
-                <span style="font-size:7px; color:#fca5a5;">${busy ? 'PRE-PAY BAY' : 'HOIST TO BAY'}</span>
-              </button>
-            `;
-          }
-          return `
-            <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px; opacity:0.85;" data-act="hoist-truck-to-bay" data-id="${t.id}">
-              ${ic('wrench')}
-              <span style="font-size:8px; font-weight:800; color:var(--grn);">OPTIMAL</span>
-              <span style="font-size:7px; color:var(--mu);">MINT 100%</span>
-            </button>
-          `;
-        })()}
-
-        <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px; border-color:rgba(239,68,68,0.4); background:rgba(239,68,68,0.06);" data-act="sell-truck" data-id="${t.id}" ${busy ? 'disabled' : ''}>
-          ${ic('trash')}
-          <span style="font-size:8px; font-weight:900; color:#ef4444;">${fmt(Math.round((TRUCK_MODELS[t.modelId]?.price || 150000) * 0.65))}</span>
-          <span style="font-size:7px; font-weight:800; color:#ef4444;">SELL</span>
-        </button>
-
-        <button class="btn alt ${panel === 'driver' ? 'gold' : ''}" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px;" data-act="panel" data-kind="driver">
-          ${ic('user')}
-          <span style="font-size:8px; font-weight:800; max-width:45px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${drv ? drv.name.split(' ')[0].toUpperCase() : 'CDL'}</span>
-          <span style="font-size:7px; color:var(--mu);">DRIVER</span>
-        </button>
-
-        <button class="btn alt ${panel === 'move' ? 'gold' : ''}" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px;" data-act="panel" data-kind="move">
-          ${ic('route')}
-          <span style="font-size:8px; font-weight:800;">${t.loc.slice(0, 5)}</span>
-          <span style="font-size:7px; color:var(--mu);">RELOCATE</span>
-        </button>
-      </div>
-
-      ${panelHtml(S, t, busy)}
     </div>
   `;
 }
 
-function truck(S: any, t: any) {
+function truck(S: GameState, t: Truck) {
   const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
   const a = S.active.find((x: any) => x.truck === t.id);
   const now = Date.now();
-  const o = openId === t.id;
-  const drv = S.drivers.find((x: any) => x.id === t.driverId);
-
-  const isBusy = !!a || t.status === 'busy';
-  const isDelivering = t.status === 'delivering';
-  const berthNum = (t.id % 6) + 1;
-  const locInfo = LOCATIONS[t.loc];
-  const cityName = locInfo?.name || t.loc;
-
-  let parkingLocationText = '';
-  if (isBusy && a) {
-    parkingLocationText = `🛣️ En-Route: ${a.from} → ${a.to} (ETA: ${dur(Math.max(0, (a.arrivesAt || now) - now))})`;
-  } else if (isDelivering) {
-    const remaining = Math.max(0, (t.availableAt || now) - now);
-    parkingLocationText = `🚚 Delivery in Transit: Factory ➔ ${cityName} (ETA: ${dur(remaining)})`;
-  } else {
-    const isOwnedHub = isCityUnlockedHub(S, t.loc);
-    const hubDef = getHubForCity(t.loc);
-    if (isOwnedHub) {
-      parkingLocationText = `🏢 Parked at ${hubDef?.name || `${cityName} Terminal`} · Berth #${berthNum}`;
-    } else {
-      parkingLocationText = `📍 Staged at ${cityName} Freight Depot · Bay #${berthNum}`;
-    }
-  }
-
-  const status = t.status === 'repair' ? { txt: 'IN REPAIR BAY', color: '#ef4444' }
-    : isDelivering ? { txt: 'LOGISTICS TRANSIT', color: 'var(--gold)' }
-    : isBusy ? { txt: a?.kind === 'move' ? 'REPOSITIONING' : 'ON HIGHWAY', color: 'var(--blu)' }
-    : drv ? { txt: 'PARKED · READY', color: 'var(--grn)' }
-    : { txt: 'PARKED (NO CDL)', color: 'var(--mu)' };
-
-  if (t.status === 'repair') {
-    const rep = S.repairs?.find((r: any) => r.truckId === t.id && !r.scheduled);
-    if (rep) {
-      parkingLocationText = `🛠️ Undergoing Maintenance: ${rep.parts.join(', ').toUpperCase()}`;
-    }
-  }
-
-  const fuelPctVal = Math.round((t.fluids.fuel / m.tankSize) * 100);
-  const healthValues = Object.values(t.components).map((c: any) => c.health);
-  const avgCond = Math.round(healthValues.reduce((sum: number, b: any) => sum + b, 0) / healthValues.length);
+  const open = openId === t.id;
+  const busy = !!a || t.status === 'delivering';
+  const needsService = Object.values(t.components).some((c: any) => c.health < 75) || (t.fluids.fuel / m.tankSize) < 0.25;
 
   return `
-    <div class="card ${o ? 'open' : ''}" style="margin-bottom:12px; background:#111827; border:1px solid ${o ? 'var(--gold)' : '#1f293d'}; border-radius:10px; padding:14px; cursor:pointer; transition:border-color 0.2s;" data-act="truck-toggle" data-id="${t.id}">
-      <!-- Unit Banner Header -->
-      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+    <div class="card" style="margin-bottom:10px; border:1px solid ${open ? 'var(--gold)' : needsService ? 'rgba(193,154,91,0.3)' : 'var(--line)'};">
+      <div style="display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-act="truck-toggle" data-id="${t.id}">
         <div style="display:flex; align-items:center; gap:12px;">
-          <!-- OEM Manufacturer Logo -->
-          <div style="width:54px; height:36px; background:#080c16; border:1px solid #1a2336; border-radius:6px; display:grid; place-items:center; flex-shrink:0; padding:2px;">
-            ${getManufacturerLogoSvg(m.brand, 48, 30)}
+          <div style="width:40px; height:40px; background:#080c16; border:1px solid #1a2336; border-radius:8px; display:grid; place-items:center; flex-shrink:0;">
+             ${getManufacturerLogoSvg(m.brand, 32, 20)}
           </div>
           <div>
-            <div style="display:flex; align-items:center; gap:6px; font-size:9px; color:var(--mu); font-family:monospace;">
-              <span style="color:var(--gold); font-weight:800;">UNIT #${t.id}</span>
-              <span>·</span>
-              <span style="color:${isBusy ? '#38bdf8' : isDelivering ? 'var(--gold)' : 'var(--grn)'}; font-weight:700;">${isBusy ? 'ACTIVE IN TRANSIT' : isDelivering ? 'LOGISTICS DELIVERY' : `PARKED: ${t.loc}`}</span>
-              <span>·</span>
-              <span>${drv ? drv.name : 'NO DRIVER'}</span>
-            </div>
-            <div style="font-size:15px; font-weight:900; color:var(--tx); margin-top:2px;">
-              ${t.name}
-            </div>
-            <div style="font-size:10px; font-weight:800; color:${isBusy ? '#38bdf8' : 'var(--gold)'}; font-family:monospace; margin-top:2px;">
-              ${parkingLocationText}
-            </div>
-            <div style="display:flex; align-items:center; gap:6px; margin-top:3px; flex-wrap:wrap;">
-              <span style="font-size:10px; color:var(--mu); font-family:monospace;">
-                ${m.brand} ${m.name} (${m.axle} · ${m.engine.hp} HP)
-              </span>
-              <!-- Trailer Badge -->
-              <span style="display:inline-flex; align-items:center; gap:4px; background:${t.trailer ? 'rgba(193,154,91,0.12)' : 'rgba(255,255,255,0.05)'}; border:1px solid ${t.trailer ? 'var(--gold)' : '#1e293b'}; border-radius:4px; padding:2px 6px; font-size:9px; font-weight:800; color:${t.trailer ? 'var(--gold)' : 'var(--mu)'};">
-                <span>${t.trailer ? getTrailerIcon(t.trailer) : '🚛'}</span>
-                <span>${t.trailer ? (TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer).toUpperCase() : 'BOBTAIL (NO TRAILER)'}</span>
-              </span>
+            <div style="font-size:14px; font-weight:900; color:var(--tx);">${m.name}</div>
+            <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
+              Unit #${t.id} · ${t.loc} DEPOT · ${m.axle} ${m.engine.hp}HP
             </div>
           </div>
         </div>
-
-        <div style="text-align:right;">
-          <div style="font-size:9px; font-weight:900; color:${status.color}; letter-spacing:0.5px; font-family:monospace; margin-bottom:4px;">
-            ${status.txt}
+        <div style="text-align:right; display:flex; align-items:center; gap:12px;">
+           <div style="font-size:10px; font-weight:800; color:${busy ? '#38bdf8' : 'var(--grn)'}; text-transform:uppercase; font-family:monospace;">
+            ${t.status === 'delivering' ? 'TRANSIT' : busy ? 'ACTIVE' : 'IDLE'}
           </div>
-          <div style="display:flex; gap:6px; align-items:center; justify-content:flex-end; font-size:9px; font-family:monospace; color:var(--mu);">
-            <span>FUEL <b>${fuelPctVal}%</b></span>
-            <span>·</span>
-            <span>HLTH <b style="color:${avgCond < 40 ? 'var(--red)' : 'var(--tx)'};">${avgCond}%</b></span>
-          </div>
+          <div style="color:var(--mu); transform:rotate(${open ? '90deg' : '0deg'}); transition:transform 0.2s;">${ic('chev')}</div>
         </div>
       </div>
 
-      <!-- Vehicle Blueprint Silhouette Preview (Bobtail or Connected Rig) -->
-      <div style="background:#0a0f1d; border:1px solid #1e293b; border-radius:6px; padding:6px 12px; margin-bottom:8px; display:flex; justify-content:center; align-items:center; min-height:64px;">
-        ${getTruckSilhouetteSvg(m, o ? 'var(--gold)' : 'rgba(193,154,91,0.6)', m.axle, t.trailer, t.color)}
-      </div>
+      ${open ? `
+        <div style="margin-top:14px; background:#060a14; border:1px solid #1e293b; border-radius:8px; padding:10px; position:relative; min-height:80px; display:flex; align-items:center; justify-content:center;">
+          ${getTruckSilhouetteSvg(m, 'var(--gold)', m.axle, t.trailer)}
+        </div>
 
-      <!-- Quick Telematics Bar -->
-      <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--mu); font-family:monospace; padding-top:4px;">
-        <span>ODO: <b style="color:var(--tx);" data-truck-odo="${t.id}">${Math.round(t.odometer).toLocaleString()} km</b></span>
-        <span style="color:var(--gold); font-weight:700;">${o ? 'COLLAPSE TELEMATICS ▲' : 'EXPAND TELEMATICS ▼'}</span>
-      </div>
+        <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-top:12px;">
+          <button class="btn ${panel === 'driver' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:9px; font-weight:800;" data-act="panel" data-kind="driver">
+            ${ic('user')} DRIVER
+          </button>
+          <button class="btn alt" style="padding:8px 4px; font-size:9px; font-weight:800;" data-act="open-hitch-modal" data-id="${t.id}" ${busy ? 'disabled' : ''}>
+            🔗 HITCH
+          </button>
+          <button class="btn ${panel === 'move' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:9px; font-weight:800;" data-act="panel" data-kind="move" ${busy ? 'disabled' : ''}>
+            📍 MOVE
+          </button>
+          <button class="btn gold" style="padding:8px 4px; font-size:9px; font-weight:900;" data-act="dispatch" data-id="${t.id}" ${busy || !t.driverId ? 'disabled' : ''}>
+            🚀 DISPATCH
+          </button>
+        </div>
 
-      ${o ? body(S, t, m, a, now) : ''}
+        ${panelHtml(S, t, busy)}
+        ${body(S, t, m, a, now)}
+
+        <!-- Sell Truck Action -->
+        <div style="margin-top:14px; border-top:1px solid rgba(239,68,68,0.1); padding-top:10px; display:flex; justify-content:flex-end;">
+          <button class="btn" style="padding:6px 12px; font-size:9px; font-weight:900; color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.2);" data-act="sell-truck" data-id="${t.id}" ${busy ? 'disabled' : ''}>
+            LIQUIDATE VEHICLE ASSET (SELL)
+          </button>
+        </div>
+      ` : ''}
     </div>
   `;
 }
 
-function renderHitchModal(S: any) {
+function renderHitchModal(S: GameState) {
   if (hitchModalTruckId === null) return '';
   const t = S.fleet.find((x: any) => x.id === hitchModalTruckId);
   if (!t) return '';
@@ -953,11 +775,9 @@ export default {
   icon: 'garage',
   label: 'Garage',
   render(S: GameState) {
-    const busy = S.fleet.filter((t: any) => t.status === 'busy').length;
     const upCost = upgradeGarageCost(S.garageLevel || 0);
     const canUp = S.money >= upCost;
 
-    // Helper to check if truck needs servicing or is in repair
     const truckNeedsRepair = (t: Truck) => {
       if (t.status === 'repair') return true;
       if ((S as any).repairs?.some((r: any) => r.truckId === t.id)) return true;
@@ -968,9 +788,6 @@ export default {
       return avgHealth < 85 || minHealth < 65 || lowFluids;
     };
 
-    const repairUnitsCount = S.fleet.filter((t: any) => truckNeedsRepair(t)).length;
-
-    // Authoritative region listing - only show unlocked regions
     const allRegions: RegionName[] = ['Africa', 'Europe', 'America', 'Asia'];
     const unlockedRegions: RegionName[] = allRegions.filter(r => isRegionUnlocked(S, r));
     const activeUnlockedRegions: RegionName[] = unlockedRegions.length > 0 ? unlockedRegions : ['Africa'];
@@ -979,40 +796,38 @@ export default {
       garageRegionFilter = activeUnlockedRegions[0];
     }
 
-    // Only look at unlocked hubs in the active region
     const unlockedHubsInRegion = REGIONAL_HUBS.filter(h => h.region === garageRegionFilter && (S.depots || []).includes(h.id));
-    if (!activeGarageHubId || !unlockedHubsInRegion.some(h => h.id === activeGarageHubId)) {
-      setActiveGarageHub(unlockedHubsInRegion[0]?.id || '');
-    }
     const selectedHub = unlockedHubsInRegion.find(h => h.id === activeGarageHubId) || null;
 
-    // Strict Region >> Hub fleet scoping: only trucks stationed at the selected unlocked hub
-    const fleetInScope = selectedHub
-      ? S.fleet.filter((t: any) => (t.loc || '').toUpperCase() === selectedHub.city.toUpperCase())
-      : [];
+    const now = Date.now();
+    const activeList = (S.active || []).filter((a: any) => {
+      const truckObj = (S.fleet || []).find((t: any) => t.id === a.truck);
+      return truckObj && resolveTruckRegion(truckObj) === garageRegionFilter;
+    });
 
-    let filteredFleet = fleetInScope;
-    if (garageFilter === 'parked') {
-      filteredFleet = fleetInScope.filter((t: any) => t.status === 'idle');
-    } else if (garageFilter === 'transit') {
-      filteredFleet = fleetInScope.filter((t: any) => t.status === 'busy' || t.status === 'delivering');
-    } else if (garageFilter === 'repair') {
-      filteredFleet = fleetInScope.filter((t: any) => truckNeedsRepair(t));
+    let fleetInScope: any[] = [];
+    let filteredFleet: any[] = [];
+    let totalPages = 1;
+    let currentTrucks: any[] = [];
+    let readiness = 100;
+
+    if (selectedHub) {
+      fleetInScope = S.fleet.filter((t: any) => (t.loc || '').toUpperCase() === selectedHub.city.toUpperCase());
+      filteredFleet = fleetInScope;
+      if (garageFilter === 'parked') filteredFleet = fleetInScope.filter((t: any) => t.status === 'idle');
+      else if (garageFilter === 'repair') filteredFleet = fleetInScope.filter((t: any) => truckNeedsRepair(t));
+
+      const hubBusy = fleetInScope.filter((t: any) => t.status === 'busy' || t.status === 'delivering').length;
+      readiness = fleetInScope.length > 0 ? Math.round(((fleetInScope.length - hubBusy) / fleetInScope.length) * 100) : 100;
+
+      totalPages = Math.max(1, Math.ceil(filteredFleet.length / TRUCKS_PER_PAGE));
+      if (garagePage > totalPages) garagePage = totalPages;
+      const startIndex = (garagePage - 1) * TRUCKS_PER_PAGE;
+      currentTrucks = filteredFleet.slice(startIndex, startIndex + TRUCKS_PER_PAGE);
     }
 
-    const hubBusy = fleetInScope.filter((t: any) => t.status === 'busy' || t.status === 'delivering').length;
-    const readiness = fleetInScope.length > 0 ? Math.round(((fleetInScope.length - hubBusy) / fleetInScope.length) * 100) : 100;
-
-    const totalPages = Math.max(1, Math.ceil(filteredFleet.length / TRUCKS_PER_PAGE));
-    if (garagePage > totalPages) garagePage = totalPages;
-    if (garagePage < 1) garagePage = 1;
-    const startIndex = (garagePage - 1) * TRUCKS_PER_PAGE;
-    const currentTrucks = filteredFleet.slice(startIndex, startIndex + TRUCKS_PER_PAGE);
-
     return `
-      <!-- Modern FMS Command Console Header -->
       <div style="background:#0e1320; border:1px solid #1f293d; border-radius:12px; padding:14px; margin-bottom:12px; box-shadow:0 8px 24px rgba(0,0,0,0.5);">
-        <!-- Top Title & Expansion Action -->
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.06); padding-bottom:10px;">
           <div>
             <div style="font-size:9px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase; font-family:monospace;">FLEET LOGISTICS COMMAND</div>
@@ -1028,36 +843,34 @@ export default {
           </div>
         </div>
 
-        <!-- 4 Clean Metric Tiles -->
         <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;">
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
-            <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">TOTAL UNITS</div>
+            <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">REGION UNITS</div>
             <div style="font-size:13px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;">
-              ${fleetInScope.length} <span style="font-size:9px; color:var(--mu);">${selectedHub ? `in ${selectedHub.city}` : `in ${garageRegionFilter}`}</span>
+              ${S.fleet.filter((t: any) => resolveTruckRegion(t) === garageRegionFilter).length}
             </div>
           </div>
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
-            <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">PARKED AT HUB</div>
+            <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">PARKED</div>
             <div style="font-size:13px; font-weight:900; color:var(--grn); font-family:monospace; margin-top:2px;">
-              ${fleetInScope.filter((t: any) => t.status === 'idle').length} <span style="font-size:9px; color:var(--mu);">Ready</span>
+              ${S.fleet.filter((t: any) => resolveTruckRegion(t) === garageRegionFilter && t.status === 'idle').length}
             </div>
           </div>
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
-            <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">IN TRANSIT</div>
+            <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">EN-ROUTE</div>
             <div style="font-size:13px; font-weight:900; color:#38bdf8; font-family:monospace; margin-top:2px;">
-              ${fleetInScope.filter((t: any) => t.status === 'busy' || t.status === 'delivering').length} <span style="font-size:9px; color:var(--mu);">Active</span>
+              ${activeList.length}
             </div>
           </div>
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
             <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">READINESS</div>
-            <div style="font-size:13px; font-weight:900; color:${readiness >= 70 ? 'var(--grn)' : 'var(--gold)'}; font-family:monospace; margin-top:2px;">
-              ${readiness}%
+            <div style="font-size:13px; font-weight:900; color:var(--grn); font-family:monospace; margin-top:2px;">
+              ${selectedHub ? readiness : 100}%
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Region Filter Pills (Only Unlocked Regions) -->
       <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:8px; margin-bottom:10px;">
         ${activeUnlockedRegions.map(r => {
           const count = S.fleet.filter((t: any) => resolveTruckRegion(t) === r).length;
@@ -1069,56 +882,90 @@ export default {
         }).join('')}
       </div>
 
-      <!-- LEVEL 2: REGIONS >> HUB TERMINAL CONSOLE -->
       ${renderHubConsole(S, garageRegionFilter)}
 
-      <!-- Fleet Status Filter Tabs -->
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px; flex-wrap:wrap;">
-        <div style="display:flex; gap:6px; flex-wrap:wrap;">
-          <button class="btn ${garageFilter === 'all' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="all">
-            ALL (${fleetInScope.length})
-          </button>
-          <button class="btn ${garageFilter === 'parked' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="parked">
-            PARKED (${fleetInScope.filter((t: any) => t.status === 'idle').length})
-          </button>
-          <button class="btn ${garageFilter === 'transit' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="transit">
-            EN-ROUTE (${fleetInScope.filter((t: any) => t.status === 'busy' || t.status === 'delivering').length})
-          </button>
-          <button class="btn ${garageFilter === 'repair' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="repair">
-            SERVICE / REPAIR (${fleetInScope.filter((t: any) => truckNeedsRepair(t)).length})
-          </button>
+      ${!selectedHub ? `
+        <div class="sec" style="margin:16px 0 8px; display:flex; justify-content:space-between; align-items:center;">
+          <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">${garageRegionFilter.toUpperCase()} ACTIVE CONSIGNMENTS EN-ROUTE</span>
+          <span style="font-size:9px; color:var(--mu); font-family:monospace;">${activeList.length} TRUCKS MOVING</span>
         </div>
-      </div>
 
-      <!-- Paginated Trucks List -->
-      ${currentTrucks.length > 0 
-        ? currentTrucks.map((t: any) => truck(S, t)).join('')
-        : `<div style="padding:28px 20px; text-align:center; background:#0b101d; border:1px dashed #1e2638; border-radius:10px; color:var(--mu); font-family:monospace; font-size:11px; line-height:1.6;">
-            ${selectedHub 
-              ? `No tractors currently stationed at <b>${selectedHub.name}</b>.<br><span style="font-size:10px; color:rgba(255,255,255,0.4);">Trucks dispatched with consignments to ${selectedHub.city} will park here upon arrival and await new jobs, or you can relocate a tractor here.</span>`
-              : 'No vehicles found in this filter category.'}
-          </div>`}
+        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
+          ${activeList.length > 0 ? activeList.map((a: any) => {
+            const truckObj = (S.fleet || []).find((t: any) => t.id === a.truck);
+            const drv = (S.drivers || []).find((d: any) => d.id === truckObj?.driverId);
+            const cargoName = a.cargo || CARGO_TYPES.find(c => c.id === a.cargoId)?.name || 'Commercial Freight';
+            const remainingMs = Math.max(0, a.end - now);
+            const totalDuration = Math.max(1, a.end - a.start);
+            const elapsed = Math.max(0, now - a.start);
+            const pct = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+            const telem = getTruckTelematics(truckObj, a, drv, now);
 
-      <!-- Bottom Center Pagination Bar -->
-      <div style="display:flex; justify-content:center; align-items:center; margin:16px 0; gap:12px; font-family:monospace; font-size:10px;">
-        <button class="btn alt" style="padding:6px 12px; font-size:10px; font-weight:800;" data-act="garage-page-prev" ${garagePage <= 1 ? 'disabled style="opacity:0.35;"' : ''}>
-          ← PREV
-        </button>
-        <span style="color:var(--mu); font-weight:700;">PAGE <b style="color:var(--tx);">${garagePage}</b> OF ${totalPages}</span>
-        <button class="btn alt" style="padding:6px 12px; font-size:10px; font-weight:800;" data-act="garage-page-next" ${garagePage >= totalPages ? 'disabled style="opacity:0.35;"' : ''}>
-          NEXT →
-        </button>
-      </div>
+            return `
+              <div style="background:#0f172a; border:1px solid ${telem.stateBadgeColor}80; border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px; cursor:pointer;" data-act="truck-toggle" data-id="${a.truck}">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                  <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
+                    ${renderCargoBadge(a.cargoId || 'general_freight', { size: 30 })}
+                    <div style="min-width:0; flex:1;">
+                      <div style="display:flex; align-items:center; gap:6px;">
+                        <span style="font-size:12px; font-weight:900; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${cargoName}</span>
+                        ${getDrivingStateBadge(telem.state, true)}
+                      </div>
+                      <div style="font-size:10px; font-family:monospace; color:var(--gold); font-weight:800; margin-top:1px;">
+                        ${a.from} → ${a.to} <span style="color:var(--mu); font-weight:400;">(${a.km}km)</span>
+                      </div>
+                    </div>
+                  </div>
+                  <button class="btn alt" style="padding:4px 8px; font-size:9px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.3); display:flex; align-items:center; gap:4px; flex-shrink:0;" data-act="open-telematics" data-id="${a.truck}">
+                    🛰️ <span data-truck-speed="${a.truck}">${telem.speedKmh > 0 ? `${telem.speedKmh} km/h` : '0 km/h'}</span>
+                  </button>
+                </div>
+                <div style="display:flex; justify-content:space-between; align-items:center; font-size:9px; color:var(--mu); font-family:monospace; margin-top:-2px;">
+                  <span>#${a.truck} · ${drv ? drv.name : 'Driver'} · <b style="color:#38bdf8;">${telem.phase}</b></span>
+                  <span style="color:var(--gold); font-weight:800;" data-eta="${a.end}">${dur(remainingMs)}</span>
+                </div>
+                <div style="height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden;">
+                  <div style="width:${pct}%; height:100%; background:linear-gradient(90deg, #0284c7, #38bdf8); transition:width 0.5s ease;"></div>
+                </div>
+              </div>
+            `;
+          }).join('') : `
+            <div style="padding:40px 20px; text-align:center; background:#0b101d; border:1px dashed #1e2638; border-radius:10px; color:var(--mu); font-family:monospace; font-size:11px; line-height:1.6;">
+              No trucks currently en-route in the ${garageRegionFilter} region.<br>
+              <span style="font-size:10px; color:rgba(255,255,255,0.4);">Select a terminal hub above to manage stationed fleet units.</span>
+            </div>
+          `}
+        </div>
+      ` : `
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px; flex-wrap:wrap;">
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="btn ${garageFilter === 'all' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="all">ALL (${fleetInScope.length})</button>
+            <button class="btn ${garageFilter === 'parked' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="parked">PARKED (${fleetInScope.filter((t: any) => t.status === 'idle').length})</button>
+            <button class="btn ${garageFilter === 'repair' ? 'gold' : 'alt'}" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="garage-filter" data-filter="repair">SERVICE / REPAIR (${fleetInScope.filter((t: any) => truckNeedsRepair(t)).length})</button>
+          </div>
+        </div>
+        ${currentTrucks.length > 0 ? currentTrucks.map((t: any) => truck(S, t)).join('') : `
+          <div style="padding:28px 20px; text-align:center; background:#0b101d; border:1px dashed #1e2638; border-radius:10px; color:var(--mu); font-family:monospace; font-size:11px; line-height:1.6;">
+            No tractors currently stationed at <b>${selectedHub.name}</b>.
+          </div>
+        `}
+        ${totalPages > 1 ? `
+          <div style="display:flex; justify-content:center; align-items:center; margin:16px 0; gap:12px; font-family:monospace; font-size:10px;">
+            <button class="btn alt" style="padding:6px 12px; font-size:10px; font-weight:800;" data-act="garage-page-prev" ${garagePage <= 1 ? 'disabled style="opacity:0.35;"' : ''}>← PREV</button>
+            <span style="color:var(--mu); font-weight:700;">PAGE <b style="color:var(--tx);">${garagePage}</b> OF ${totalPages}</span>
+            <button class="btn alt" style="padding:6px 12px; font-size:10px; font-weight:800;" data-act="garage-page-next" ${garagePage >= totalPages ? 'disabled style="opacity:0.35;"' : ''}>NEXT →</button>
+          </div>
+        ` : ''}
+      `}
+
+      ${openId !== null ? truck(S, S.fleet.find((x: any) => x.id === openId)) : ''}
       ${activeJobSelectorTruckId !== null ? renderJobSelectorOverlay(S) : ''}
       ${renderHitchModal(S)}
       ${renderTelematicsOverlay(S)}
 
-      <!-- Mechanic Workshop & Fleet Diagnostics Gateway -->
       <div class="card" style="margin-top:14px; padding:14px; background:#0f172a; border:1px solid var(--gold); border-radius:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-act="open-workshop-scan">
         <div style="display:flex; align-items:center; gap:12px;">
-          <div style="width:38px; height:38px; background:var(--gold); color:#0a0f1d; border-radius:6px; display:grid; place-items:center; font-size:18px;">
-            ${ic('wrench')}
-          </div>
+          <div style="width:38px; height:38px; background:var(--gold); color:#0a0f1d; border-radius:6px; display:grid; place-items:center; font-size:18px;">${ic('wrench')}</div>
           <div>
             <div style="font-size:13px; font-weight:900; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">Mechanic Workshop & Fleet Diagnostics</div>
             <div style="font-size:10px; color:var(--mu); margin-top:1px;">Enter workshop terminal, run fleet OBD-II health scan & hoist trucks to repair bays</div>
@@ -1129,4 +976,3 @@ export default {
     `;
   }
 };
-

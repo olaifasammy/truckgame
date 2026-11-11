@@ -8,6 +8,7 @@ import { slots } from '../systems/offices';
 import { CITIES } from '../data/world';
 import { getTruckSilhouetteSvg, getTrailerSilhouetteSvg } from '../domain/trucks/trucks.visuals';
 import { getManufacturerLogoSvg } from '../domain/trucks/trucks.logos';
+import { isRegionUnlocked, getOwnedHubs, RegionName } from '../domain/logistics/network';
 
 // State for manufacturer showroom, trailer depot and truck configurator
 let dealershipSection: 'tractors' | 'trailers' = 'tractors';
@@ -180,7 +181,18 @@ action('inspect-truck', d => {
   configQuantity = 1;
   const m = selectedModelKey ? TRUCK_MODELS[selectedModelKey] : null;
   configTrailer = m && m.haul.length > 0 ? m.haul[0] : 'none';
-  configDestination = 'LAGOS';
+  
+  const S = (window as any).__getStore?.();
+  if (S) {
+    const owned = getOwnedHubs(S);
+    if (owned.length > 0) {
+      configDestination = owned[0].city;
+    } else {
+      configDestination = 'LAGOS';
+    }
+  } else {
+    configDestination = 'LAGOS';
+  }
   refresh();
 });
 
@@ -212,6 +224,16 @@ action('config-dest', d => {
 action('execute-batch-buy', () => {
   if (!selectedModelKey) return;
   const tType = configTrailer === 'none' ? null : (configTrailer as TrailerType);
+  
+  const S = (window as any).__getStore?.();
+  if (S) {
+    const owned = getOwnedHubs(S);
+    const isStillOwned = owned.some(h => h.city === configDestination);
+    if (!isStillOwned && owned.length > 0) {
+      configDestination = owned[0].city;
+    }
+  }
+
   buyTruckBatch(selectedModelKey, tType, configQuantity, configDestination);
   selectedModelKey = null;
   refresh();
@@ -498,7 +520,7 @@ export default {
       { name: 'Europe', label: 'European Heavy Commercial Manufacturers', brands: ['Scania', 'Volvo', 'Mercedes-Benz', 'MAN', 'DAF', 'Iveco'] },
       { name: 'America', label: 'American Long-Haul Highway Manufacturers', brands: ['Kenworth', 'Peterbilt', 'Freightliner', 'Mack'] },
       { name: 'Asia', label: 'Asian Severe Duty & Regional Manufacturers', brands: ['Hino', 'Isuzu'] }
-    ];
+    ].filter(r => isRegionUnlocked(S, r.name as RegionName));
 
     return `
       <!-- Dealership Top Banner & Section Navigation -->
@@ -531,7 +553,7 @@ export default {
 
       ${dealershipSection === 'trailers' ? renderTrailerDepot(S) : `
         <!-- Manufacturers categorized by Region -->
-        ${regions.map(r => `
+        ${regions.length > 0 ? regions.map(r => `
           <div style="margin:16px 0 8px; font-size:10px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase; display:flex; align-items:center; gap:8px;">
             <span>${r.label}</span>
             <span style="flex:1; height:1px; background:rgba(255,255,255,0.08);"></span>
@@ -541,7 +563,14 @@ export default {
             if (!info) return '';
             return renderManufacturerCard(brandKey, info, models);
           }).join('')}
-        `).join('')}
+        `).join('') : `
+          <div style="background:#0e1320; border:1px solid #1e2638; border-radius:10px; padding:40px 20px; text-align:center; color:var(--mu); font-size:12px; font-family:monospace; margin-top:20px;">
+            <div style="font-size:24px; margin-bottom:12px;">🛂</div>
+            <div style="color:var(--gold); font-weight:800; margin-bottom:8px; text-transform:uppercase;">Regional Authority Required</div>
+            No manufacturers are located in your currently unlocked operating regions.<br><br>
+            Visit the <b style="color:var(--tx)">COMPANY</b> tab to acquire Operating Authorities for <b>Europe</b>, <b>America</b>, or <b>Asia</b> to access their heavy commercial showrooms.
+          </div>
+        `}
       `}
 
       ${renderConfiguratorModal(S, inspectedModel, totalPrice, canAfford, hasSpace)}
@@ -703,9 +732,9 @@ function renderConfiguratorModal(S: any, inspectedModel: TruckModel | null, tota
             <span style="font-size:10px; color:var(--gold); font-family:monospace; font-weight:700;">${configDestination} DEPOT</span>
           </div>
           <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:4px;">
-            ${Object.keys(CITIES).map(city => `
-              <button class="btn ${configDestination === city ? 'gold' : 'alt'}" style="padding:6px 12px; font-size:10px; font-weight:800; white-space:nowrap;" data-act="config-dest" data-city="${city}">
-                ${city}
+            ${getOwnedHubs(S).map(hub => `
+              <button class="btn ${configDestination === hub.city ? 'gold' : 'alt'}" style="padding:6px 12px; font-size:10px; font-weight:800; white-space:nowrap;" data-act="config-dest" data-city="${hub.city}">
+                ${hub.city}
               </button>
             `).join('')}
           </div>
