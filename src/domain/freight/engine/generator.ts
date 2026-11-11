@@ -330,8 +330,8 @@ export class FreightEngine {
     }
     const limit = S.tenderListingLimit;
     const WINDOW_MS = 5 * 60 * 60 * 1000; // 5 hours
-    while (now - limit.windowStart > WINDOW_MS) {
-      limit.windowStart += WINDOW_MS;
+    if (now - limit.windowStart >= WINDOW_MS) {
+      limit.windowStart = now;
       limit.count = 0;
     }
     return limit;

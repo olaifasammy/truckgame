@@ -17,15 +17,16 @@ import { Truck } from '../domain/trucks/trucks.types';
 import { GameState } from '../types/state';
 import { DEEPWATER_PORTS, getMaritimeShippingQuote, bookMaritimeShipping } from '../domain/fleet/shipping';
 import { isRegionUnlocked } from '../domain/logistics/network';
+import { DispatchActions } from '../domain/dispatch/actions';
 
 let openId: number | null = null, panel: string | null = null;
 let hitchModalTruckId: number | null = null;
 let garagePage = 1;
 const TRUCKS_PER_PAGE = 10;
 let garageFilter: 'all' | 'parked' | 'transit' | 'repair' = 'all';
-export let garageRegionFilter: RegionName | 'All' = 'All';
+export let garageRegionFilter: RegionName = 'America';
 
-export function setGarageRegionFilter(r: RegionName | 'All') {
+export function setGarageRegionFilter(r: RegionName) {
   garageRegionFilter = r;
   garagePage = 1;
   refresh();
@@ -75,8 +76,8 @@ action('garage-filter', d => {
 });
 
 action('garage-region', d => {
-  const reg = (d as any).region || 'All';
-  garageRegionFilter = reg as (RegionName | 'All');
+  const reg = (d as any).region || 'America';
+  garageRegionFilter = reg as RegionName;
   garagePage = 1;
   const S = (window as any).__getStore?.();
   if (S) S.activeRegionFilter = garageRegionFilter;
@@ -84,8 +85,8 @@ action('garage-region', d => {
 });
 
 action('garage-region-select', d => {
-  const val = (d as any).value || 'All';
-  garageRegionFilter = (val === 'all' ? 'All' : val) as (RegionName | 'All');
+  const val = (d as any).value || 'America';
+  garageRegionFilter = val as RegionName;
   garagePage = 1;
   const S = (window as any).__getStore?.();
   if (S) S.activeRegionFilter = garageRegionFilter;
@@ -134,6 +135,14 @@ action('dispatch', d => openJobSelector(+(d as any).id));
 action('assign', d => FleetService.assignDriver(+(d as any).id, (d as any).driver ? +(d as any).driver : null));
 action('move', d => transport(+(d as any).id, (d as any).city));
 action('upgrade-garage', () => upgradeGarage());
+
+action('recall-truck', d => {
+  const truckId = +(d as any).id;
+  set((S: GameState) => {
+    DispatchActions.recallTruck(S, truckId);
+    toast(`Truck #${truckId} recalled to garage.`, 'success');
+  });
+});
 
 action('unhitch-trailer', d => {
   FleetService.hitchTrailer(+(d as any).id, null);
@@ -898,16 +907,13 @@ export default {
     const repairUnitsCount = S.fleet.filter((t: any) => truckNeedsRepair(t)).length;
 
     // Authoritative region listing matching driver workforce
-    const regions: (RegionName | 'All')[] = ['All', 'America', 'Europe', 'Africa', 'Asia'];
+    const regions: RegionName[] = ['America', 'Europe', 'Africa', 'Asia'];
     if (!garageRegionFilter) {
-      garageRegionFilter = 'All';
+      garageRegionFilter = 'America';
     }
 
     // Filter fleet based on selected region
-    let fleetInRegion = S.fleet;
-    if (garageRegionFilter !== 'All') {
-      fleetInRegion = S.fleet.filter((t: any) => resolveTruckRegion(t) === garageRegionFilter);
-    }
+    const fleetInRegion = S.fleet.filter((t: any) => resolveTruckRegion(t) === garageRegionFilter);
 
     let filteredFleet = fleetInRegion;
     if (garageFilter === 'parked') {
@@ -948,7 +954,7 @@ export default {
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
             <div style="font-size:7px; font-weight:800; color:var(--mu); text-transform:uppercase;">TOTAL UNITS</div>
             <div style="font-size:13px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;">
-              ${fleetInRegion.length} <span style="font-size:9px; color:var(--mu);">${garageRegionFilter !== 'All' ? `in ${garageRegionFilter}` : `/ ${slots(S)}`}</span>
+              ${fleetInRegion.length} <span style="font-size:9px; color:var(--mu);">in ${garageRegionFilter}</span>
             </div>
           </div>
           <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:8px 6px; text-align:center;">
@@ -975,7 +981,7 @@ export default {
       <!-- Region Filter Pills (Matching Driver Management) -->
       <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:8px; margin-bottom:10px;">
         ${regions.map(r => {
-          const count = r === 'All' ? S.fleet.length : S.fleet.filter((t: any) => resolveTruckRegion(t) === r).length;
+          const count = S.fleet.filter((t: any) => resolveTruckRegion(t) === r).length;
           return `
             <button class="btn ${garageRegionFilter === r ? 'gold' : 'alt'}" style="padding:6px 12px; font-size:10px; font-weight:800; white-space:nowrap;" data-act="garage-region" data-region="${r}">
               ${r.toUpperCase()} (${count})
