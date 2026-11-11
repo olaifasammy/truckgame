@@ -323,6 +323,20 @@ export class FreightEngine {
     return job;
   }
 
+  static getTenderLimit(S: any) {
+    const now = Date.now();
+    if (!S.tenderListingLimit) {
+      S.tenderListingLimit = { count: 0, windowStart: now, premiumActive: false, premiumExpiresAt: 0 };
+    }
+    const limit = S.tenderListingLimit;
+    const WINDOW_MS = 5 * 60 * 60 * 1000; // 5 hours
+    while (now - limit.windowStart > WINDOW_MS) {
+      limit.windowStart += WINDOW_MS;
+      limit.count = 0;
+    }
+    return limit;
+  }
+
   static replenish(S: any, count = 6) {
     if (!S.jobs) S.jobs = [];
     if (!S.auctions) S.auctions = [];
@@ -359,16 +373,8 @@ export class FreightEngine {
     
     // Inject corporate tender loads if active (Enforce 5 jobs per 5 hours limit unless premium)
     if (S.corporateTenders && S.corporateTenders.length > 0) {
+      const limit = FreightEngine.getTenderLimit(S);
       const now = Date.now();
-      if (!S.tenderListingLimit) S.tenderListingLimit = { count: 0, windowStart: now };
-      
-      const limit = S.tenderListingLimit;
-      const WINDOW_MS = 5 * 60 * 60 * 1000;
-      if (now - limit.windowStart > WINDOW_MS) {
-        limit.windowStart = now;
-        limit.count = 0;
-      }
-
       const isPremium = limit.premiumActive && limit.premiumExpiresAt > now;
       const MAX_FREE_LISTINGS = 5;
 

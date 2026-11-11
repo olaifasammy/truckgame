@@ -21,6 +21,7 @@ import {
 } from '../../domain/fleet/subcontracting';
 import { renderTelematicsOverlay } from '../telematics-modal';
 import { TRUCK_MODELS } from '../../domain/trucks/trucks.data';
+import { FreightEngine } from '../../domain/freight/engine/generator';
 
 let homeBoardMode: 'spot' | 'tenders' | 'subcontract' = 'spot';
 
@@ -249,8 +250,7 @@ export default {
             </span>
             <div style="text-align:right;">
               ${(() => {
-                const limit = S.tenderListingLimit;
-                if (!limit) return '';
+                const limit = FreightEngine.getTenderLimit(S);
                 const isPremium = limit.premiumActive && limit.premiumExpiresAt > Date.now();
                 if (isPremium) {
                   return `<span style="font-size:8px; font-weight:900; color:var(--grn); font-family:monospace; background:rgba(34,197,94,0.1); border:1px solid var(--grn); padding:2px 6px; border-radius:4px;">PREMIUM TENDERS ACTIVE</span>`;
@@ -260,7 +260,7 @@ export default {
                 return `
                   <div style="font-size:8px; font-weight:800; color:var(--mu); font-family:monospace;">
                     FREE TENDER QUOTA: <b style="color:${remaining > 0 ? 'var(--grn)' : '#ef4444'};">${remaining}/5</b>
-                    ${remaining === 0 ? `· RESET IN ${nextReset}m` : ''}
+                    ${remaining === 0 && nextReset > 0 ? `· RESET IN ${nextReset}m` : ''}
                   </div>
                 `;
               })()}
