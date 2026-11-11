@@ -54,7 +54,8 @@ action('refresh-freight-board', () => {
     const cost = 250;
     if (S.money < cost) return toast(`Insufficient funds to refresh freight board. Need $${cost}`, 'err');
     S.money -= cost;
-    S.jobs = [];
+    const securedJobs = (S.jobs || []).filter((j: any) => j.isAuctionWon || j.tenderId);
+    S.jobs = [...securedJobs];
     replenish(S);
     toast('Freight exchange board refreshed ($250 fee paid)!', 'success');
   });
@@ -122,6 +123,18 @@ action('accept-tender', d => {
       const tnd = S.corporateTenders?.find((t: any) => t.id === tenderId);
       toast(`Contract of Affreightment Signed: ${tnd?.client || 'Client'}! Daily scheduled linehaul loads active.`, 'success');
     }
+  });
+});
+
+action('buy-premium-tenders', () => {
+  set(S => {
+    const cost = 25000;
+    if (S.money < cost) return toast(`Insufficient funds for Premium Tenders. Need $${fmt(cost)}`, 'err');
+    S.money -= cost;
+    if (!S.tenderListingLimit) S.tenderListingLimit = { count: 0, windowStart: Date.now(), premiumActive: false, premiumExpiresAt: 0 };
+    S.tenderListingLimit.premiumActive = true;
+    S.tenderListingLimit.premiumExpiresAt = Date.now() + 7 * 24 * 3600000; // 7 days
+    toast('Premium Tenders License Unlocked (7 Days)! Listing limits removed.', 'success');
   });
 });
 
@@ -234,7 +247,24 @@ export default {
             <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">
               FREIGHT CONTRACT MANIFESTS (${filteredJobs.length})
             </span>
-            <span class="mu-tx" style="font-size:9px; font-family:monospace;">${S.active.length} DISPATCHED EN ROUTE</span>
+            <div style="text-align:right;">
+              ${(() => {
+                const limit = S.tenderListingLimit;
+                if (!limit) return '';
+                const isPremium = limit.premiumActive && limit.premiumExpiresAt > Date.now();
+                if (isPremium) {
+                  return `<span style="font-size:8px; font-weight:900; color:var(--grn); font-family:monospace; background:rgba(34,197,94,0.1); border:1px solid var(--grn); padding:2px 6px; border-radius:4px;">PREMIUM TENDERS ACTIVE</span>`;
+                }
+                const remaining = Math.max(0, 5 - (limit.count || 0));
+                const nextReset = Math.ceil((limit.windowStart + (5 * 3600000) - Date.now()) / 60000);
+                return `
+                  <div style="font-size:8px; font-weight:800; color:var(--mu); font-family:monospace;">
+                    FREE TENDER QUOTA: <b style="color:${remaining > 0 ? 'var(--grn)' : '#ef4444'};">${remaining}/5</b>
+                    ${remaining === 0 ? `· RESET IN ${nextReset}m` : ''}
+                  </div>
+                `;
+              })()}
+            </div>
           </div>
 
           ${filteredJobs.length > 0 ? filteredJobs.map((j: any) => renderJobCard(S, j)).join('') : `
@@ -251,13 +281,31 @@ export default {
           </div>
         ` : homeBoardMode === 'tenders' ? `
           <!-- Mode 2: 30-Day Long-Term Corporate Tenders -->
-          <!-- Mode 2: 30-Day Long-Term Corporate Tenders -->
-          <div style="background:#0f172a; border:1px solid var(--gold); border-radius:10px; padding:14px; margin-bottom:14px;">
-            <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">CONTRACTS OF AFFREIGHTMENT</div>
-            <div style="font-size:16px; font-weight:900; color:var(--tx); margin-top:2px;">Exclusive 30-Day Dedicated Linehauls</div>
-            <div style="font-size:10px; color:var(--mu); margin-top:2px; line-height:1.4;">
-              Sign exclusive 30-day enterprise shipping contracts with manufacturing conglomerates. Complete scheduled corridor consignments within strict SLA thresholds to unlock massive completion bonuses.
+          <div style="background:#0f172a; border:1px solid var(--gold); border-radius:10px; padding:14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
+            <div style="flex:1;">
+              <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">CONTRACTS OF AFFREIGHTMENT</div>
+              <div style="font-size:16px; font-weight:900; color:var(--tx); margin-top:2px;">Exclusive 30-Day Dedicated Linehauls</div>
+              <div style="font-size:10px; color:var(--mu); margin-top:2px; line-height:1.4; max-width:85%;">
+                Sign exclusive 30-day enterprise shipping contracts. Note: Free tier is limited to 5 listed jobs per 5 hours.
+              </div>
             </div>
+            ${(() => {
+              const limit = S.tenderListingLimit;
+              const isPremium = limit?.premiumActive && limit?.premiumExpiresAt > Date.now();
+              if (isPremium) {
+                return `
+                  <div style="text-align:center; padding:8px; background:rgba(34,197,94,0.1); border:1px solid var(--grn); border-radius:8px;">
+                    <div style="font-size:8px; color:var(--grn); font-weight:900;">UNLIMITED</div>
+                    <div style="font-size:7px; color:var(--mu); font-family:monospace; margin-top:2px;">EXP: ${new Date(limit.premiumExpiresAt).toLocaleDateString()}</div>
+                  </div>
+                `;
+              }
+              return `
+                <button class="btn gold" style="padding:10px; font-size:10px; font-weight:900; white-space:nowrap;" data-act="buy-premium-tenders">
+                  UPGRADE <br/> $25,000
+                </button>
+              `;
+            })()}
           </div>
 
           <div style="display:flex; flex-direction:column; gap:10px;">

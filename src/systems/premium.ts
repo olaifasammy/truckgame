@@ -5,7 +5,11 @@ import { replenish, makeJob } from './jobs';
 import { addCompanyXp } from '../domain/company/progression';
 
 const FX: Record<string, (S: any) => void> = {
-  refresh: S => { S.jobs = []; replenish(S); },
+  refresh: S => {
+    const securedJobs = (S.jobs || []).filter((j: any) => j.isAuctionWon || j.tenderId);
+    S.jobs = [...securedJobs];
+    replenish(S);
+  },
   vipjobs: S => { S.jobs.push(makeJob(S, true), makeJob(S, true)); },
   xp: S => {
     addCompanyXp(S, 1000, 'Gold Pack XP Boost');
