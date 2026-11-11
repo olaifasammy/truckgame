@@ -328,9 +328,12 @@ export class FreightEngine {
     if (!S.auctions) S.auctions = [];
 
     // STRICTOR LIMIT ENFORCEMENT: Section 2.1 & 6.4 compliance
-    // Ensure the board never exceeds 17 total jobs. Truncate immediately if over limit.
+    // Ensure the board never exceeds 17 total jobs, protecting secured won bids and tenders.
     if (S.jobs.length > 17) {
-      S.jobs = S.jobs.slice(0, 17);
+      const securedJobs = S.jobs.filter((j: any) => j.isAuctionWon || j.tenderId);
+      const regularJobs = S.jobs.filter((j: any) => !j.isAuctionWon && !j.tenderId);
+      const maxRegular = Math.max(0, 17 - securedJobs.length);
+      S.jobs = [...securedJobs, ...regularJobs.slice(0, maxRegular)];
     }
 
     const unlockedRegions: RegionName[] = (S?.unlockedRegions && S.unlockedRegions.length > 0)

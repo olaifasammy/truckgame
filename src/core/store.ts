@@ -62,6 +62,12 @@ const DEF = () => ({
   unlockedRegions: ['Africa'] as ('Africa' | 'Europe' | 'America' | 'Asia')[],
   warehouseUpgrades: { cross_docking: false, cold_vault: false, gantry_crane: false } as Record<string, boolean>,
   corporateTenders: [] as any[],
+  tenderListingLimit: {
+    count: 0,
+    windowStart: Date.now(),
+    premiumActive: false,
+    premiumExpiresAt: 0
+  },
   subcontractedTrucks: [] as number[],
   dailyStats: { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 },
   lastTick: Date.now()
@@ -96,6 +102,14 @@ function fix(state: any) {
     state.unlockedRegions.push('Asia');
   }
   if (!state.warehouseUpgrades) state.warehouseUpgrades = { cross_docking: false, cold_vault: false, gantry_crane: false };
+  if (!state.tenderListingLimit) {
+    state.tenderListingLimit = {
+      count: 0,
+      windowStart: Date.now(),
+      premiumActive: false,
+      premiumExpiresAt: 0
+    };
+  }
   if (!state.pendingTrailers) state.pendingTrailers = [];
   if (!state.notes) state.notes = [];
   // Migrate legacy notes
@@ -236,6 +250,7 @@ function fix(state: any) {
       state.jobs = [];
     } else {
       state.jobs = state.jobs.filter((j: any) => {
+        if (j.isAuctionWon || j.tenderId) return true;
         const locA = LOCATIONS[j.from];
         const locB = LOCATIONS[j.to];
         return locA && locB && locA.region === locB.region;
