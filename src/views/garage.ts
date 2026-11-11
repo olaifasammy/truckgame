@@ -144,6 +144,53 @@ action('recall-truck', d => {
   });
 });
 
+let sellTruckConfirmId: number | null = null;
+let sellTruckTimeout: any = null;
+
+action('sell-truck', d => {
+  const truckId = +(d as any).id;
+  if (sellTruckConfirmId !== truckId) {
+    sellTruckConfirmId = truckId;
+    if (sellTruckTimeout) clearTimeout(sellTruckTimeout);
+    
+    set((S: GameState) => {
+      const t = (S.fleet || []).find((x: any) => x.id === truckId);
+      const model = t ? TRUCK_MODELS[t.modelId] : null;
+      const resaleValue = Math.round((model?.price || 150000) * 0.65);
+      toast(`⚠️ Tap SELL again within 4s to confirm selling Truck #${truckId} for $${resaleValue.toLocaleString()}`, 'err');
+    });
+
+    sellTruckTimeout = setTimeout(() => {
+      sellTruckConfirmId = null;
+    }, 4000);
+  } else {
+    sellTruckConfirmId = null;
+    if (sellTruckTimeout) clearTimeout(sellTruckTimeout);
+
+    set((S: GameState) => {
+      const idx = (S.fleet || []).findIndex((x: any) => x.id === truckId);
+      if (idx === -1) {
+        toast(`Truck #${truckId} not found.`, 'err');
+        return;
+      }
+      const truck = S.fleet[idx];
+      const model = TRUCK_MODELS[truck.modelId];
+      const resaleValue = Math.round((model?.price || 150000) * 0.65);
+
+      if (truck.driverId) {
+        const drv = (S.drivers || []).find((x: any) => x.id === truck.driverId);
+        if (drv) drv.truckId = null;
+      }
+
+      S.fleet.splice(idx, 1);
+      S.money = (S.money || 0) + resaleValue;
+
+      toast(`✅ Sold Truck #${truckId} (${truck.name || model?.name || 'Vehicle'}) for $${resaleValue.toLocaleString()} resale value! Funds added to treasury.`, 'success');
+    });
+    refresh();
+  }
+});
+
 action('unhitch-trailer', d => {
   FleetService.hitchTrailer(+(d as any).id, null);
   refresh();
@@ -646,10 +693,10 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
           `;
         })()}
 
-        <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px;" data-act="inspect" data-id="${t.id}" ${busy ? 'disabled' : ''}>
-          ${ic('search')}
-          <span style="font-size:8px; font-weight:800;">${fmt(inspectCost())}</span>
-          <span style="font-size:7px; color:var(--mu);">INSPECT</span>
+        <button class="btn alt" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px; border-color:rgba(239,68,68,0.4); background:rgba(239,68,68,0.06);" data-act="sell-truck" data-id="${t.id}" ${busy ? 'disabled' : ''}>
+          ${ic('trash')}
+          <span style="font-size:8px; font-weight:900; color:#ef4444;">${fmt(Math.round((TRUCK_MODELS[t.modelId]?.price || 150000) * 0.65))}</span>
+          <span style="font-size:7px; font-weight:800; color:#ef4444;">SELL</span>
         </button>
 
         <button class="btn alt ${panel === 'driver' ? 'gold' : ''}" style="display:flex; flex-direction:column; align-items:center; gap:4px; padding:8px 4px; border-radius:6px;" data-act="panel" data-kind="driver">
