@@ -535,11 +535,12 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
         );
 
         if (tradeUsd >= 150) {
-          const currentPrice = bestCandidate.market.price;
+          const slippageInfo = calculateTradeSlippage(bestCandidate.asset.id, tradeUsd, 'buy');
+          const effectivePrice = slippageInfo.effectivePrice;
+          const tokensBought = slippageInfo.tokenQty;
           const currentHoldingTokens = S.cryptoPortfolio.holdings[bestCandidate.asset.id] || 0;
           
           S.cryptoPortfolio.cash -= tradeUsd;
-          const tokensBought = tradeUsd / currentPrice;
           S.cryptoPortfolio.holdings[bestCandidate.asset.id] = currentHoldingTokens + tokensBought;
           bot.lastTradeTimestamp = Date.now();
 
@@ -554,7 +555,7 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
             };
           } else {
             bot.openPositions[bestCandidate.asset.id] = {
-              buyPrice: currentPrice,
+              buyPrice: effectivePrice,
               features: [...bestCandidate.features],
               time: Date.now()
             };
@@ -568,16 +569,17 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
             type: 'BUY',
             symbol: bestCandidate.asset.symbol,
             qty: tokensBought,
-            price: currentPrice,
+            price: effectivePrice,
             usd: tradeUsd,
-            confidence: bestCandidate.score,
+            confidence: Math.min(0.99, bestCandidate.score),
             smartLevelAtTrade: smartInfo.level
           };
           bot.tradeHistory.unshift(record);
           if (bot.tradeHistory.length > 50) bot.tradeHistory.pop();
 
           actionTaken = true;
-          msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) ACCUMULATED ${bestCandidate.asset.symbol}: Bought ${tokensBought.toFixed(4)} tokens for $${Math.round(tradeUsd).toLocaleString()} @ $${currentPrice.toLocaleString()}`;
+          const slipText = slippageInfo.slippagePct > 0.1 ? ` (Slippage: ${slippageInfo.slippagePct.toFixed(2)}%)` : '';
+          msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) ACCUMULATED ${bestCandidate.asset.symbol}: Bought ${tokensBought.toFixed(4)} tokens for $${Math.round(tradeUsd).toLocaleString()} @ $${effectivePrice.toLocaleString()}${slipText}`;
         }
       }
     }

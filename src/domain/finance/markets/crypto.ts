@@ -32,6 +32,71 @@ export interface CryptoLimitOrder {
   createdAt: number;
 }
 
+export type MarketRegimeType = 'bull_rally' | 'bear_trend' | 'high_volatility_chop' | 'flash_crash' | 'halving_hype';
+
+export interface MarketRegimeInfo {
+  regime: MarketRegimeType;
+  headline: string;
+  biasMultiplier: number;
+  volatilityScale: number;
+}
+
+export const ASSET_LIQUIDITY_POOLS: Record<string, number> = {
+  btc: 50000000,
+  eth: 45000000,
+  usdc: 100000000,
+  sol: 20000000,
+  xrp: 18000000,
+  flb: 8000000,
+  doge: 12000000,
+  ada: 15000000,
+  avax: 14000000,
+  link: 16000000
+};
+
+export function getCurrentMarketRegime(): MarketRegimeInfo {
+  // 6-hour cycle for global crypto market regimes
+  const regimeBlock = Math.floor(Date.now() / (1000 * 60 * 60 * 6)) % 5;
+  switch (regimeBlock) {
+    case 0:
+      return {
+        regime: 'bull_rally',
+        headline: '🚀 Institutional Inflows & Liquidity Surge Driving Sector Rally',
+        biasMultiplier: 1.12,
+        volatilityScale: 1.1
+      };
+    case 1:
+      return {
+        regime: 'bear_trend',
+        headline: '📉 Macro Regulatory Headwinds & Liquidation Pressure Testing Support',
+        biasMultiplier: 0.91,
+        volatilityScale: 0.9
+      };
+    case 2:
+      return {
+        regime: 'high_volatility_chop',
+        headline: '⚡ High Volatility Derivatives Expiry Causing Whipsaw Sweeps',
+        biasMultiplier: 1.01,
+        volatilityScale: 1.45
+      };
+    case 3:
+      return {
+        regime: 'flash_crash',
+        headline: '⚠️ Cascading Leveraged De-risking Triggering Short-Term Flash Dip',
+        biasMultiplier: 0.84,
+        volatilityScale: 1.8
+      };
+    case 4:
+    default:
+      return {
+        regime: 'halving_hype',
+        headline: '💎 Supply Halving & Treasury Accumulation Propelling Parabolic Surge',
+        biasMultiplier: 1.18,
+        volatilityScale: 1.25
+      };
+  }
+}
+
 export const CRYPTO_ASSETS: CryptoAsset[] = [
   { id: 'flb', symbol: 'FLB', name: 'Fleet Logistics Bond', icon: '🪙', basePrice: 25000, volatility: 0.48, color: '#f59e0b' },
   { id: 'btc', symbol: 'BTC', name: 'Bitcoin', icon: '₿', basePrice: 98500, volatility: 0.25, color: '#f59e0b' },
@@ -115,6 +180,34 @@ export function getCryptoMarketData(assetId: string, timeframe: Timeframe = '15m
     spread,
     buyPrice,
     sellPrice
+  };
+}
+
+/**
+ * Calculates realistic order execution slippage & market impact
+ */
+export function calculateTradeSlippage(assetId: string, amountUsd: number, type: 'buy' | 'sell') {
+  const mkt = getCryptoMarketData(assetId);
+  const basePool = ASSET_LIQUIDITY_POOLS[assetId] || 15000000;
+  
+  // Non-linear order depth impact calculation
+  const impactRatio = amountUsd / basePool;
+  const slippagePct = Math.min(0.08, Math.max(0.0005, impactRatio * 0.18));
+
+  const basePrice = type === 'buy' ? mkt.buyPrice : mkt.sellPrice;
+  const effectivePrice = type === 'buy' 
+    ? basePrice * (1 + slippagePct)
+    : basePrice * (1 - slippagePct);
+
+  const exchangeFeeUsd = Math.round(amountUsd * 0.0012); // 0.12% maker/taker exchange fee
+  const tokenQty = type === 'buy' ? (amountUsd - exchangeFeeUsd) / effectivePrice : amountUsd / effectivePrice;
+
+  return {
+    spotPrice: mkt.price,
+    effectivePrice,
+    slippagePct: Math.round(slippagePct * 10000) / 100,
+    exchangeFeeUsd,
+    tokenQty
   };
 }
 

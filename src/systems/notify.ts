@@ -46,7 +46,7 @@ export function pushNote(S: any, msg: string, options?: { title?: string, type?:
   const isTransfer = lowerMsg.includes('movement complete') || lowerMsg.includes('repositioning') || lowerMsg.includes('transferred to');
   
   // Crypto & Bonds activities
-  const isCryptoBonds = lowerMsg.includes('crypto') || lowerMsg.includes('bitcoin') || lowerMsg.includes('mining') || lowerMsg.includes('fleet bond') || lowerMsg.includes('flb');
+  const isCryptoBonds = lowerMsg.includes('crypto') || lowerMsg.includes('bitcoin') || lowerMsg.includes('mining') || lowerMsg.includes('fleet bond') || lowerMsg.includes('flb') || lowerMsg.includes('collateral') || lowerMsg.includes('liquidat') || lowerMsg.includes('margin');
   
   // Bid winnings & Sales leads
   const isSalesTender = lowerMsg.includes('tender won') || lowerMsg.includes('secured') || lowerMsg.includes('bid won') || lowerMsg.includes('sales opportunity') || lowerMsg.includes('prospective client');
@@ -63,7 +63,7 @@ export function pushNote(S: any, msg: string, options?: { title?: string, type?:
   // Daily, weekly & monthly accounts
   const isFinancialSummary = lowerMsg.includes('daily account') || lowerMsg.includes('weekly account') || lowerMsg.includes('monthly account') || lowerMsg.includes('financial summary') || lowerMsg.includes('financial statement') || lowerMsg.includes('performance audit') || lowerMsg.includes('enterprise report');
 
-  const shouldInbox = isTruckArrival || isTransfer || isAccountCreation || isSeriousAccident || isLargeFuel || isFinancialSummary;
+  const shouldInbox = isTruckArrival || isTransfer || isCryptoBonds || isSalesTender || isAccountCreation || isSeriousAccident || isLargeFuel || isFinancialSummary;
 
   if (shouldInbox) {
     S.notes.unshift(note);

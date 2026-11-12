@@ -114,3 +114,55 @@ export function repayCryptoCollateral(S: any, loanId: string): boolean {
   toast(`Loan Repaid! Released ${loan.collateralQty.toFixed(4)} ${asset.symbol} to wallet.`, 'success');
   return true;
 }
+
+/**
+ * Tick handler for Crypto Collateral Loans
+ * Accrues interest and enforces dynamic Liquidation Desk (Margin calls at 85% LTV, Liquidation at 95% LTV)
+ */
+export function processCryptoLoansTick(S: any) {
+  if (!S.cryptoLoans || S.cryptoLoans.length === 0) return;
+
+  const remainingLoans: CryptoCollateralLoan[] = [];
+
+  for (const loan of S.cryptoLoans) {
+    const mkt = getCryptoMarketData(loan.assetId);
+    const currentCollateralUsd = loan.collateralQty * mkt.price;
+    const currentLtvPct = currentCollateralUsd > 0 ? (loan.repayAmount / currentCollateralUsd) * 100 : 999;
+    loan.ltvPct = Math.round(currentLtvPct * 10) / 10;
+
+    // Accrue small tick interest (4.5% APR)
+    loan.repayAmount += (loan.dailyInterestRate / (24 * 60)); // 1-minute tick equivalent
+
+    if (currentLtvPct >= 95) {
+      // 🚨 AUTOMATED MARGIN LIQUIDATION TRIGGERED
+      const liquidationFeeUsd = currentCollateralUsd * 0.05; // 5% liquidation penalty
+      const netProceedsUsd = currentCollateralUsd - liquidationFeeUsd;
+      const surplusUsd = Math.max(0, netProceedsUsd - loan.repayAmount);
+
+      if (surplusUsd > 0) {
+        S.money = (S.money || 0) + surplusUsd;
+      }
+
+      pushNote(S, `🚨 MARGIN LIQUIDATION: Collateral for Loan #${loan.id} liquidated at 95% LTV threshold!`, {
+        title: 'COLLATERAL LIQUIDATED',
+        type: 'finance',
+        priority: 1,
+        body: `Loan ID: #${loan.id}\nAsset: ${mkt.symbol}\nCollateral Liquidated: ${loan.collateralQty.toFixed(4)} ${mkt.symbol} ($${Math.round(currentCollateralUsd).toLocaleString()})\nRepaid Debt: $${Math.round(loan.repayAmount).toLocaleString()}\nPenalty Fee: $${Math.round(liquidationFeeUsd).toLocaleString()}\nSurplus Credited: $${Math.round(surplusUsd).toLocaleString()}`
+      });
+      toast(`🚨 Loan #${loan.id} Liquidated! Collateral seized due to 95% LTV breach.`, 'err');
+    } else {
+      if (currentLtvPct >= 85) {
+        // Warning notification (margin call)
+        pushNote(S, `⚠️ MARGIN CALL WARNING: Loan #${loan.id} LTV reached ${loan.ltvPct.toFixed(1)}%. Deposit additional collateral or repay to avoid liquidation at 95%.`, {
+          title: 'MARGIN CALL WARNING',
+          type: 'finance',
+          priority: 2,
+          body: `Loan ID: #${loan.id}\nCurrent LTV: ${loan.ltvPct.toFixed(1)}%\nLiquidation Threshold: 95.0%`
+        });
+      }
+      remainingLoans.push(loan);
+    }
+  }
+
+  S.cryptoLoans = remainingLoans;
+}
