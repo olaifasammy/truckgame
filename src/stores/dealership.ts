@@ -186,9 +186,8 @@ action('inspect-truck', d => {
   if (S) {
     const owned = getOwnedHubs(S);
     if (owned.length > 0) {
-      const firstHub = owned[0];
-      configRegion = firstHub.region;
-      configDestination = firstHub.city;
+      configRegion = owned[0].region;
+      configDestination = owned[0].city;
     } else {
       configRegion = 'Africa';
       configDestination = 'LAGOS';
@@ -201,13 +200,15 @@ action('inspect-truck', d => {
 });
 
 action('config-region', d => {
-  const newRegion = (d as any).region as RegionName;
+  const newRegion = (d as any).value as RegionName;
+  console.log('[Dealership] config-region changed to:', newRegion);
   configRegion = newRegion;
   
   const S = (window as any).__getStore?.();
   if (S) {
     const owned = getOwnedHubs(S);
     const hubsInRegion = owned.filter(h => h.region === newRegion);
+    console.log('[Dealership] Owned hubs in region:', hubsInRegion);
     if (hubsInRegion.length > 0) {
       configDestination = hubsInRegion[0].city;
     } else {
@@ -233,12 +234,12 @@ action('config-qty-add', () => {
 });
 
 action('config-trailer', d => {
-  configTrailer = (d as any).trailer;
+  configTrailer = (d as any).value === 'none' ? 'none' : ((d as any).value as TrailerType);
   refresh();
 });
 
 action('config-dest', d => {
-  configDestination = (d as any).city;
+  configDestination = (d as any).value;
   refresh();
 });
 
@@ -733,7 +734,7 @@ function renderConfiguratorModal(S: any, inspectedModel: TruckModel | null, tota
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <span style="font-size:10px; font-weight:800; color:var(--tx); text-transform:uppercase; letter-spacing:0.5px;">1. Fifth-Wheel Trailer Coupling</span>
           </div>
-          <select style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:11px; font-weight:700; padding:10px; border-radius:8px; outline:none; appearance:none;" onchange="window.__actions?.get('config-trailer')?.({ trailer: this.value })">
+          <select data-act="config-trailer" onchange="window.__actions?.get('config-trailer')?.({ value: this.value })" style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:11px; font-weight:700; padding:10px; border-radius:8px; outline:none; appearance:none;">
             <option value="none" ${configTrailer === 'none' ? 'selected' : ''}>Bobtail (No Trailer)</option>
             ${inspectedModel.haul.map((h: string) => `
               <option value="${h}" ${configTrailer === h ? 'selected' : ''}>
@@ -751,7 +752,7 @@ function renderConfiguratorModal(S: any, inspectedModel: TruckModel | null, tota
             <!-- Region Selection -->
             <div>
               <div style="font-size:8px; color:var(--mu); text-transform:uppercase; margin-bottom:4px; font-weight:700;">OPERATING REGION</div>
-              <select style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:8px; border-radius:6px; outline:none; appearance:none;" onchange="window.__actions?.get('config-region')?.({ region: this.value })">
+              <select data-act="config-region" onchange="window.__actions?.get('config-region')?.({ value: this.value })" style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:8px; border-radius:6px; outline:none; appearance:none;">
                 ${['Africa', 'Europe', 'America', 'Asia'].filter(r => isRegionUnlocked(S, r as RegionName)).map(r => `
                   <option value="${r}" ${configRegion === r ? 'selected' : ''}>${r.toUpperCase()}</option>
                 `).join('')}
@@ -761,7 +762,7 @@ function renderConfiguratorModal(S: any, inspectedModel: TruckModel | null, tota
             <!-- Hub Selection (Filtered by Region) -->
             <div>
               <div style="font-size:8px; color:var(--mu); text-transform:uppercase; margin-bottom:4px; font-weight:700;">HUB TERMINAL</div>
-              <select style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:8px; border-radius:6px; outline:none; appearance:none;" onchange="window.__actions?.get('config-dest')?.({ city: this.value })">
+              <select data-act="config-dest" onchange="window.__actions?.get('config-dest')?.({ value: this.value })" style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:8px; border-radius:6px; outline:none; appearance:none;">
                 ${(() => {
                   const regionHubs = getOwnedHubs(S).filter(h => h.region === configRegion);
                   if (regionHubs.length === 0) return '<option value="">NO HUBS AVAILABLE</option>';
