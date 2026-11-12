@@ -409,19 +409,11 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
     const agedProfitable = positionAgeMs > 45000 && rawProfit > 20;
 
     if (meetsProfitTarget || meetsDipPeak || meetsStopLoss || needsLiquidity || agedProfitable) {
-      // Execute TAKE PROFIT / STOP-LOSS
-      const intensityAlphaBonus = intensity === 'conservative' ? 0.0 : intensity === 'aggressive' ? 0.35 : 0.15;
-      const alphaMultiplier = 1.0 + ((smartInfo.level - 1) * 0.22) + (asset.id === 'flb' ? 0.35 : 0.1) + intensityAlphaBonus;
+      // Execute TAKE PROFIT / STOP-LOSS with realistic market fee & slippage execution (0.12% fee)
+      const tradingFeeUsd = Math.round(holdingValueUsd * 0.0012);
+      const realizedProfit = Math.round(rawProfit - tradingFeeUsd);
 
-      let realizedProfit = Math.round(rawProfit);
-      if (rawProfit > 0) {
-        realizedProfit = Math.round(rawProfit * alphaMultiplier);
-      } else {
-        const riskMitigation = 1.0 - Math.min(0.5, (smartInfo.level - 1) * 0.05);
-        realizedProfit = Math.round(rawProfit * riskMitigation);
-      }
-
-      S.cryptoPortfolio.cash += holdingValueUsd + (realizedProfit - rawProfit);
+      S.cryptoPortfolio.cash += (holdingValueUsd - tradingFeeUsd);
       S.cryptoPortfolio.holdings[assetId] = 0;
       if (bot.openPositions) delete bot.openPositions[assetId];
 

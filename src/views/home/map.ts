@@ -338,11 +338,16 @@ export function syncLeafletMap(S: any) {
     const truckIcon = L.divIcon({
       html: `
         <div style="position:relative; width:36px; height:36px; display:grid; place-items:center; cursor:pointer;" data-act="open-telematics" data-id="${truckId}">
-          <div style="position:absolute; width:100%; height:100%; border-radius:50%; background:rgba(255,255,255,0.15); animation:mapPulse 2s infinite;"></div>
-          <div style="width:24px; height:24px; display:grid; place-items:center; transform:rotate(${bearing}deg); transition:transform 0.4s linear;">
-            <div style="width:18px; height:18px; color:#ffffff; filter:drop-shadow(0 0 4px rgba(0,0,0,0.8));">
-              ${ic('truckTop')}
-            </div>
+          <div style="position:absolute; width:100%; height:100%; border-radius:50%; background:rgba(245,158,11,0.22); border:1px solid rgba(245,158,11,0.5); animation:mapPulse 2s infinite;"></div>
+          <div style="width:26px; height:26px; border-radius:50%; background:#09131d; border:2px solid #f59e0b; display:grid; place-items:center; transform:rotate(${bearing}deg); transition:transform 0.4s linear; box-shadow:0 0 10px rgba(245,158,11,0.7);">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.9));">
+              <rect x="3" y="6" width="2" height="4" rx="0.5" fill="#fbbf24"/>
+              <rect x="19" y="6" width="2" height="4" rx="0.5" fill="#fbbf24"/>
+              <rect x="6" y="2" width="12" height="9" rx="2" fill="#f59e0b"/>
+              <rect x="8" y="4" width="8" height="3.5" rx="1" fill="#451a03"/>
+              <rect x="7" y="12" width="10" height="10" rx="1.5" fill="#fbbf24"/>
+              <rect x="9" y="10" width="6" height="3" fill="#d97706"/>
+            </svg>
           </div>
         </div>`,
       className: 'custom-truck-marker',

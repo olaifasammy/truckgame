@@ -493,6 +493,51 @@ export default {
               </div>
             </div>
 
+            <!-- LIVE AI TRADER PERFORMANCE CHART -->
+            <div style="background:#070a12; border:1px solid #1f293d; border-radius:8px; padding:12px; margin-bottom:12px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <span style="font-size:9px; font-weight:800; color:var(--gold); font-family:monospace; text-transform:uppercase;">📈 AI Quant Net PnL Performance Chart</span>
+                <span style="font-size:9px; font-family:monospace; color:${(S.aiCryptoBot?.totalProfitUsd || 0) >= 0 ? 'var(--grn)' : 'var(--red)'}; font-weight:800;">
+                  ${(S.aiCryptoBot?.totalProfitUsd || 0) >= 0 ? '+' : ''}${(S.aiCryptoBot?.totalProfitUsd || 0).toLocaleString()} PnL
+                </span>
+              </div>
+              <div style="height:90px; width:100%; position:relative; display:flex; align-items:flex-end; gap:3px; padding-top:10px; border-bottom:1px solid rgba(255,255,255,0.08);">
+                ${(() => {
+                  const history = S.aiCryptoBot?.tradeHistory || [];
+                  if (history.length === 0) {
+                    return `<div style="width:100%; height:100%; display:grid; place-items:center; font-size:10px; color:var(--mu);">Awaiting AI Trade History for Chart Data...</div>`;
+                  }
+                  // Build cumulative PnL series from oldest to newest
+                  let runningPnl = 0;
+                  const pnlPoints = [...history].reverse().map((tr: any) => {
+                    runningPnl += (tr.profitUsd || 0);
+                    return { time: tr.time, pnl: runningPnl, symbol: tr.symbol, type: tr.type };
+                  });
+                  
+                  const minPnl = Math.min(0, ...pnlPoints.map(p => p.pnl));
+                  const maxPnl = Math.max(100, ...pnlPoints.map(p => p.pnl));
+                  const range = (maxPnl - minPnl) || 1;
+
+                  return pnlPoints.map((pt, i) => {
+                    const heightPct = Math.max(12, Math.min(100, ((pt.pnl - minPnl) / range) * 85));
+                    const isPos = pt.pnl >= 0;
+                    const barColor = isPos ? '#10b981' : '#ef4444';
+                    const timeStr = new Date(pt.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                    return `
+                      <div style="flex:1; height:100%; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; position:relative; group;" title="${pt.type} ${pt.symbol}: Cumulative PnL $${pt.pnl.toLocaleString()} (${timeStr})">
+                        <div style="width:100%; max-width:14px; height:${heightPct}%; background:${barColor}; border-radius:2px 2px 0 0; transition:height 0.3s ease; box-shadow:0 0 6px ${barColor}88;"></div>
+                      </div>
+                    `;
+                  }).join('');
+                })()}
+              </div>
+              <div style="display:flex; justify-content:space-between; font-size:8px; color:var(--mu); font-family:monospace; margin-top:4px;">
+                <span>OLD TRADES</span>
+                <span>LIVE PERFORMANCE CURVE</span>
+                <span>LATEST</span>
+              </div>
+            </div>
+
             <div style="display:flex; gap:8px; margin-bottom:10px;">
               <button data-act="ai-toggle-quant" class="btn ${S.aiCryptoBot?.enabled ? 'alt' : 'gold'}" style="flex:1;">
                 ${S.aiCryptoBot?.enabled ? 'Pause Bot' : 'Start Quant Bot'}
