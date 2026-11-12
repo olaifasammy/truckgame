@@ -59,6 +59,13 @@ export interface Truck {
   id: number;
   modelId: string; // References TruckModel.id
   name: string;
+  code?: string; // Standard realistic code (e.g. SC0-573, MN4-794, MC6-68E)
+  regNo?: string; // License plate number (e.g. B-NX 4892, LA-4892-TR)
+  registeredCity?: string; // City of registration hub
+  registeredAt?: number;
+  taxExpiresAt?: number; // HVUT road tax expiry timestamp
+  inspectionExpiresAt?: number; // TÜV / DOT safety inspection expiry timestamp
+  registrationStatus?: 'unregistered' | 'active' | 'tax_expired' | 'inspection_expired' | 'suspended';
   odometer: number; // Total km
   loc: string;
   status: 'idle' | 'busy' | 'maintenance' | 'repair' | 'delivering';

@@ -22,6 +22,7 @@ import { isCityUnlockedHub, getHubForCity, getTrucksAtHub } from '../domain/hubs
 import { DispatchActions } from '../domain/dispatch/actions';
 import { CARGO_TYPES } from '../domain/freight/cargo/registry';
 import { renderCargoBadge } from '../domain/freight/cargo/cargo-svgs';
+import { getTruckCode } from '../domain/trucks/registration';
 
 let openId: number | null = null, panel: string | null = null;
 let hitchModalTruckId: number | null = null;
@@ -639,9 +640,12 @@ function truck(S: GameState, t: Truck) {
              ${getManufacturerLogoSvg(m.brand, 32, 20)}
           </div>
           <div>
-            <div style="font-size:14px; font-weight:900; color:var(--tx);">${m.name}</div>
-            <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
-              Unit #${t.id} · ${t.loc} DEPOT · ${m.axle} ${m.engine.hp}HP
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:14px; font-weight:900; color:var(--tx);">${m.name}</span>
+              <span style="font-size:11px; font-weight:900; color:var(--gold); font-family:monospace; background:rgba(245,158,11,0.12); padding:1px 6px; border-radius:4px; border:1px solid rgba(245,158,11,0.25);">${getTruckCode(t)}</span>
+            </div>
+            <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:2px;">
+              ${t.regNo ? `🚘 <b>${t.regNo}</b>` : '<span style="color:#ef4444;">⚠️ UNREGISTERED</span>'} · ${t.loc} DEPOT · ${m.axle} ${m.engine.hp}HP
             </div>
           </div>
         </div>

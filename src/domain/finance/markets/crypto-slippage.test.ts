@@ -28,11 +28,11 @@ describe('Crypto Slippage & Market Regimes', () => {
         {
           id: 'LN-TEST-1',
           assetId: 'btc',
-          collateralQty: 0.1, // 0.1 BTC = ~$9,850 USD
-          collateralValueAtIssue: 9850,
-          borrowedCash: 10500, // Repay amount set high to trigger > 95% LTV regardless of micro noise
+          collateralQty: 0.05, // 0.05 BTC = ~$4,925 USD
+          collateralValueAtIssue: 4925,
+          borrowedCash: 10500, // Repay amount set high to trigger > 95% LTV
           repayAmount: 10500,
-          ltvPct: 106.5,
+          ltvPct: 213.2,
           dailyInterestRate: 1,
           createdAt: Date.now()
         }

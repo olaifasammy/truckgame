@@ -2,6 +2,7 @@ import { TRUCK_MODELS } from './trucks.data';
 import { Truck, TruckModel, TrailerType } from './trucks.types';
 import { Driver } from '../drivers/drivers.types';
 import { TRAIT_REGISTRY } from '../drivers/drivers.names';
+import { getTruckCode } from './registration';
 
 export const PART_WEAR_COEFFICIENTS: Record<string, number> = {
   engine: 0.0005,
@@ -261,10 +262,11 @@ export function fuelCostForTrip(km: number, truck: Truck, payload = 0, env?: Env
 export function createTruck(id: number, modelId: string, name: string, loc: string, trailer: TrailerType | null = null): Truck {
   const model = TRUCK_MODELS[modelId] || TRUCK_MODELS['scania_s730'];
   
-  return {
+  const truck: Truck = {
     id,
     modelId,
     name,
+    code: '',
     odometer: 0,
     loc,
     status: 'idle',
@@ -297,4 +299,7 @@ export function createTruck(id: number, modelId: string, name: string, loc: stri
       tireCompound: 'highway_eco'
     }
   };
+
+  truck.code = getTruckCode(truck);
+  return truck;
 }

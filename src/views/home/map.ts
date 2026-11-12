@@ -4,6 +4,7 @@ import { refresh } from '../../core/store';
 import { openTelematicsModal } from '../telematics-modal';
 import { homeState } from './state';
 import { ic } from '../../core/icons';
+import { getTruckCode } from '../../domain/trucks/registration';
 
 if (typeof window !== 'undefined') {
   (window as any).__openTelem = openTelematicsModal;
@@ -362,7 +363,7 @@ export function syncLeafletMap(S: any) {
           <span style="font-family:monospace; font-size:9px; color:#c19a5b;">${pctDisplay}%</span>
         </div>
         <div style="font-size:10px; color:#94a3b8; margin-top:2px; font-weight:700;">
-          Unit #${truckId} · ${truckObj ? truckObj.name : 'Heavy Duty Rig'}
+          Unit ${truckObj ? getTruckCode(truckObj) : truckId} · ${truckObj ? truckObj.name : 'Heavy Duty Rig'} ${truckObj?.regNo ? `[${truckObj.regNo}]` : ''}
         </div>
         <div style="font-size:9px; color:#cbd5e1; margin-top:4px;">
           Assigned Driver: <b style="color:#f1f5f9;">${driverName}</b>
