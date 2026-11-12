@@ -81,8 +81,8 @@ export const VehicleMaintenance = {
       }
     });
 
-    // 1:12 time scale: 1 in-game minute = 5 real seconds
-    return Math.max(10000, Math.round(totalMinutes * 5000));
+    // 1:24 time scale: 1 in-game minute = 2.5 real seconds
+    return Math.max(10000, Math.round(totalMinutes * 2500));
   },
 
   /**

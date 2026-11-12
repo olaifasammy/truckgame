@@ -53,8 +53,8 @@ export function calculateRepairDurationMs(truck: any, selectedParts: string[]): 
     }
   });
 
-  // Physical repair time: 1 in-game minute = 5 real seconds (1:12 time scale)
-  return Math.max(10000, Math.round(totalMinutes * 5000));
+  // Physical repair time: 1 in-game minute = 2.5 real seconds (1:24 time scale)
+  return Math.max(10000, Math.round(totalMinutes * 2500));
 }
 
 /**

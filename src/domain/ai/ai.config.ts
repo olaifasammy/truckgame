@@ -43,7 +43,7 @@ export const AI_SUBSCRIPTION_PLANS: Record<string, AiSubscriptionPlan> = {
   }
 };
 
-export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_dispatch', AiAddonPlan>> = {
+export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_dispatch' | 'quant_trader', AiAddonPlan>> = {
   '7d': {
     maintenance: {
       id: 'maintenance',
@@ -58,6 +58,13 @@ export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_disp
       priceUsd: 25000,
       priceFlb: 20,
       description: 'Continuous background dispatching while offline.'
+    },
+    quant_trader: {
+      id: 'quant_trader',
+      label: 'AI Quant Trading Bot',
+      priceUsd: 35000,
+      priceFlb: 25,
+      description: 'Autonomous high-frequency cryptocurrency trading engine.'
     }
   },
   '1m': {
@@ -74,6 +81,13 @@ export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_disp
       priceUsd: 85000,
       priceFlb: 60,
       description: 'Continuous background dispatching while offline.'
+    },
+    quant_trader: {
+      id: 'quant_trader',
+      label: 'AI Quant Trading Bot',
+      priceUsd: 120000,
+      priceFlb: 80,
+      description: 'Autonomous high-frequency cryptocurrency trading engine.'
     }
   },
   'auto': {
@@ -90,6 +104,13 @@ export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_disp
       priceUsd: 75000,
       priceFlb: 50,
       description: 'Continuous background dispatching while offline.'
+    },
+    quant_trader: {
+      id: 'quant_trader',
+      label: 'AI Quant Trading Bot',
+      priceUsd: 95000,
+      priceFlb: 65,
+      description: 'Autonomous high-frequency cryptocurrency trading engine.'
     }
   },
   'year': {
@@ -106,6 +127,13 @@ export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_disp
       priceUsd: 550000,
       priceFlb: 400,
       description: 'Continuous background dispatching while offline.'
+    },
+    quant_trader: {
+      id: 'quant_trader',
+      label: 'AI Quant Trading Bot',
+      priceUsd: 850000,
+      priceFlb: 600,
+      description: 'Autonomous high-frequency cryptocurrency trading engine.'
     }
   }
 };
@@ -179,6 +207,8 @@ export const DEFAULT_AI_STATE: AiState = {
   maintenanceExpiresTimestamp: 0,
   offlineDispatchActive: false,
   offlineExpiresTimestamp: 0,
+  quantTraderActive: false,
+  quantTraderExpiresTimestamp: 0,
   filters: DEFAULT_AI_FILTERS,
   logs: [],
   totalDispatchedCount: 0,

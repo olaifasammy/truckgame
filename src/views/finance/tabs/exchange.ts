@@ -25,6 +25,7 @@ export function renderExchangeTab(S: any) {
   const currentAssetUsdVal = currentAssetQty * assetData.sellPrice;
   const totalCryptoPortfolioVal = getTotalCryptoValue(S);
   const quantSmart = getQuantSmartLevelInfo(S.aiCryptoBot);
+  const isQuantSubscribed = !!(S.aiState?.quantTraderActive && Date.now() < (S.aiState?.quantTraderExpiresTimestamp || 0));
 
   // Mining Data
   const playerVip = getVipLevel(S);
@@ -123,7 +124,7 @@ export function renderExchangeTab(S: any) {
                   Lv. ${quantSmart.level} · ${quantSmart.title}
                 </span>
                 <span style="font-size:8px; font-weight:800; color:${S.aiCryptoBot?.enabled ? 'var(--grn)' : 'var(--mu)'};">
-                  ${S.aiCryptoBot?.enabled ? '● RUNNING' : '○ PAUSED'}
+                  ${S.aiCryptoBot?.enabled ? '● RUNNING' : (!isQuantSubscribed && S.aiCryptoBot?.enabled ? '○ PAUSED (SUBSCRIPTION REQUIRED)' : '○ PAUSED')}
                 </span>
               </div>
               <div style="font-size:9px; color:var(--mu); margin-top:2px;">

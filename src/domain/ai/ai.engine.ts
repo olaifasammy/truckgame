@@ -449,9 +449,9 @@ export function processOfflineAiDispatch(S: any, offlineMs: number): { dispatche
   const cappedOfflineMs = Math.min(86400000, offlineMs);
   const lastActive = realNow - offlineMs;
   
-  // Simulation step size: 15 minutes per "tick"
+  // Simulation step size: 5 minutes per "tick"
   // This allows enough time for jobs to complete and trucks to be re-dispatched
-  const STEP_MS = 15 * 60 * 1000; 
+  const STEP_MS = 5 * 60 * 1000; 
   const iterations = Math.ceil(cappedOfflineMs / STEP_MS);
   
   let totalDispatches = 0;

@@ -339,8 +339,7 @@ export function syncLeafletMap(S: any) {
     const truckIcon = L.divIcon({
       html: `
         <div style="position:relative; width:36px; height:36px; display:grid; place-items:center; cursor:pointer;" data-act="open-telematics" data-id="${truckId}">
-          <div style="position:absolute; width:100%; height:100%; border-radius:50%; background:rgba(245,158,11,0.22); border:1px solid rgba(245,158,11,0.5); animation:mapPulse 2s infinite;"></div>
-          <div style="width:26px; height:26px; border-radius:50%; background:#09131d; border:2px solid #f59e0b; display:grid; place-items:center; transform:rotate(${bearing}deg); transition:transform 0.4s linear; box-shadow:0 0 10px rgba(245,158,11,0.7);">
+          <div style="width:26px; height:26px; border-radius:50%; background:#09131d; border:2px solid #334155; display:grid; place-items:center; transform:rotate(${bearing}deg); transition:transform 0.4s linear;">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,0.9));">
               <rect x="3" y="6" width="2" height="4" rx="0.5" fill="#fbbf24"/>
               <rect x="19" y="6" width="2" height="4" rx="0.5" fill="#fbbf24"/>

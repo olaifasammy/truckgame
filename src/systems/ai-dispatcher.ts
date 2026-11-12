@@ -15,6 +15,7 @@ export function activateAiSuiteSystem(
   useFlb: boolean = false,
   includeMaintenance: boolean = true,
   includeOfflineDispatch: boolean = true,
+  includeQuantTrader: boolean = false,
   autoRenew: boolean = true,
   allowExtension: boolean = false
 ): boolean {
@@ -32,9 +33,10 @@ export function activateAiSuiteSystem(
     const addons = AI_ADDON_PLANS[planId];
     const maintCost = includeMaintenance && addons ? addons.maintenance : { priceUsd: 0, priceFlb: 0 };
     const offlineCost = includeOfflineDispatch && addons ? addons.offline_dispatch : { priceUsd: 0, priceFlb: 0 };
+    const quantCost = includeQuantTrader && addons ? addons.quant_trader : { priceUsd: 0, priceFlb: 0 };
 
-    const totalUsd = plan.priceUsd + maintCost.priceUsd + offlineCost.priceUsd;
-    const totalFlb = plan.priceFlb + maintCost.priceFlb + offlineCost.priceFlb;
+    const totalUsd = plan.priceUsd + maintCost.priceUsd + offlineCost.priceUsd + quantCost.priceUsd;
+    const totalFlb = plan.priceFlb + maintCost.priceFlb + offlineCost.priceFlb + quantCost.priceFlb;
 
     const now = Date.now();
     const durationMs = plan.days * 86400 * 1000;
@@ -71,6 +73,8 @@ export function activateAiSuiteSystem(
       ? S.aiState.maintenanceExpiresTimestamp : now;
     const baseOfflineTime = S.aiState.offlineDispatchActive && now < S.aiState.offlineExpiresTimestamp
       ? S.aiState.offlineExpiresTimestamp : now;
+    const baseQuantTime = S.aiState.quantTraderActive && now < S.aiState.quantTraderExpiresTimestamp
+      ? S.aiState.quantTraderExpiresTimestamp : now;
 
     S.aiState.subscriptionActive = true;
     S.aiState.expiresTimestamp = baseSubTime + durationMs;
@@ -85,6 +89,11 @@ export function activateAiSuiteSystem(
     if (includeOfflineDispatch) {
       S.aiState.offlineDispatchActive = true;
       S.aiState.offlineExpiresTimestamp = baseOfflineTime + durationMs;
+    }
+
+    if (includeQuantTrader) {
+      S.aiState.quantTraderActive = true;
+      S.aiState.quantTraderExpiresTimestamp = baseQuantTime + durationMs;
     }
 
     S.aiState.filters.enabled = true;

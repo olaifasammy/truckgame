@@ -144,7 +144,7 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
 
           if (!a.lastFatigueTick) a.lastFatigueTick = now;
           const msElapsed = Math.max(0, now - a.lastFatigueTick);
-          const simHoursElapsed = msElapsed / 300000; // 5 real minutes = 1 simulation hour
+          const simHoursElapsed = msElapsed / 150000; // 2.5 real minutes = 1 simulation hour
 
           let fatigueMod = 1.0;
           if (drv.trait) {
@@ -162,7 +162,7 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
           if (drv.fatigue >= 80) {
             drv.fatigue = 0;
             drv.hosHours = 0;
-            const restDurationMs = 30000; // 30 seconds real-time safety stop
+            const restDurationMs = 15000; // 15 seconds real-time safety stop
             drv.hosRestUntil = now + restDurationMs;
             a.end = (a.end || now) + restDurationMs;
             pushNote(st, `${drv.name} reached 80% fatigue en-route and pulled over at a travel plaza for mandatory sleeper berth rest.`, {
@@ -222,12 +222,23 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
     console.error('Simulation: Loans Margin Desk error', e);
   }
 
+  const isQuantSubscribed = !!(st.aiState?.quantTraderActive && now < (st.aiState?.quantTraderExpiresTimestamp || 0));
+
   if (st.aiCryptoBot?.enabled) {
-    try {
-      const botRes = runAiCryptoTradingTick(st);
-      botTraded = !!botRes.executed;
-    } catch (e) {
-      console.error('Simulation: AI Quant Bot error', e);
+    if (!isQuantSubscribed) {
+      st.aiCryptoBot.enabled = false;
+      pushNote(st, 'AI Quant Trading Bot paused. Subscription expired or inactive.', {
+        title: 'TRADER BOT EXPIRED',
+        type: 'finance'
+      });
+      toast('AI Quant Bot paused (Subscription Required)', 'err');
+    } else {
+      try {
+        const botRes = runAiCryptoTradingTick(st);
+        botTraded = !!botRes.executed;
+      } catch (e) {
+        console.error('Simulation: AI Quant Bot error', e);
+      }
     }
   }
 

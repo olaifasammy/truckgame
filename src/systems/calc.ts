@@ -122,8 +122,8 @@ export function stats(S: any, t: any, payloadTonnes = 0, env?: EnvironmentalCond
  * Exact Physics Formulation:
  * - Real-world duration: T_real = (distance_km / cruising_speed_kmh) hours.
  * - Real-world duration in seconds: T_sec = (distance_km / cruising_speed_kmh) * 3600.
- * - Deterministic physical time compression scale (1 real minute = 12 simulation minutes, 1:12 scale):
- *   T_simulation_ms = (distance_km / cruising_speed_kmh) * 300 * 1000 ms.
+ * - Deterministic physical time compression scale (1 real minute = 24 simulation minutes, 1:24 scale):
+ *   T_simulation_ms = (distance_km / cruising_speed_kmh) * 150 * 1000 ms.
  */
 export const tripMs = (km: number, speed: number = 80, env?: EnvironmentalConditions): number => {
   let effectiveSpeed = Math.max(30, Math.min(125, speed || 80));
@@ -142,8 +142,8 @@ export const tripMs = (km: number, speed: number = 80, env?: EnvironmentalCondit
     }
   }
 
-  // Exact continuous physics time calculation: T_ms = (km / speed) * 300,000 ms
-  const totalSeconds = (km / effectiveSpeed) * 300;
+  // Exact continuous physics time calculation: T_ms = (km / speed) * 150,000 ms
+  const totalSeconds = (km / effectiveSpeed) * 150;
   return Math.round(totalSeconds * 1000);
 };
 

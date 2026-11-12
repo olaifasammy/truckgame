@@ -21,8 +21,10 @@ import { getCryptoMarketData } from '../domain/finance/markets/crypto';
 // View state
 let activeSubTab: 'dashboard' | 'strategy' | 'brain' | 'plans' | 'telemetry' = 'dashboard';
 let selectedPlan: '7d' | '1m' | 'auto' | 'year' = '1m';
+let showSubscriptionModal: boolean = false;
 let includeMaintenance: boolean = true;
 let includeOfflineDispatch: boolean = true;
+let includeQuantTrader: boolean = false;
 let autoRenew: boolean = true;
 let allowExtension: boolean = false;
 
@@ -35,6 +37,15 @@ action('ai-set-tab', d => {
 action('ai-toggle-quant', () => {
   const S = get();
   if (!S.aiCryptoBot) S.aiCryptoBot = { enabled: false, strategy: 'momentum', allocatedUsd: 10000, totalProfitUsd: 0, lastTradeTimestamp: 0, tradeHistory: [] };
+  
+  const isQuantSubscribed = !!(S.aiState?.quantTraderActive && Date.now() < (S.aiState?.quantTraderExpiresTimestamp || 0));
+  if (!S.aiCryptoBot.enabled && !isQuantSubscribed) {
+    toast('Quant Bot subscription required to start the engine. Please subscribe in Plans & Add-ons.', 'err');
+    activeSubTab = 'plans';
+    refresh();
+    return;
+  }
+
   S.aiCryptoBot.enabled = !S.aiCryptoBot.enabled;
   refresh();
 });
@@ -50,6 +61,11 @@ action('ai-run-quant-now', () => {
   const S = get();
   const result = runAiCryptoTradingTick(S);
   toast(result.message, result.executed ? 'success' : 'info');
+  refresh();
+});
+
+action('open-ai-subscription', () => {
+  activeSubTab = 'plans';
   refresh();
 });
 
@@ -102,6 +118,11 @@ action('ai-toggle-offline', () => {
   refresh();
 });
 
+action('ai-modal-toggle-quant', () => {
+  includeQuantTrader = !includeQuantTrader;
+  refresh();
+});
+
 action('ai-toggle-autorenew', () => {
   autoRenew = !autoRenew;
   refresh();
@@ -113,12 +134,12 @@ action('ai-toggle-extension', () => {
 });
 
 action('ai-checkout-usd', () => {
-  activateAiSuiteSystem(selectedPlan, false, includeMaintenance, includeOfflineDispatch, autoRenew, allowExtension);
+  activateAiSuiteSystem(selectedPlan, false, includeMaintenance, includeOfflineDispatch, includeQuantTrader, autoRenew, allowExtension);
   refresh();
 });
 
 action('ai-checkout-flb', () => {
-  activateAiSuiteSystem(selectedPlan, true, includeMaintenance, includeOfflineDispatch, autoRenew, allowExtension);
+  activateAiSuiteSystem(selectedPlan, true, includeMaintenance, includeOfflineDispatch, includeQuantTrader, autoRenew, allowExtension);
   refresh();
 });
 
@@ -200,14 +221,18 @@ export default {
     const isMaintActive = !!(aiState.maintenanceAddonActive && now < (aiState.maintenanceExpiresTimestamp || 0));
     const isOfflineActive = !!(aiState.offlineDispatchActive && now < (aiState.offlineExpiresTimestamp || 0));
     const isEngineRunning = isSubActive && filters.enabled;
-    const quantSmart = getQuantSmartLevelInfo(S.aiCryptoBot);
+    const isQuantSubscribed = !!(S.aiState?.quantTraderActive && now < (S.aiState?.quantTraderExpiresTimestamp || 0));
+
+  const quantSmart = getQuantSmartLevelInfo(S.aiCryptoBot);
 
     const currentPlan = AI_SUBSCRIPTION_PLANS[selectedPlan];
     const addons = AI_ADDON_PLANS[selectedPlan];
     const maintCost = includeMaintenance && addons ? addons.maintenance : { priceUsd: 0, priceFlb: 0 };
     const offlineCost = includeOfflineDispatch && addons ? addons.offline_dispatch : { priceUsd: 0, priceFlb: 0 };
-    const totalUsd = currentPlan.priceUsd + maintCost.priceUsd + offlineCost.priceUsd;
-    const totalFlb = currentPlan.priceFlb + maintCost.priceFlb + offlineCost.priceFlb;
+    const quantCost = includeQuantTrader && addons ? addons.quant_trader : { priceUsd: 0, priceFlb: 0 };
+
+    const totalUsd = currentPlan.priceUsd + maintCost.priceUsd + offlineCost.priceUsd + quantCost.priceUsd;
+    const totalFlb = currentPlan.priceFlb + maintCost.priceFlb + offlineCost.priceFlb + quantCost.priceFlb;
 
     const playerFlb = (S.cryptoHoldings && S.cryptoHoldings['flb']) || S.coins || 0;
     const canAffordUsd = (S.money || 0) >= totalUsd;
@@ -538,11 +563,22 @@ export default {
               </div>
             </div>
 
+            ${!isQuantSubscribed ? `
+              <div style="background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); padding:8px; border-radius:6px; margin-bottom:12px; display:flex; align-items:center; gap:10px;">
+                <span style="font-size:20px;">⚠️</span>
+                <div style="font-size:11px; color:var(--gold);">
+                  <strong>AI Quant Subscription Inactive</strong><br/>
+                  The trader engine requires an active Quant Bot subscription to execute automated trades.
+                  <span data-act="open-ai-subscription" style="text-decoration:underline; cursor:pointer; font-weight:800;">Get Subscription →</span>
+                </div>
+              </div>
+            ` : ''}
+
             <div style="display:flex; gap:8px; margin-bottom:10px;">
-              <button data-act="ai-toggle-quant" class="btn ${S.aiCryptoBot?.enabled ? 'alt' : 'gold'}" style="flex:1;">
+              <button data-act="ai-toggle-quant" class="btn ${S.aiCryptoBot?.enabled ? 'alt' : 'gold'}" style="flex:1;" ${!isQuantSubscribed && !S.aiCryptoBot?.enabled ? 'disabled' : ''}>
                 ${S.aiCryptoBot?.enabled ? 'Pause Bot' : 'Start Quant Bot'}
               </button>
-              <button data-act="ai-run-quant-now" class="btn gold" style="flex:1;" ${!isSubActive ? 'disabled' : ''}>
+              <button data-act="ai-run-quant-now" class="btn gold" style="flex:1;" ${!isQuantSubscribed ? 'disabled' : ''}>
                 Execute AI Trade Now
               </button>
             </div>
@@ -809,6 +845,14 @@ export default {
                 <div>
                   <span style="color:var(--tx); font-weight:800;">Autonomous Offline AI Dispatcher Add-on</span>
                   <div style="font-size:10px; color:var(--mu);">Continuously matches real market jobs while offline (+$${offlineCost.priceUsd.toLocaleString()} USD or ${offlineCost.priceFlb} FLB).</div>
+                </div>
+              </label>
+
+              <label class="ai-toggle-row" style="align-items:flex-start; padding-top:8px; border-top:1px solid var(--line);">
+                <input type="checkbox" ${includeQuantTrader ? 'checked' : ''} data-act="ai-modal-toggle-quant" style="margin-top:2px;" />
+                <div>
+                  <span style="color:var(--tx); font-weight:800;">Autonomous AI Quant Trader Bot Add-on</span>
+                  <div style="font-size:10px; color:var(--mu);">Enables high-frequency algorithmic crypto trading engine (+$${quantCost.priceUsd.toLocaleString()} USD or ${quantCost.priceFlb} FLB).</div>
                 </div>
               </label>
 
