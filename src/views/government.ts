@@ -2,7 +2,7 @@ import { fmt, action, toast, $ } from '../core/ui';
 import { set, refresh } from '../core/store';
 import { getTruckCode, getTruckRegistrationStatus, registerTruckAtCity, renewVehicleRoadTax, bulkRenewFleetRoadTax, performVehicleInspection, generateLicensePlate } from '../domain/trucks/registration';
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
-import { getOwnedHubsInRegion, REGIONAL_HUBS } from '../domain/logistics/network';
+import { getOwnedHubs, REGIONAL_HUBS } from '../domain/logistics/network';
 
 type GovDept = 'dmv' | 'safety' | 'customs' | 'compliance';
 type GovFilter = 'registered' | 'unregistered' | 'tax_expired' | 'inspection_expired';
@@ -87,9 +87,8 @@ export default {
   hidden: false,
   render(S: any) {
     const fleet = S.fleet || [];
-    const depots = S.depots || {};
-    const ownedCities = Object.keys(depots).map(k => k.toUpperCase());
-    if (ownedCities.length === 0) ownedCities.push('LAGOS');
+    const ownedHubs = getOwnedHubs(S);
+    const ownedCities = ownedHubs.length > 0 ? ownedHubs.map(h => h.city.toUpperCase()) : ['LAGOS'];
 
     // Analytics & Metrics
     let registeredCount = 0;
@@ -415,9 +414,11 @@ export default {
                 <div>
                   <label style="display:block; font-size:9px; color:var(--mu); font-weight:800; margin-bottom:4px; text-transform:uppercase;">1. SELECT REGISTRATION JURISDICTION / HUB</label>
                   <select id="reg-city-select" style="width:100%; background:#030509; border:1px solid rgba(255,255,255,0.15); color:var(--tx); padding:8px; border-radius:6px; font-size:11px; font-weight:800;">
-                    ${ownedCities.map(city => `
-                      <option value="${city}">${city} DEPOT BUREAU</option>
-                    `).join('')}
+                    ${ownedHubs.length > 0 ? ownedHubs.map(hub => `
+                      <option value="${hub.city.toUpperCase()}">${hub.city.toUpperCase()} DEPOT BUREAU (${hub.region})</option>
+                    `).join('') : `
+                      <option value="LAGOS">LAGOS HQ DEPOT BUREAU (Africa)</option>
+                    `}
                   </select>
                 </div>
 
