@@ -1,6 +1,7 @@
 import { fmt, action, toast } from '../../../core/ui';
 import { refresh, set } from '../../../core/store';
 import { CRYPTO_ASSETS, getCryptoMarketData, getOrderBookDepth, Timeframe, CryptoLimitOrder } from '../../../domain/finance/markets/crypto';
+import { getTechnicalIndicators } from '../../../domain/finance/markets/crypto-indicators';
 import { formatCryptoQty } from '../../../domain/finance/markets/mining';
 import { borrowCryptoCollateral, repayCryptoCollateral, MAX_COLLATERAL_LTV } from '../../../domain/finance/markets/loans';
 
@@ -143,12 +144,23 @@ export function renderCandlestickChart(assetData: any): string {
 
   const candleWidth = Math.max(4, Math.floor((svgWidth - paddingX * 2) / candles.length) - 2);
 
+  // Compute Technical Indicators from active candle series
+  const indicators = getTechnicalIndicators(candles);
+
+  const rsiVal = indicators.rsi;
+  const rsiColor = rsiVal <= 30 ? 'var(--grn)' : rsiVal >= 70 ? '#ef4444' : 'var(--gold)';
+  const rsiLabel = rsiVal <= 30 ? 'OVERSOLD (BUY SIGNAL)' : rsiVal >= 70 ? 'OVERBOUGHT (SELL SIGNAL)' : 'NEUTRAL';
+
+  const trendBadgeColor = indicators.trend === 'strong_bullish' || indicators.trend === 'bullish' ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+  const trendTextColor = indicators.trend === 'strong_bullish' || indicators.trend === 'bullish' ? 'var(--grn)' : '#ef4444';
+  const trendText = indicators.trend.toUpperCase().replace('_', ' ');
+
   return `
     <div style="border-top:1px solid rgba(255,255,255,0.06); padding-top:10px; margin-top:8px;">
-      <!-- Timeframe selector -->
+      <!-- Timeframe selector & price metrics -->
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px; margin-bottom:8px;">
         <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
-          <span style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">OHLC CANDLESTICK INTERVAL:</span>
+          <span style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase;">OHLC INTERVAL:</span>
           <div style="display:flex; gap:4px;">
             ${(['15m', '1h', '4h', '1d'] as Timeframe[]).map(tf => `
               <button class="btn ${selectedTimeframe === tf ? 'gold' : 'alt'}" style="padding:2px 7px; font-size:8px; font-weight:800;" data-act="set-chart-timeframe" data-tf="${tf}">
@@ -159,6 +171,43 @@ export function renderCandlestickChart(assetData: any): string {
         </div>
         <div style="font-size:8px; color:var(--mu); font-family:monospace;">
           High: <b style="color:var(--grn);">$${maxPrice.toFixed(2)}</b> · Low: <b style="color:#ef4444;">$${minPrice.toFixed(2)}</b>
+        </div>
+      </div>
+
+      <!-- Technical Indicator Signals Ribbon -->
+      <div style="background:#090d16; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:6px 10px; margin-bottom:8px; display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;">
+        <!-- RSI Meter -->
+        <div>
+          <div style="display:flex; justify-content:space-between; align-items:center; font-size:8px; font-weight:800;">
+            <span style="color:var(--mu);">RSI (14)</span>
+            <span style="color:${rsiColor}; font-family:monospace;">${rsiVal.toFixed(1)}</span>
+          </div>
+          <div style="width:100%; height:4px; background:#1e293b; border-radius:2px; margin-top:3px; overflow:hidden; position:relative;">
+            <div style="width:${Math.min(100, Math.max(0, rsiVal))}%; height:100%; background:${rsiColor}; border-radius:2px;"></div>
+          </div>
+          <div style="font-size:7px; color:${rsiColor}; font-weight:800; margin-top:2px;">${rsiLabel}</div>
+        </div>
+
+        <!-- MACD & Trend Signal -->
+        <div>
+          <div style="font-size:8px; color:var(--mu); font-weight:800;">MACD / TREND</div>
+          <div style="display:inline-block; background:${trendBadgeColor}; color:${trendTextColor}; border:1px solid ${trendTextColor}44; font-size:8px; font-weight:900; padding:1px 6px; border-radius:3px; margin-top:3px;">
+            ${trendText}
+          </div>
+          <div style="font-size:7px; color:var(--mu); font-family:monospace; margin-top:2px;">
+            Hist: <b style="color:${indicators.macd.histogram >= 0 ? 'var(--grn)' : '#ef4444'};">${indicators.macd.histogram >= 0 ? '+' : ''}${indicators.macd.histogram.toFixed(2)}</b>
+          </div>
+        </div>
+
+        <!-- EMA / Bollinger Volatility -->
+        <div>
+          <div style="font-size:8px; color:var(--mu); font-weight:800;">VOLATILITY & EMA</div>
+          <div style="font-size:8px; font-family:monospace; color:var(--tx); margin-top:2px;">
+            EMA9: <b style="color:var(--gold);">$${indicators.ema9.toFixed(2)}</b>
+          </div>
+          <div style="font-size:7px; color:var(--mu); font-family:monospace; margin-top:2px;">
+            BB Bandwidth: <b style="color:var(--tx);">${indicators.bollinger.bandwidth.toFixed(2)}%</b>
+          </div>
         </div>
       </div>
 

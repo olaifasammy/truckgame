@@ -9,6 +9,7 @@
 import { completeJobs, processEconomics, replenish } from '../../systems/jobs';
 import { completeRepairs } from '../../systems/maintenance';
 import { processLimitOrders } from '../finance/markets/crypto';
+import { processCryptoLoansTick } from '../finance/markets/loans';
 import { onTruckArrival } from '../../systems/fleet';
 import { runAiAutoDispatch, runAiFleetMaintenance } from '../ai/ai.engine';
 import { runAiCryptoTradingTick } from '../ai/ai.quant';
@@ -213,8 +214,14 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
     }
   }
 
-  // 7. AI Crypto Quant Trading Bot Tick
+  // 7. AI Crypto Quant Trading Bot Tick & Collateral Loans Margin Desk
   let botTraded = false;
+  try {
+    processCryptoLoansTick(st);
+  } catch (e) {
+    console.error('Simulation: Loans Margin Desk error', e);
+  }
+
   if (st.aiCryptoBot?.enabled) {
     try {
       const botRes = runAiCryptoTradingTick(st);
