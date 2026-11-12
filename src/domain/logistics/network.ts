@@ -214,6 +214,11 @@ export function getOwnedHubs(S: any): RegionalHub[] {
   return REGIONAL_HUBS.filter(h => S.depots.includes(h.id));
 }
 
+export function getOwnedHubsInRegion(S: any, region: RegionName): RegionalHub[] {
+  if (!S || !S.depots) return [];
+  return REGIONAL_HUBS.filter(h => h.region === region && S.depots.includes(h.id));
+}
+
 export function getHubByCity(city: string): RegionalHub | undefined {
   return REGIONAL_HUBS.find(h => h.city === city);
 }

@@ -69,7 +69,8 @@ function renderApp(st: any) {
 
     // Throttle rendering to ~20fps to prevent extreme flickering and CPU load
     const now = Date.now();
-    if (now - lastRenderTime < 50 && lastRenderedTab === st.tab) return;
+    const force = !!(window as any).__forceRender; (window as any).__forceRender = false;
+    if (!force && now - lastRenderTime < 50 && lastRenderedTab === st.tab) return;
     lastRenderTime = now;
 
     if (!st.isAuthenticated) {
@@ -93,7 +94,7 @@ function renderApp(st: any) {
     // Prevent view re-render disruption if user is actively typing in an input, textarea, or select
     const activeEl = document.activeElement;
     const isInputFocused = activeEl && ['INPUT', 'TEXTAREA', 'SELECT'].includes(activeEl.tagName);
-    if (isInputFocused && lastRenderedTab === targetTab) {
+    if (!force && isInputFocused && lastRenderedTab === targetTab) {
       return;
     }
 

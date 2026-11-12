@@ -210,14 +210,16 @@ export const buyTruckBatch = (modelId: string, trailerType: TrailerType | null, 
       S.fleet.push(truck);
     }
 
-    const tpl = vehiclePurchaseTemplate(quantity > 1 ? `${quantity}x Units` : S.fleet[S.fleet.length - 1].id, `${m.brand} ${m.name}`, totalPrice, destinationCity);
+    const firstUnit = S.fleet[S.fleet.length - quantity];
+    const unitLabel = quantity > 1 ? `${quantity}x Units` : `${firstUnit.id}`;
+    const tpl = vehiclePurchaseTemplate(unitLabel, `${m.brand} ${m.name}`, totalPrice, destinationCity, 15);
     pushNote(S, tpl.msg, { 
       title: tpl.title, 
       type: tpl.type,
       priority: tpl.priority,
       body: tpl.body
     });
-    toast(`Order Processed: ${quantity} vehicle(s) in transit to garage`, 'success');
+    toast(`Order Processed: ${quantity} vehicle(s) in transit to ${destinationCity} depot (Est. 15 mins)`, 'success');
   });
 };
 

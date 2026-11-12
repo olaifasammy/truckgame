@@ -102,9 +102,9 @@ export function getHubTotalBerths(S: any, hubId: string): number {
 }
 
 /**
- * Returns all trucks currently parked (idle) or stationed at a specific hub.
+ * Returns all trucks currently parked (idle) or stationed/delivering at a specific hub.
  */
-export function getTrucksAtHub(S: any, hubCity: string): any[] {
+export function getTrucksAtHub(S: any, hubCity: string, includeDelivering = true): any[] {
   if (!S || !S.fleet || !hubCity) return [];
   const upperCity = hubCity.toUpperCase().trim().replace(/\s+/g, '_');
   
@@ -113,7 +113,8 @@ export function getTrucksAtHub(S: any, hubCity: string): any[] {
   const hubIdUpper = hubDef?.id.toUpperCase();
 
   return S.fleet.filter((t: any) => {
-    if (t.status === 'busy' || t.status === 'delivering') return false;
+    if (t.status === 'busy') return false;
+    if (t.status === 'delivering' && !includeDelivering) return false;
     const loc = (t.loc || '').toUpperCase().trim().replace(/\s+/g, '_');
     // Match by city name OR by Hub ID
     return loc === upperCity || (hubIdUpper && loc === hubIdUpper);

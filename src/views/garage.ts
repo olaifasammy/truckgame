@@ -959,9 +959,37 @@ export default {
         </div>
 
         <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
-          <!-- 1. Render Unstationed/Parked-Outside-Hub Trucks first so they can be dealt with -->
+          <!-- 1. Render Unstationed/Parked-Outside-Hub & Delivering Trucks -->
           ${unstationedTrucks.map((t: any) => {
             const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
+            if (t.status === 'delivering') {
+              const isRoRo = t.shippingMode === 'maritime_roro';
+              const totalTime = isRoRo ? 180000 : 15 * 60 * 1000;
+              const remaining = Math.max(0, (t.availableAt || now) - now);
+              const progress = Math.min(100, Math.max(0, 100 - ((remaining / totalTime) * 100)));
+              return `
+                <div style="background:#0b1324; border:1px solid var(--gold); border-radius:8px; padding:12px; margin-bottom:8px; cursor:pointer;" data-act="truck-toggle" data-id="${t.id}">
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                      <span style="font-size:16px;">🚚</span>
+                      <div>
+                        <div style="font-size:12px; font-weight:900; color:var(--tx);">${m.brand} ${m.name} (#${t.id})</div>
+                        <div style="font-size:9px; color:var(--gold); font-family:monospace; font-weight:800;">
+                          FACTORY-TO-DEPOT LOGISTICS TRANSIT ➔ ${t.loc.toUpperCase()} DEPOT
+                        </div>
+                      </div>
+                    </div>
+                    <div style="text-align:right;">
+                      <div style="font-size:10px; font-weight:900; color:var(--gold); font-family:monospace;">${dur(remaining)} REMAINING</div>
+                      <div style="font-size:8px; color:var(--mu); font-family:monospace;">EST. ARRIVAL: ${new Date(t.availableAt || now).toLocaleTimeString()}</div>
+                    </div>
+                  </div>
+                  <div class="bar" style="height:6px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden;">
+                    <div style="width:${progress}%; height:100%; background:linear-gradient(90deg, #f59e0b, #10b981); border-radius:3px;"></div>
+                  </div>
+                </div>
+              `;
+            }
             return `
               <div style="background:rgba(239,68,68,0.05); border:1px dashed #ef444480; border-radius:8px; padding:10px; cursor:pointer;" data-act="truck-toggle" data-id="${t.id}">
                 <div style="display:flex; justify-content:space-between; align-items:center;">

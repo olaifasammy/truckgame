@@ -2,6 +2,7 @@ import { createTruck } from '../domain/trucks/trucks.physics';
 import { LOCATIONS } from '../data/world';
 import { DEFAULT_AI_STATE } from '../domain/ai/ai.config';
 import { ensureHubFacilities } from '../domain/hubs/hub-facility';
+import { REGIONAL_HUBS, PRIMARY_HUB_BY_REGION, RegionName } from '../domain/logistics/network';
 
 const KEY = 'sam.v3';
 
@@ -93,16 +94,21 @@ function fix(state: any) {
   if (!state.unlockedRegions || state.unlockedRegions.length === 0) {
     state.unlockedRegions = ['Africa'];
   }
-  // Auto-sync unlocked regions if user already owns depots in those continents
-  if (state.depots.some((d: string) => d.includes('rotterdam') || d.includes('munich') || d.includes('lyon')) && !state.unlockedRegions.includes('Europe')) {
-    state.unlockedRegions.push('Europe');
-  }
-  if (state.depots.some((d: string) => d.includes('chicago') || d.includes('dallas') || d.includes('los_angeles')) && !state.unlockedRegions.includes('America')) {
-    state.unlockedRegions.push('America');
-  }
-  if (state.depots.some((d: string) => d.includes('tokyo') || d.includes('shanghai') || d.includes('almaty')) && !state.unlockedRegions.includes('Asia')) {
-    state.unlockedRegions.push('Asia');
-  }
+  // Dynamically sync unlocked regions based on owned depots in REGIONAL_HUBS
+  REGIONAL_HUBS.forEach(h => {
+    if (state.depots.includes(h.id) && !state.unlockedRegions.includes(h.region)) {
+      state.unlockedRegions.push(h.region);
+    }
+  });
+
+  // Dynamically ensure every unlocked region has at least its primary hub in state.depots
+  (state.unlockedRegions || ['Africa']).forEach((region: RegionName) => {
+    const regionalHubs = REGIONAL_HUBS.filter(h => h.region === region);
+    const hasHubInRegion = regionalHubs.some(h => state.depots.includes(h.id));
+    if (!hasHubInRegion && regionalHubs.length > 0) {
+      state.depots.push(regionalHubs[0].id);
+    }
+  });
   if (!state.warehouseUpgrades) state.warehouseUpgrades = { cross_docking: false, cold_vault: false, gantry_crane: false };
   if (!state.tenderListingLimit) {
     state.tenderListingLimit = {

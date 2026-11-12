@@ -3,11 +3,11 @@ import { NotificationType } from '../../systems/notify';
 /**
  * Vehicle Purchase & Delivery Templates
  */
-export function vehiclePurchaseTemplate(unitId: number | string, modelName: string, price: number, destination: string) {
+export function vehiclePurchaseTemplate(unitId: number | string, modelName: string, price: number, destination: string, transitTimeMins: number = 15) {
   return {
     title: 'EQUIPMENT PURCHASE CONFIRMED',
-    msg: `Acquired ${modelName} (Unit #${unitId}) for $${price.toLocaleString()}.`,
-    body: `Invoice Details:\n---\nAsset: ${modelName}\nUnit ID: #${unitId}\nPurchase Price: $${price.toLocaleString()}\nRegistration: Commercial Heavy Duty\nDelivery Status: In Transit to ${destination}\n\nThank you for choosing NexHaul Fleet Solutions.`,
+    msg: `Acquired ${modelName} (Unit #${unitId}) for $${price.toLocaleString()}. In transit to ${destination} Depot (Est. ${transitTimeMins} mins).`,
+    body: `Invoice & Delivery Specification:\n---\nAsset: ${modelName}\nUnit ID: #${unitId}\nPurchase Price: $${price.toLocaleString()}\nRegistration: Commercial Heavy Duty\nDelivery Destination: ${destination} Depot\nTransit Status: Factory-to-Depot Transport En Route\nEstimated Delivery Time: ~${transitTimeMins} Minutes\n\nTrack progress anytime in the Garage tab under ${destination} Depot. Thank you for choosing NexHaul Fleet Solutions.`,
     type: 'ops' as NotificationType,
     priority: 1 as 0 | 1 | 2
   };

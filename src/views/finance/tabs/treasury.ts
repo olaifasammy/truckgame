@@ -13,13 +13,13 @@ export function renderTreasuryTab(S: any) {
       <!-- TOP STAT SUMMARY -->
       <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
         <div class="stat-box" style="background:#111827; border:1px solid #1f293d; border-radius:12px; padding:20px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 12px rgba(0,0,0,0.2);">
-          <span class="stat-lab" style="font-size:11px; color:var(--mu); font-weight:900; text-transform:uppercase; letter-spacing:1px;">Total Freight Revenue</span>
-          <span class="stat-val" style="color:var(--grn); font-size:24px; font-weight:900; font-family:monospace;">${fmt(pnl.freightRevenueUsd)}</span>
+          <span class="stat-lab" style="font-size:11px; color:var(--mu); font-weight:900; text-transform:uppercase; letter-spacing:1px;">Total Freight Income</span>
+          <span class="stat-val" style="color:var(--grn); font-size:14px; font-weight:900; font-family:monospace;">${fmt(pnl.freightRevenueUsd)}</span>
         </div>
 
         <div class="stat-box" style="background:#111827; border:1px solid #1f293d; border-radius:12px; padding:20px; display:flex; flex-direction:column; gap:6px; box-shadow:0 4px 12px rgba(0,0,0,0.2);">
-          <span class="stat-lab" style="font-size:11px; color:var(--mu); font-weight:900; text-transform:uppercase; letter-spacing:1px;">Net Enterprise Equity</span>
-          <span class="stat-val" style="color:var(--gold); font-size:24px; font-weight:900; font-family:monospace;">${fmt(bs.netEnterpriseValueUsd)}</span>
+          <span class="stat-lab" style="font-size:11px; color:var(--mu); font-weight:900; text-transform:uppercase; letter-spacing:1px;">Net Equity</span>
+          <span class="stat-val" style="color:var(--gold); font-size:14px; font-weight:900; font-family:monospace;">${fmt(bs.netEnterpriseValueUsd)}</span>
         </div>
       </div>
 
@@ -27,7 +27,7 @@ export function renderTreasuryTab(S: any) {
       <div style="padding: 24px; background:#0f172a; border:1px solid #1e293b; border-radius:14px; box-shadow:0 8px 32px rgba(0,0,0,0.3);">
         <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); padding-bottom:16px; margin-bottom:20px;">
           <div>
-            <span style="font-size:14px; font-weight:900; color:var(--tx); text-transform:uppercase; letter-spacing:1.5px;">Enterprise Income Statement</span>
+            <span style="font-size:14px; font-weight:900; color:var(--tx); text-transform:uppercase; letter-spacing:1.5px;">Income Statement</span>
             <div style="font-size:11px; color:var(--mu); margin-top:2px;">Consolidated Daily Profit & Loss Analysis</div>
           </div>
           <div style="text-align:right;">

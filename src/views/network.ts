@@ -35,7 +35,15 @@ action('unlock-region', d => {
     
     S.money -= auth.cost;
     S.unlockedRegions.push(region);
-    toast(`Operating Authority Granted! ${auth.name} (${auth.code}) active. Regional freight unlocked!`, 'success');
+
+    const primaryHub = REGIONAL_HUBS.find(h => h.region === region);
+    if (primaryHub) {
+      if (!S.depots) S.depots = [];
+      if (!S.depots.includes(primaryHub.id)) S.depots.push(primaryHub.id);
+    }
+    ensureHubFacilities(S);
+
+    toast(`Operating Authority Granted! ${auth.name} (${auth.code}) active. Regional freight & terminal unlocked!`, 'success');
   });
 });
 

@@ -9,6 +9,7 @@ import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { renderTelematicsOverlay } from './telematics-modal';
 import { getTruckTelematics, getDrivingStateBadge } from '../domain/trucks/trucks.telematics';
 import { REGIONAL_HUBS, REGION_AUTHORITIES, RegionName, isRegionUnlocked, getOwnedHubs } from '../domain/logistics/network';
+import { ensureHubFacilities } from '../domain/hubs/hub-facility';
 import { LOCATIONS } from '../data/world';
 
 let transitPage = 1;
@@ -45,7 +46,15 @@ action('unlock-region', d => {
     
     S.money -= auth.cost;
     S.unlockedRegions.push(region);
-    toast(`Operating Authority Granted! ${auth.name} (${auth.code}) active. Regional freight unlocked!`, 'success');
+
+    const primaryHub = REGIONAL_HUBS.find(h => h.region === region);
+    if (primaryHub) {
+      if (!S.depots) S.depots = [];
+      if (!S.depots.includes(primaryHub.id)) S.depots.push(primaryHub.id);
+    }
+    ensureHubFacilities(S);
+
+    toast(`Operating Authority Granted! ${auth.name} (${auth.code}) active. Regional freight & terminal unlocked!`, 'success');
   });
 });
 

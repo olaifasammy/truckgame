@@ -468,18 +468,30 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
 
   // 2. OPPORTUNITY SCAN: If no position was sold and cash is available, evaluate candidate dip buys
   if (!actionTaken && (S.cryptoPortfolio.cash || 0) >= 300) {
-    let bestCandidate: { asset: any; market: any; score: number; features: number[]; dipRatio: number } | null = null;
+    let holdingsValue = 0;
+    for (const [id, q] of Object.entries(S.cryptoPortfolio.holdings || {})) {
+      const m = getCryptoMarketData(id, '15m');
+      if (m && m.price) holdingsValue += (q as number) * m.price;
+    }
+    const netWorth = (S.cryptoPortfolio.cash || 0) + holdingsValue;
+    const maxAssetPortfolioShare = 0.35; // Max 35% per token to allow multi-million dollar positions while keeping risk diversified
+    const maxHoldingUsd = Math.max(50000, netWorth * maxAssetPortfolioShare);
+
+    let bestCandidate: { asset: any; market: any; score: number; features: number[]; dipRatio: number; roomInAsset: number } | null = null;
     let highestScore = -Infinity;
 
     for (const asset of priorityAssets) {
-      // Skip if we already hold this asset
-      const currentHolding = S.cryptoPortfolio.holdings[asset.id] || 0;
-      if (currentHolding > 0.0001) continue;
-
       const market = getCryptoMarketData(asset.id, '15m');
       if (!market || !market.history || market.history.length < 5) continue;
 
       const currentPrice = market.price;
+      const currentHoldingTokens = S.cryptoPortfolio.holdings[asset.id] || 0;
+      const currentHoldingUsd = currentHoldingTokens * currentPrice;
+
+      // Skip if this asset already exceeds max portfolio share limit
+      if (currentHoldingUsd >= maxHoldingUsd) continue;
+      const roomInAsset = maxHoldingUsd - currentHoldingUsd;
+
       const low24h = market.low24h || currentPrice * 0.8;
       const high24h = market.high24h || currentPrice * 1.2;
       const priceRange = high24h - low24h || 1;
@@ -506,7 +518,7 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
 
       if (buyUrgencyScore > highestScore) {
         highestScore = buyUrgencyScore;
-        bestCandidate = { asset, market, score: buyUrgencyScore, features, dipRatio };
+        bestCandidate = { asset, market, score: buyUrgencyScore, features, dipRatio, roomInAsset };
       }
     }
 
@@ -520,22 +532,41 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
 
       if (bestCandidate.score >= buyThreshold && timeSinceLastTrade >= 4000) {
         const capitalMultiplier = intensity === 'conservative' ? 0.35 : intensity === 'aggressive' ? 0.70 : 0.50;
-        const maxTradeAlloc = 20000 + (smartInfo.level * 3500);
-        const tradeUsd = Math.min(S.cryptoPortfolio.cash, Math.min(maxTradeAlloc, Math.max(300, S.cryptoPortfolio.cash * capitalMultiplier)));
+        const baseMaxAlloc = 20000 + (smartInfo.level * 3500);
+        const portfolioMaxAlloc = S.cryptoPortfolio.cash * 0.30;
+        const maxTradeAlloc = Math.max(baseMaxAlloc, portfolioMaxAlloc);
+
+        const tradeUsd = Math.min(
+          S.cryptoPortfolio.cash,
+          bestCandidate.roomInAsset,
+          Math.min(maxTradeAlloc, Math.max(300, S.cryptoPortfolio.cash * capitalMultiplier))
+        );
 
         if (tradeUsd >= 150) {
           const currentPrice = bestCandidate.market.price;
+          const currentHoldingTokens = S.cryptoPortfolio.holdings[bestCandidate.asset.id] || 0;
+          
           S.cryptoPortfolio.cash -= tradeUsd;
           const tokensBought = tradeUsd / currentPrice;
-          S.cryptoPortfolio.holdings[bestCandidate.asset.id] = (S.cryptoPortfolio.holdings[bestCandidate.asset.id] || 0) + tokensBought;
+          S.cryptoPortfolio.holdings[bestCandidate.asset.id] = currentHoldingTokens + tokensBought;
           bot.lastTradeTimestamp = Date.now();
 
           if (!bot.openPositions) bot.openPositions = {};
-          bot.openPositions[bestCandidate.asset.id] = {
-            buyPrice: currentPrice,
-            features: [...bestCandidate.features],
-            time: Date.now()
-          };
+          const existingPos = bot.openPositions[bestCandidate.asset.id];
+          if (existingPos && existingPos.buyPrice && currentHoldingTokens > 0) {
+            const totalCost = (currentHoldingTokens * existingPos.buyPrice) + tradeUsd;
+            bot.openPositions[bestCandidate.asset.id] = {
+              buyPrice: totalCost / (currentHoldingTokens + tokensBought),
+              features: [...bestCandidate.features],
+              time: Date.now()
+            };
+          } else {
+            bot.openPositions[bestCandidate.asset.id] = {
+              buyPrice: currentPrice,
+              features: [...bestCandidate.features],
+              time: Date.now()
+            };
+          }
 
           bot.smartXp = (bot.smartXp || 50) + 8;
 
@@ -554,7 +585,7 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
           if (bot.tradeHistory.length > 50) bot.tradeHistory.pop();
 
           actionTaken = true;
-          msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) ACCUMULATED ${bestCandidate.asset.symbol}: Bought ${tokensBought.toFixed(4)} tokens for $${tradeUsd.toLocaleString()} @ $${currentPrice.toLocaleString()}`;
+          msg = `🧠 AI Quant Bot (Lv. ${smartInfo.level} ${smartInfo.title}) ACCUMULATED ${bestCandidate.asset.symbol}: Bought ${tokensBought.toFixed(4)} tokens for $${Math.round(tradeUsd).toLocaleString()} @ $${currentPrice.toLocaleString()}`;
         }
       }
     }

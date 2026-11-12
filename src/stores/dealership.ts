@@ -8,7 +8,7 @@ import { slots } from '../systems/offices';
 import { CITIES } from '../data/world';
 import { getTruckSilhouetteSvg, getTrailerSilhouetteSvg } from '../domain/trucks/trucks.visuals';
 import { getManufacturerLogoSvg } from '../domain/trucks/trucks.logos';
-import { isRegionUnlocked, getOwnedHubs, RegionName } from '../domain/logistics/network';
+import { isRegionUnlocked, getOwnedHubs, getOwnedHubsInRegion, RegionName } from '../domain/logistics/network';
 
 // State for manufacturer showroom, trailer depot and truck configurator
 let dealershipSection: 'tractors' | 'trailers' = 'tractors';
@@ -19,6 +19,8 @@ let configQuantity = 1;
 let configTrailer: TrailerType | 'none' = 'none';
 let configRegion: RegionName | null = null;
 let configDestination = 'LAGOS';
+let buyConfirm = false;
+let buyConfirmTimeout: any = null;
 
 // Mature, Authentic Manufacturer Profile Metadata
 export interface ManufacturerInfo {
@@ -181,16 +183,29 @@ action('inspect-truck', d => {
   selectedModelKey = (d as any).model;
   configQuantity = 1;
   configTrailer = 'none'; // Default to Bobtail to prevent accidental purchases
+  buyConfirm = false;
+  if (buyConfirmTimeout) clearTimeout(buyConfirmTimeout);
   
   const S = (window as any).__getStore?.();
-  if (S) {
-    const owned = getOwnedHubs(S);
-    if (owned.length > 0) {
-      configRegion = owned[0].region;
-      configDestination = owned[0].city;
+  if (S && selectedModelKey) {
+    const inspectedModel = TRUCK_MODELS[selectedModelKey];
+    const modelRegion = (inspectedModel?.region || 'Africa') as RegionName;
+    const allRegions: RegionName[] = ['Africa', 'Europe', 'America', 'Asia'];
+    const unlockedRegions = allRegions.filter(r => isRegionUnlocked(S, r));
+    const activeUnlockedRegions = unlockedRegions.length > 0 ? unlockedRegions : ['Africa' as RegionName];
+    
+    // Automatically match the inspected truck's region if unlocked
+    if (isRegionUnlocked(S, modelRegion)) {
+      configRegion = modelRegion;
     } else {
-      configRegion = 'Africa';
-      configDestination = 'LAGOS';
+      configRegion = activeUnlockedRegions[0];
+    }
+    
+    const hubsInRegion = getOwnedHubsInRegion(S, configRegion);
+    if (hubsInRegion.length > 0) {
+      configDestination = hubsInRegion[0].city;
+    } else {
+      configDestination = '';
     }
   } else {
     configRegion = 'Africa';
@@ -203,43 +218,57 @@ action('config-region', d => {
   const newRegion = (d as any).value as RegionName;
   console.log('[Dealership] config-region changed to:', newRegion);
   configRegion = newRegion;
+  buyConfirm = false;
+  if (buyConfirmTimeout) clearTimeout(buyConfirmTimeout);
   
   const S = (window as any).__getStore?.();
   if (S) {
-    const owned = getOwnedHubs(S);
-    const hubsInRegion = owned.filter(h => h.region === newRegion);
+    const hubsInRegion = getOwnedHubsInRegion(S, newRegion);
     console.log('[Dealership] Owned hubs in region:', hubsInRegion);
     if (hubsInRegion.length > 0) {
       configDestination = hubsInRegion[0].city;
     } else {
-      configDestination = ''; // No hubs in this region
+      configDestination = ''; // No hubs owned in this region
     }
   }
+  (window as any).__forceRender = true;
   refresh();
 });
 
 action('close-truck-modal', () => {
   selectedModelKey = null;
+  buyConfirm = false;
+  if (buyConfirmTimeout) clearTimeout(buyConfirmTimeout);
   refresh();
 });
 
 action('config-qty-sub', () => {
   if (configQuantity > 1) configQuantity--;
+  buyConfirm = false;
+  if (buyConfirmTimeout) clearTimeout(buyConfirmTimeout);
   refresh();
 });
 
 action('config-qty-add', () => {
   configQuantity++;
+  buyConfirm = false;
+  if (buyConfirmTimeout) clearTimeout(buyConfirmTimeout);
   refresh();
 });
 
 action('config-trailer', d => {
   configTrailer = (d as any).value === 'none' ? 'none' : ((d as any).value as TrailerType);
+  buyConfirm = false;
+  if (buyConfirmTimeout) clearTimeout(buyConfirmTimeout);
+  (window as any).__forceRender = true;
   refresh();
 });
 
 action('config-dest', d => {
   configDestination = (d as any).value;
+  buyConfirm = false;
+  if (buyConfirmTimeout) clearTimeout(buyConfirmTimeout);
+  (window as any).__forceRender = true;
   refresh();
 });
 
@@ -248,13 +277,38 @@ action('execute-batch-buy', () => {
   const tType = configTrailer === 'none' ? null : (configTrailer as TrailerType);
   
   const S = (window as any).__getStore?.();
-  if (S) {
-    const owned = getOwnedHubs(S);
-    const isStillOwned = owned.some(h => h.city === configDestination);
-    if (!isStillOwned && owned.length > 0) {
-      configDestination = owned[0].city;
+  if (S && configRegion) {
+    const hubsInRegion = getOwnedHubsInRegion(S, configRegion);
+    const isValidDest = hubsInRegion.some(h => h.city === configDestination);
+    if (!isValidDest) {
+      if (hubsInRegion.length > 0) {
+        configDestination = hubsInRegion[0].city;
+      } else {
+        toast(`Acquire a terminal hub in ${configRegion} to deliver trucks here`, 'err');
+        return;
+      }
     }
   }
+
+  const inspectedModel = TRUCK_MODELS[selectedModelKey];
+  if (!inspectedModel) return;
+  const trailerPrice = tType ? (TRAILER_PRICES[tType] || 15000) : 0;
+  const totalCost = (inspectedModel.price + trailerPrice) * configQuantity;
+
+  if (!buyConfirm) {
+    buyConfirm = true;
+    toast(`⚠️ Tap again to confirm ${configQuantity}x vehicle purchase for ${fmt(totalCost)}`, 'info');
+    if (buyConfirmTimeout) clearTimeout(buyConfirmTimeout);
+    buyConfirmTimeout = setTimeout(() => {
+      buyConfirm = false;
+      refresh();
+    }, 4000);
+    refresh();
+    return;
+  }
+
+  if (buyConfirmTimeout) clearTimeout(buyConfirmTimeout);
+  buyConfirm = false;
 
   buyTruckBatch(selectedModelKey, tType, configQuantity, configDestination);
   selectedModelKey = null;
@@ -734,7 +788,7 @@ function renderConfiguratorModal(S: any, inspectedModel: TruckModel | null, tota
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
             <span style="font-size:10px; font-weight:800; color:var(--tx); text-transform:uppercase; letter-spacing:0.5px;">1. Fifth-Wheel Trailer Coupling</span>
           </div>
-          <select data-act="config-trailer" onchange="window.__actions?.get('config-trailer')?.({ value: this.value })" style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:11px; font-weight:700; padding:10px; border-radius:8px; outline:none; appearance:none;">
+          <select data-act="config-trailer" style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:11px; font-weight:700; padding:10px; border-radius:8px; outline:none; appearance:none;">
             <option value="none" ${configTrailer === 'none' ? 'selected' : ''}>Bobtail (No Trailer)</option>
             ${inspectedModel.haul.map((h: string) => `
               <option value="${h}" ${configTrailer === h ? 'selected' : ''}>
@@ -752,20 +806,26 @@ function renderConfiguratorModal(S: any, inspectedModel: TruckModel | null, tota
             <!-- Region Selection -->
             <div>
               <div style="font-size:8px; color:var(--mu); text-transform:uppercase; margin-bottom:4px; font-weight:700;">OPERATING REGION</div>
-              <select data-act="config-region" onchange="window.__actions?.get('config-region')?.({ value: this.value })" style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:8px; border-radius:6px; outline:none; appearance:none;">
-                ${['Africa', 'Europe', 'America', 'Asia'].filter(r => isRegionUnlocked(S, r as RegionName)).map(r => `
-                  <option value="${r}" ${configRegion === r ? 'selected' : ''}>${r.toUpperCase()}</option>
-                `).join('')}
+              <select data-act="config-region" style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:8px; border-radius:6px; outline:none; appearance:none;">
+                ${(() => {
+                  const allRegions: RegionName[] = ['Africa', 'Europe', 'America', 'Asia'];
+                  const unlocked = allRegions.filter(r => isRegionUnlocked(S, r));
+                  const activeUnlocked = unlocked.length > 0 ? unlocked : ['Africa' as RegionName];
+                  return activeUnlocked.map(r => `
+                    <option value="${r}" ${configRegion === r ? 'selected' : ''}>${r.toUpperCase()}</option>
+                  `).join('');
+                })()}
               </select>
             </div>
 
             <!-- Hub Selection (Filtered by Region) -->
             <div>
               <div style="font-size:8px; color:var(--mu); text-transform:uppercase; margin-bottom:4px; font-weight:700;">HUB TERMINAL</div>
-              <select data-act="config-dest" onchange="window.__actions?.get('config-dest')?.({ value: this.value })" style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:8px; border-radius:6px; outline:none; appearance:none;">
+              <select data-act="config-dest" style="width:100%; background:#0e1320; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:700; padding:8px; border-radius:6px; outline:none; appearance:none;">
                 ${(() => {
-                  const regionHubs = getOwnedHubs(S).filter(h => h.region === configRegion);
-                  if (regionHubs.length === 0) return '<option value="">NO HUBS AVAILABLE</option>';
+                  const activeRegion = configRegion || 'Africa';
+                  const regionHubs = getOwnedHubsInRegion(S, activeRegion);
+                  if (regionHubs.length === 0) return `<option value="">NO HUB ACQUIRED IN ${activeRegion.toUpperCase()}</option>`;
                   return regionHubs.map(hub => `
                     <option value="${hub.city}" ${configDestination === hub.city ? 'selected' : ''}>
                       ${hub.city} DEPOT
@@ -776,11 +836,24 @@ function renderConfiguratorModal(S: any, inspectedModel: TruckModel | null, tota
             </div>
           </div>
           
-          ${getOwnedHubs(S).filter(h => h.region === configRegion).length === 0 ? `
-            <div style="margin-top:8px; padding:8px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.2); border-radius:6px; font-size:9px; color:#f87171; text-align:center; font-weight:700;">
-              ⚠️ NO OWNED HUBS IN THIS REGION. PLEASE SELECT ANOTHER REGION OR PURCHASE A HUB.
-            </div>
-          ` : ''}
+          ${(() => {
+            const activeRegion = configRegion || 'Africa';
+            const regionHubs = getOwnedHubsInRegion(S, activeRegion);
+            if (regionHubs.length === 0) {
+              return `
+                <div style="margin-top:8px; padding:10px; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.25); border-radius:6px; font-size:9px; color:#f87171; text-align:center;">
+                  <div style="font-weight:800; text-transform:uppercase; margin-bottom:4px;">⚠️ NO TERMINAL HUB ACQUIRED IN ${activeRegion.toUpperCase()}</div>
+                  You hold operating authority in ${activeRegion}, but have not acquired a terminal hub depot in this region yet.
+                  <div style="margin-top:6px;">
+                    <button class="btn gold" style="padding:4px 10px; font-size:9px; font-weight:800;" data-act="tab" data-id="network">
+                      ACQUIRE ${activeRegion.toUpperCase()} TERMINAL HUB →
+                    </button>
+                  </div>
+                </div>
+              `;
+            }
+            return '';
+          })()}
         </div>
 
         <!-- 3. Fleet Order Batch Quantity Stepper -->
@@ -820,8 +893,8 @@ function renderConfiguratorModal(S: any, inspectedModel: TruckModel | null, tota
         </div>
 
         <!-- Order Confirmation CTA -->
-        <button class="btn gold" style="width:100%; padding:12px; font-size:12px; font-weight:900; letter-spacing:0.5px; text-transform:uppercase;" data-act="execute-batch-buy" ${!canAfford || !hasSpace || !configDestination ? 'disabled' : ''}>
-          ${!hasSpace ? 'TERMINAL BERTH CAPACITY EXCEEDED' : !canAfford ? 'INSUFFICIENT OPERATING CAPITAL' : !configDestination ? 'SELECT VALID DELIVERY DEPOT' : `EXECUTE COMMERCIAL PURCHASE (${fmt(totalPrice)})`}
+        <button class="btn ${buyConfirm ? 'danger' : 'gold'}" style="width:100%; padding:12px; font-size:12px; font-weight:900; letter-spacing:0.5px; text-transform:uppercase; ${buyConfirm ? 'background:#dc2626; color:#ffffff; border:1px solid #ef4444;' : ''}" data-act="execute-batch-buy" ${!canAfford || !hasSpace || !configDestination ? 'disabled' : ''}>
+          ${!hasSpace ? 'TERMINAL BERTH CAPACITY EXCEEDED' : !canAfford ? 'INSUFFICIENT OPERATING CAPITAL' : !configDestination ? 'SELECT VALID DELIVERY DEPOT' : buyConfirm ? `⚠️ CONFIRM PAYMENT OF ${fmt(totalPrice)} (TAP AGAIN)` : `EXECUTE COMMERCIAL PURCHASE (${fmt(totalPrice)})`}
         </button>
       </div>
     </div>

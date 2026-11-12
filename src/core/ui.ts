@@ -39,6 +39,8 @@ if (typeof document !== 'undefined') {
     const target = e.target as HTMLElement;
     const el = target?.closest('[data-act]') as HTMLElement;
     if (!el) return;
+    // Don't fire click action handler on <select> or <option> to allow native change event to trigger
+    if (el.tagName === 'SELECT' || el.tagName === 'OPTION') return;
     const act = el.dataset.act;
     const fn = act && actions.get(act);
     if (fn) fn(el.dataset);
@@ -51,7 +53,7 @@ if (typeof document !== 'undefined') {
     const act = el.dataset.act;
     const fn = act && actions.get(act);
     if (fn) {
-      const dataset = { ...el.dataset, value: (el as HTMLInputElement).value };
+      const dataset = { ...el.dataset, value: (el as HTMLInputElement | HTMLSelectElement).value };
       fn(dataset);
     }
   });
