@@ -181,6 +181,20 @@ export default {
         </div>
       </div>
 
+      <!-- MINISTRY OF TRANSPORT & REGULATORY AFFAIRS QUICK HUB BANNER -->
+      <div class="card" style="margin: 0 14px 14px; padding: 12px 14px; background: linear-gradient(135deg, #090d16, #0e1726); border: 1px solid rgba(245,158,11,0.3); border-radius: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div style="font-size:22px;">🏛️</div>
+          <div>
+            <div style="font-size:12px; font-weight:900; color:var(--tx);">Ministry of Transport & Regulatory Affairs</div>
+            <div style="font-size:9px; color:var(--mu);">DMV Vehicle Licensing, DOT Inspections & Highway Permits</div>
+          </div>
+        </div>
+        <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900;" data-act="tab" data-id="government">
+          🏛️ ENTER MINISTRY BUREAU
+        </button>
+      </div>
+
       <!-- NEURAL AI DISPATCHER ENTERPRISE CONSOLE -->
       ${(() => {
         const aiState = S.aiState || {};

@@ -8,7 +8,7 @@ action('tab', d => set(S => { S.tab = (d as any).id; }));
 export function render(S: any) {
   const navEl = $('nav');
   if (!navEl) return;
-  navEl.innerHTML = list().filter(v => !v.hidden && v.id !== 'notifications').map(v => {
+  navEl.innerHTML = list().filter(v => !v.hidden && v.id !== 'notifications' && v.id !== 'government').map(v => {
     const isHQ = v.id === 'company';
     const unreadCount = 0; // Removing unread count from nav since inbox tab is gone
 
