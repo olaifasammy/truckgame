@@ -9,7 +9,7 @@
  */
 
 import { NeuralNetwork } from './neuralNetwork';
-import { CRYPTO_ASSETS, getCryptoMarketData } from '../finance/markets/crypto';
+import { CRYPTO_ASSETS, getCryptoMarketData, calculateTradeSlippage } from '../finance/markets/crypto';
 import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
 
@@ -409,11 +409,13 @@ export function runAiCryptoTradingTick(S: any): { executed: boolean; message: st
     const agedProfitable = positionAgeMs > 45000 && rawProfit > 20;
 
     if (meetsProfitTarget || meetsDipPeak || meetsStopLoss || needsLiquidity || agedProfitable) {
-      // Execute TAKE PROFIT / STOP-LOSS with realistic market fee & slippage execution (0.12% fee)
-      const tradingFeeUsd = Math.round(holdingValueUsd * 0.0012);
-      const realizedProfit = Math.round(rawProfit - tradingFeeUsd);
+      // Execute TAKE PROFIT / STOP-LOSS with realistic market fee & slippage execution
+      const slippageInfo = calculateTradeSlippage(assetId, holdingValueUsd, 'sell');
+      const finalCashReceived = (holdings * slippageInfo.effectivePrice) - slippageInfo.exchangeFeeUsd;
+      
+      const realizedProfit = Math.round(finalCashReceived - costBasis);
 
-      S.cryptoPortfolio.cash += (holdingValueUsd - tradingFeeUsd);
+      S.cryptoPortfolio.cash += finalCashReceived;
       S.cryptoPortfolio.holdings[assetId] = 0;
       if (bot.openPositions) delete bot.openPositions[assetId];
 
