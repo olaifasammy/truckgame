@@ -171,7 +171,10 @@ export function registerTruckAtCity(S: any, truckId: number, city: string, custo
     return false;
   }
 
-  S.money -= regFee;
+  // Deduct the money from the state
+  if (S.money !== undefined) {
+    S.money -= regFee;
+  }
 
   const plate = generateLicensePlate(city, customPlate);
   const now = Date.now();
