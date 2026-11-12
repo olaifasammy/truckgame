@@ -46,7 +46,9 @@ action('submit-vehicle-registration', d => {
   const citySelect = document.getElementById('reg-city-select') as HTMLSelectElement | null;
   const vanityInput = document.getElementById('reg-vanity-input') as HTMLInputElement | null;
 
-  const city = citySelect ? citySelect.value : 'LAGOS';
+  const owned = getOwnedHubs(S);
+  const fallbackCity = owned[0]?.city || REGIONAL_HUBS[0]?.city || 'DEPOT';
+  const city = citySelect ? citySelect.value : fallbackCity;
   const customPlate = (useSpecialVanityPlate && vanityInput) ? vanityInput.value.trim() : '';
 
   if (registerTruckAtCity(S, activeRegistrationTruckId, city, customPlate)) {
@@ -88,7 +90,8 @@ export default {
   render(S: any) {
     const fleet = S.fleet || [];
     const ownedHubs = getOwnedHubs(S);
-    const ownedCities = ownedHubs.length > 0 ? ownedHubs.map(h => h.city.toUpperCase()) : ['LAGOS'];
+    const availableHubs = ownedHubs.length > 0 ? ownedHubs : REGIONAL_HUBS;
+    const ownedCities = availableHubs.map(h => h.city.toUpperCase());
 
     // Analytics & Metrics
     let registeredCount = 0;
@@ -124,7 +127,9 @@ export default {
     });
 
     const activeRegTruck = activeRegistrationTruckId ? fleet.find((t: any) => t.id === activeRegistrationTruckId) : null;
-    const defaultCity = activeRegTruck ? (activeRegTruck.loc || ownedCities[0]).toUpperCase() : ownedCities[0];
+    const truckHubMatch = activeRegTruck ? availableHubs.find(h => h.city.toUpperCase() === (activeRegTruck.loc || '').toUpperCase()) : null;
+    const selectedHub = truckHubMatch || availableHubs[0];
+    const defaultCity = selectedHub ? selectedHub.city.toUpperCase() : availableHubs[0].city.toUpperCase();
     const previewPlate = generateLicensePlate(defaultCity);
 
     return `
@@ -252,7 +257,7 @@ export default {
                           <span style="font-size:9px; background:rgba(255,255,255,0.06); padding:1px 6px; border-radius:3px; color:var(--tx); font-weight:800;">${model.brand} ${model.name}</span>
                         </div>
                         <div style="font-size:8px; color:var(--mu); font-family:monospace; margin-top:2px;">
-                          Odometer: ${Math.round(truck.odometer || 0).toLocaleString()} km · Depoted: <b style="color:var(--tx);">${truck.loc || 'LAGOS'}</b>
+                          Odometer: ${Math.round(truck.odometer || 0).toLocaleString()} km · Depoted: <b style="color:var(--tx);">${truck.loc || truck.registeredCity || REGIONAL_HUBS[0]?.city || 'HUB'}</b>
                         </div>
                       </div>
 
@@ -414,11 +419,11 @@ export default {
                 <div>
                   <label style="display:block; font-size:9px; color:var(--mu); font-weight:800; margin-bottom:4px; text-transform:uppercase;">1. SELECT REGISTRATION JURISDICTION / HUB</label>
                   <select id="reg-city-select" style="width:100%; background:#030509; border:1px solid rgba(255,255,255,0.15); color:var(--tx); padding:8px; border-radius:6px; font-size:11px; font-weight:800;">
-                    ${ownedHubs.length > 0 ? ownedHubs.map(hub => `
-                      <option value="${hub.city.toUpperCase()}">${hub.city.toUpperCase()} DEPOT BUREAU (${hub.region})</option>
-                    `).join('') : `
-                      <option value="LAGOS">LAGOS HQ DEPOT BUREAU (Africa)</option>
-                    `}
+                    ${availableHubs.map(hub => {
+                      const hubCity = hub.city.toUpperCase();
+                      const isSelected = hubCity === selectedHub?.city.toUpperCase();
+                      return `<option value="${hubCity}" ${isSelected ? 'selected' : ''}>${hubCity} DEPOT BUREAU (${hub.region})</option>`;
+                    }).join('')}
                   </select>
                 </div>
 

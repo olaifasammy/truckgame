@@ -1,6 +1,7 @@
 import { TRUCK_MODELS } from './trucks.data';
 import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
+import { getHubByCity } from '../logistics/network';
 
 export interface VehicleRegistrationRecord {
   code: string;
@@ -73,32 +74,37 @@ export function getTruckCode(truck: any): string {
 }
 
 /**
- * Generates an authentic city registration license plate number.
+ * Generates an authentic city registration license plate number based on the hub city and region.
  */
 export function generateLicensePlate(city: string, customPlate?: string): string {
   if (customPlate && customPlate.trim().length > 0) {
     return customPlate.trim().toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 10);
   }
 
-  const cleanCity = (city || 'LAGOS').toUpperCase().replace(/\s+/g, '_');
-  const cityCode = CITY_PLATE_PREFIXES[cleanCity] || cleanCity.slice(0, 2);
+  const cleanCity = (city || '').toUpperCase().replace(/\s+/g, '_');
+  const cityCode = CITY_PLATE_PREFIXES[cleanCity] || (cleanCity ? cleanCity.slice(0, 2) : 'TR');
   const randNum = Math.floor(1000 + Math.random() * 9000);
 
-  if (['BERLIN', 'PARIS', 'WARSAW', 'ROTTERDAM', 'LONDON', 'MADRID'].includes(cleanCity)) {
+  const hub = getHubByCity(city);
+  const region = hub ? hub.region : 'Africa';
+
+  if (region === 'Europe') {
     const letters = String.fromCharCode(65 + Math.floor(Math.random() * 26)) + String.fromCharCode(65 + Math.floor(Math.random() * 26));
     return `${cityCode}-${letters} ${randNum}`;
   }
 
-  if (['HOUSTON', 'CHICAGO', 'LOS_ANGELES', 'NEW_YORK'].includes(cleanCity)) {
+  if (region === 'America') {
     return `${cityCode}-${randNum}-TR`;
   }
 
-  if (['LAGOS', 'IBADAN', 'KANO', 'ABUJA'].includes(cleanCity)) {
-    const suffix = String.fromCharCode(65 + Math.floor(Math.random() * 26)) + String.fromCharCode(65 + Math.floor(Math.random() * 26));
-    return `${cityCode}-${randNum}-${suffix}`;
+  if (region === 'Asia') {
+    const letters = String.fromCharCode(65 + Math.floor(Math.random() * 26)) + String.fromCharCode(65 + Math.floor(Math.random() * 26));
+    return `${cityCode}-${randNum}-${letters}`;
   }
 
-  return `${cityCode}-${randNum}`;
+  // Africa / Default
+  const suffix = String.fromCharCode(65 + Math.floor(Math.random() * 26)) + String.fromCharCode(65 + Math.floor(Math.random() * 26));
+  return `${cityCode}-${randNum}-${suffix}`;
 }
 
 /**
