@@ -1,3 +1,6 @@
+import { AFRICA_REGIONAL_HUBS } from './africa-hubs';
+import { EUROPE_REGIONAL_HUBS } from './europe-hubs';
+
 export type RegionName = 'Europe' | 'America' | 'Africa' | 'Asia';
 
 export interface RegionalHub {
@@ -62,40 +65,11 @@ export const REGION_AUTHORITIES: Record<RegionName, RegionAuthority> = {
 };
 
 export const REGIONAL_HUBS: RegionalHub[] = [
-  // ================= AFRICA =================
-  {
-    id: 'hub_lagos',
-    name: 'Lagos Deep Sea Logistics Terminal',
-    city: 'LAGOS',
-    region: 'Africa',
-    cost: 125000,
-    berths: 4,
-    deadheadDiscount: 0.85,
-    desc: 'Atlantic coastal industrial hub powering continental trade corridors to Ibadan, Abuja, and Kano.',
-    icon: '⚓'
-  },
-  {
-    id: 'hub_abuja',
-    name: 'Abuja Federal Freight Depot',
-    city: 'ABUJA',
-    region: 'Africa',
-    cost: 110000,
-    berths: 4,
-    deadheadDiscount: 0.85,
-    desc: 'Central dry port logistics depot serving FCT industrial zones, government contracts, and northbound freight.',
-    icon: '🏛️'
-  },
-  {
-    id: 'hub_kano',
-    name: 'Kano Trans-Sahel Commercial Terminal',
-    city: 'KANO',
-    region: 'Africa',
-    cost: 135000,
-    berths: 4,
-    deadheadDiscount: 0.85,
-    desc: 'Northern rail-road terminus linking commercial agriculture, livestock, and cross-border trade to Maiduguri.',
-    icon: '🏜️'
-  },
+  // ================= AFRICA (All 54 Countries) =================
+  ...AFRICA_REGIONAL_HUBS,
+
+  // ================= EUROPE (All Countries) =================
+  ...EUROPE_REGIONAL_HUBS,
 
   // ================= EUROPE =================
   {

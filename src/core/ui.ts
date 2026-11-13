@@ -39,11 +39,20 @@ if (typeof document !== 'undefined') {
     const target = e.target as HTMLElement;
     const el = target?.closest('[data-act]') as HTMLElement;
     if (!el) return;
-    // Don't fire click action handler on <select> or <option> to allow native change event to trigger
+    // Don't fire click action handler on <select>, <option>, checkboxes, or radios to allow native change event to trigger
     if (el.tagName === 'SELECT' || el.tagName === 'OPTION') return;
+    if (el.tagName === 'INPUT' && ((el as HTMLInputElement).type === 'checkbox' || (el as HTMLInputElement).type === 'radio')) return;
     const act = el.dataset.act;
     const fn = act && actions.get(act);
-    if (fn) fn(el.dataset);
+    if (fn) {
+      const dataset: any = { ...el.dataset };
+      const selectId = dataset.selectId || (dataset.id ? 'transfer-city-' + dataset.id : null);
+      if (selectId) {
+        const sel = document.getElementById(selectId) as HTMLSelectElement;
+        if (sel) dataset.city = sel.value;
+      }
+      fn(dataset);
+    }
   });
 
   document.addEventListener('change', e => {
@@ -53,7 +62,29 @@ if (typeof document !== 'undefined') {
     const act = el.dataset.act;
     const fn = act && actions.get(act);
     if (fn) {
-      const dataset = { ...el.dataset, value: (el as HTMLInputElement | HTMLSelectElement).value };
+      const inputEl = el as HTMLInputElement;
+      const dataset = {
+        ...el.dataset,
+        value: inputEl.value,
+        checked: inputEl.type === 'checkbox' ? String(inputEl.checked) : undefined
+      };
+      fn(dataset);
+    }
+  });
+
+  document.addEventListener('input', e => {
+    const target = e.target as HTMLElement;
+    const el = target?.closest('[data-act]') as HTMLElement;
+    if (!el) return;
+    const act = el.dataset.act;
+    const fn = act && actions.get(act);
+    if (fn) {
+      const inputEl = el as HTMLInputElement;
+      const dataset = {
+        ...el.dataset,
+        value: inputEl.value,
+        checked: inputEl.type === 'checkbox' ? String(inputEl.checked) : undefined
+      };
       fn(dataset);
     }
   });

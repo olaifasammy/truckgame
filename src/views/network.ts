@@ -18,9 +18,21 @@ import { LOCATIONS } from '../data/world';
 import { ensureHubFacilities } from '../domain/hubs/hub-facility';
 
 let hubTab: 'regions' | 'hubs' | 'routes' | 'tenders' = 'regions';
+let hubFilterRegion: string = 'ALL';
+let hubSearchQuery: string = '';
 
 action('set-hub-tab', d => {
   hubTab = (d as any).tab;
+  refresh();
+});
+
+action('set-hub-filter', d => {
+  hubFilterRegion = (d as any).region || 'ALL';
+  refresh();
+});
+
+action('set-hub-search', d => {
+  hubSearchQuery = (d as any).value || '';
   refresh();
 });
 
@@ -211,8 +223,28 @@ export default {
 
         <!-- TAB 2: REGIONAL HUBS & TERMINALS -->
         ${hubTab === 'hubs' ? `
-          <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:20px;">
-            ${REGIONAL_HUBS.map(hub => {
+          <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
+            <!-- Filter & Search Bar -->
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; background:#0e1320; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.08);">
+              <div style="display:flex; gap:4px; flex-wrap:wrap; flex:1;">
+                ${['ALL', 'Africa', 'Europe', 'America', 'Asia'].map(r => `
+                  <button class="btn ${hubFilterRegion === r ? 'gold' : 'alt'}" style="padding:4px 10px; font-size:9px; font-weight:800;" data-act="set-hub-filter" data-region="${r}">
+                    ${r} ${r === 'Africa' ? '(54)' : ''}
+                  </button>
+                `).join('')}
+              </div>
+              <input type="text" placeholder="Search hub name or city..." value="${hubSearchQuery}" data-act="set-hub-search" style="background:#0b0f19; border:1px solid rgba(255,255,255,0.15); color:var(--tx); padding:6px 10px; border-radius:6px; font-size:11px; width:220px;" />
+            </div>
+
+            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:16px;">
+            ${REGIONAL_HUBS.filter(hub => {
+              if (hubFilterRegion !== 'ALL' && hub.region !== hubFilterRegion) return false;
+              if (hubSearchQuery.trim()) {
+                const q = hubSearchQuery.toLowerCase();
+                return hub.name.toLowerCase().includes(q) || hub.city.toLowerCase().includes(q) || hub.desc.toLowerCase().includes(q);
+              }
+              return true;
+            }).map(hub => {
               const isOwned = (S.depots || []).includes(hub.id);
               const regionUnlocked = isRegionUnlocked(S, hub.region);
 

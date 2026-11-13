@@ -349,7 +349,7 @@ function panelHtml(S: GameState, t: Truck, busy: boolean) {
                   return `<option value="${c}">${loc?.name || c} — ${info.km}km (ETA: ${dur(info.ms)})</option>`;
                 }).join('')}
               </select>
-              <button class="btn gold" style="width:100%; padding:10px; font-size:11px; font-weight:900; letter-spacing:0.5px;" onclick="const sel = document.getElementById('transfer-city-${t.id}'); if(sel) { window.__actions?.get('move')?.({ id: '${t.id}', city: sel.value }); }">
+              <button class="btn gold" style="width:100%; padding:10px; font-size:11px; font-weight:900; letter-spacing:0.5px;" data-act="move" data-id="${t.id}">
                 CONFIRM RELOCATION & DISPATCH
               </button>
             </div>

@@ -108,28 +108,28 @@ action('ai-set-plan', d => {
   refresh();
 });
 
-action('ai-toggle-maint', () => {
-  includeMaintenance = !includeMaintenance;
+action('ai-toggle-maint', d => {
+  includeMaintenance = d.checked !== undefined ? d.checked === 'true' : !includeMaintenance;
   refresh();
 });
 
-action('ai-toggle-offline', () => {
-  includeOfflineDispatch = !includeOfflineDispatch;
+action('ai-toggle-offline', d => {
+  includeOfflineDispatch = d.checked !== undefined ? d.checked === 'true' : !includeOfflineDispatch;
   refresh();
 });
 
-action('ai-modal-toggle-quant', () => {
-  includeQuantTrader = !includeQuantTrader;
+action('ai-modal-toggle-quant', d => {
+  includeQuantTrader = d.checked !== undefined ? d.checked === 'true' : !includeQuantTrader;
   refresh();
 });
 
-action('ai-toggle-autorenew', () => {
-  autoRenew = !autoRenew;
+action('ai-toggle-autorenew', d => {
+  autoRenew = d.checked !== undefined ? d.checked === 'true' : !autoRenew;
   refresh();
 });
 
-action('ai-toggle-extension', () => {
-  allowExtension = !allowExtension;
+action('ai-toggle-extension', d => {
+  allowExtension = d.checked !== undefined ? d.checked === 'true' : !allowExtension;
   refresh();
 });
 
@@ -881,11 +881,11 @@ export default {
             ` : ''}
 
             <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-              <button data-act="ai-checkout-usd" ${isSubActive && !allowExtension || !canAffordUsd ? 'disabled' : ''} class="btn">
+              <button data-act="ai-checkout-usd" class="btn">
                 Pay USD ($${totalUsd.toLocaleString()})
               </button>
 
-              <button data-act="ai-checkout-flb" ${isSubActive && !allowExtension || !canAffordFlb ? 'disabled' : ''} class="btn gold">
+              <button data-act="ai-checkout-flb" class="btn gold">
                 Pay FLB (${totalFlb} FLB)
               </button>
             </div>

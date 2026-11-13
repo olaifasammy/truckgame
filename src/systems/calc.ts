@@ -18,6 +18,21 @@ export const PART_LABELS: Record<string, string> = {
 };
 
 /**
+ * Calculates Great Circle distance using Haversine formula.
+ */
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+/**
  * Calculates realistic highway driving distances between cities.
  */
 export const distKm = (a: string, b: string): number => {
@@ -39,6 +54,9 @@ export const distKm = (a: string, b: string): number => {
     'ABUJA_KANO': 365,
     'KANO_MAIDUGURI': 585,
     'ENUGU_ABUJA': 420,
+    'CAIRO_ALEXANDRIA': 220,
+    'JOHANNESBURG_CAPE_TOWN': 1400,
+    'NAIROBI_MOMBASA': 485,
 
     // Europe
     'ROTTERDAM_MUNICH': 790,
@@ -50,6 +68,8 @@ export const distKm = (a: string, b: string): number => {
     'MUNICH_GOTHENBURG': 1250,
     'LYON_INNSBRUCK': 690,
     'GOTHENBURG_INNSBRUCK': 1420,
+    'LONDON_PARIS': 450,
+    'PARIS_BERLIN': 1050,
 
     // America
     'CHICAGO_DENVER': 1620,
@@ -77,24 +97,35 @@ export const distKm = (a: string, b: string): number => {
   if (realDistances[reverseKey]) return realDistances[reverseKey];
 
   if (locA && locB) {
-    if (locA.region === locB.region) {
-      // Intra-regional calculated distance
-      const dx = locA.coords[0] - locB.coords[0];
-      const dy = locA.coords[1] - locB.coords[1];
-      const direct = Math.hypot(dx, dy);
-      return Math.max(120, Math.round(direct * 8.5 / 10) * 10);
-    } else {
-      // Inter-regional trans-continental distance based on geographic coordinates
-      const dx = (locA.latLng[0] - locB.latLng[0]) * 111;
-      const dy = (locA.latLng[1] - locB.latLng[1]) * 111 * Math.cos(((locA.latLng[0] + locB.latLng[0]) / 2) * (Math.PI / 180));
-      return Math.max(3500, Math.round(Math.hypot(dx, dy)));
+    const rawDist = haversineKm(
+      locA.latLng[0], locA.latLng[1],
+      locB.latLng[0], locB.latLng[1]
+    );
+
+    // Apply region-specific road circuity factors (winding roads vs straight highways)
+    let circuityFactor = 1.3; // Default 30% extra for road networks
+    
+    if (locA.region === 'Africa' || locB.region === 'Africa') {
+      circuityFactor = 1.45; // Africa often has more indirect routing due to terrain/infrastructure
+    } else if (locA.region === 'Europe' && locB.region === 'Europe') {
+      circuityFactor = 1.25; // Dense European highway network
+    } else if (locA.region === 'America' && locB.region === 'America') {
+      circuityFactor = 1.2; // US interstate system is relatively direct
+    } else if (locA.region !== locB.region) {
+      circuityFactor = 1.15; // Inter-continental long-haul major transit corridors are prioritized
     }
+
+    const roadDist = rawDist * circuityFactor;
+
+    // Minimum distance for any inter-city trip to account for terminal exit/entry
+    return Math.max(50, Math.round(roadDist / 5) * 5);
   }
 
-  // Fallback
+  // Fallback to canvas coordinates only if data is missing
   const p = (CITIES as any)[a] || [50, 50];
   const q = (CITIES as any)[b] || [150, 150];
-  return Math.max(150, Math.round(Math.hypot(p[0] - q[0], p[1] - q[1]) * 6.5 / 10) * 10);
+  const canvasDirect = Math.hypot(p[0] - q[0], p[1] - q[1]);
+  return Math.max(150, Math.round(canvasDirect * 12));
 };
 
 export function getRouteEnv(from: string, to: string): EnvironmentalConditions {
