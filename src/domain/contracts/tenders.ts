@@ -209,9 +209,9 @@ export function getDynamicCorporateTenders(S: any): CorporateTender[] {
     const totalLoads = 10 + ((idx * 3 + cycleSeed) % 15);
     
     // Dynamic enterprise pricing calibrated to distance and industry multiplier
-    const ratePerKm = 11.5 * tpl.baseRateMultiplier;
-    const rawRate = Math.round((distKm * ratePerKm) / 250) * 250;
-    const ratePerDelivery = Math.max(4500, Math.min(55000, rawRate));
+    const ratePerKm = 14.5 * tpl.baseRateMultiplier;
+    const rawRate = Math.round(distKm * ratePerKm);
+    const ratePerDelivery = Math.max(5500, rawRate);
 
     // Lucrative completion bonus: 25% to 35% of total contract value
     const totalContractValue = ratePerDelivery * totalLoads;

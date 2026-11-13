@@ -24,7 +24,7 @@ body {
   overflow-x: hidden;
 }
 
-#app { max-width: 720px; margin: auto; min-height: 100vh; padding-bottom: 84px; position: relative; background: var(--bg); }
+#app { max-width: 720px; margin: auto; min-height: 100vh; padding-top: 64px; padding-bottom: 84px; position: relative; background: var(--bg); box-sizing: border-box; }
 
 #view {
   min-height: calc(100vh - 148px);
@@ -37,11 +37,13 @@ body {
 /* Header (FMS Telematics Command Console) */
 .top { 
   display: flex; padding: 10px 14px; min-height: 54px;
-  background: #0d1424; 
+  background: rgba(10, 15, 29, 0.95); 
+  backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(193,154,91,0.35); 
-  box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-  position: sticky; top: 0; z-index: 100; align-items: center;
-  margin-bottom: 14px;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.8);
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100; align-items: center;
+  max-width: 720px; margin: 0 auto;
+  box-sizing: border-box;
 }
 .top::after {
   content: ''; position: absolute; bottom: -1px; left: 0; right: 0; height: 1px;

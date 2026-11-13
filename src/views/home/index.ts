@@ -186,7 +186,7 @@ export default {
 
       <!-- Redesigned Mode Selector Navigation Bar -->
       <div style="background: linear-gradient(180deg, #111827 0%, #0a0f1d 100%); border: 1px solid #1f293d; border-radius: 12px; padding: 6px; margin-bottom: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);">
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px;">
+        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
           <button class="btn ${homeBoardMode === 'spot' ? 'gold' : 'alt'}" style="padding: 10px 4px; font-size: 10px; font-weight: 800; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 2px;" data-act="home-board-mode" data-mode="spot">
             <span>SPOT BOARD</span>
             <span style="font-size: 9px; opacity: 0.85; font-family: monospace;">(${allJobs.length} Manifests)</span>
@@ -196,11 +196,6 @@ export default {
             <span>30-DAY TENDERS</span>
             <span style="font-size: 9px; opacity: 0.85; font-family: monospace;">(${SAMPLE_TENDERS.length} Contracts)</span>
           </button>
-
-          <button class="btn ${homeBoardMode === 'subcontract' ? 'gold' : 'alt'}" style="padding: 10px 4px; font-size: 10px; font-weight: 800; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 2px;" data-act="home-board-mode" data-mode="subcontract">
-            <span>SUB-CONTRACTING</span>
-            <span style="font-size: 9px; opacity: 0.85; font-family: monospace;">(${(S.subcontractedTrucks || []).length} Rigs)</span>
-          </button>
         </div>
       </div>
 
@@ -208,18 +203,11 @@ export default {
           <!-- Live Bidding & Reverse Freight Auctions Section -->
           ${filteredAuctions.length > 0 ? `
             <div class="sec" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-              <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">
-                  REVERSE FREIGHT BIDDING ROOMS (${filteredAuctions.length})
-                </span>
-                <span style="font-size:8px; background:rgba(193,154,91,0.15); border:1px solid var(--gold); color:var(--gold); padding:1px 6px; border-radius:3px; font-weight:800; font-family:monospace;">
-                  SPOT CLEARANCE · HIGH VALUE CONTRACTS
-                </span>
+              <div style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">
+                LIVE AUCTIONS (${filteredAuctions.length})
               </div>
-              <div style="font-size:9px; font-family:monospace; color:${quota.isFree ? 'var(--grn)' : 'var(--gold)'}; display:flex; align-items:center; gap:6px;">
-                <span>DAILY FREE DISPATCHES: <b>${quota.freeRemaining}/5</b></span>
-                <span style="color:rgba(255,255,255,0.2);">|</span>
-                <span style="color:var(--grn);">● LIVE AUCTIONS ACTIVE</span>
+              <div style="font-size:9px; font-family:monospace; color:var(--grn); font-weight:800;">
+                ${quota.freeRemaining}/5 Free Dispatches
               </div>
             </div>
             ${filteredAuctions.map((j: any) => renderAuctionCard(S, j)).join('')}

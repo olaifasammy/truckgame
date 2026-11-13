@@ -14,6 +14,7 @@ import { getDispatchEligibilityError } from './validation';
 import { FreightEngine } from '../freight/engine/generator';
 import { LOCATIONS, resolveTruckRegion } from '../../data/world';
 import { isCityUnlockedHub, getHubForCity, getHubFacilityForCity } from '../hubs/hub-facility';
+import { calculateTripToll } from '../economy/tolls';
 
 import { getDispatchNeuralNetwork } from '../ai/neuralNetwork';
 
@@ -369,6 +370,18 @@ export const DispatchExecution = {
     // Financials
     let finalPay = a.pay;
     
+    // Tolls & Customs Tariff Calculation
+    const tollResult = calculateTripToll(a.km, cargo?.weight || 18, a.from, a.to, true);
+    if (tollResult.totalTollCost > 0) {
+      S.money -= tollResult.totalTollCost;
+      if (!S.stats) S.stats = { earned: 0, spent: 0, km: 0, jobs: 0 };
+      S.stats.spent = (S.stats.spent || 0) + tollResult.totalTollCost;
+      pushNote(S, `🛣️ Highway Tolls & Customs Tariffs (${a.km} km, ${cargo?.weight || 18}t): -$${tollResult.totalTollCost.toLocaleString()} ${tollResult.discountApplied ? '(EZ-Pass 30% Off)' : ''}`, {
+        title: 'TOLL & BORDER TARIFF',
+        type: 'finance'
+      });
+    }
+
     S.money += finalPay;
     S.stats.earned += finalPay;
     S.stats.km += a.km;

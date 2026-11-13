@@ -1,4 +1,3 @@
-import { salesLeadTemplate } from '../../notifications/templates';
 import { Region, FreightJob, JobKind } from '../types';
 import { COMPANIES } from '../companies/registry';
 import { CARGO_TYPES } from '../cargo/registry';
@@ -215,21 +214,39 @@ export class FreightEngine {
       to = fallbackCities.find(c => c !== from) || 'IBADAN';
     }
 
-    // Authentic highway distance calculation with minimum floor
-    const rawBaseKm = distKm(from, to);
-    const baseKm = rawBaseKm > 10 ? rawBaseKm : Math.max(125, distKm(from, from === 'LAGOS' ? 'IBADAN' : 'LAGOS'));
-    const routeEnv = getRouteEnv(from, to);
-
     const countryFrom = LOCATIONS[from]?.country;
-    const countryTo = LOCATIONS[to]?.country;
-    const isCrossCountry = !!(countryFrom && countryTo && countryFrom !== countryTo);
-    const isLongDistance = baseKm > 750 || isCrossCountry;
+    let countryTo = LOCATIONS[to]?.country;
+    let isCrossCountry = !!(countryFrom && countryTo && countryFrom !== countryTo);
+    const rawBaseKm = distKm(from, to);
+    let finalBaseKm = rawBaseKm > 10 ? rawBaseKm : Math.max(125, distKm(from, from === 'LAGOS' ? 'IBADAN' : 'LAGOS'));
+    let finalTo = to;
 
     // Realistic Cargo Weight (tonnes)
     let weight = 6 + Math.random() * 18;
     if (cargo.trailer === 'lowboy') weight = 22 + Math.random() * 38;
     else if (cargo.trailer === 'tipper') weight = 18 + Math.random() * 24;
     else if (cargo.trailer === 'tanker' || cargo.trailer === 'hazmat') weight = 20 + Math.random() * 26;
+    else if (cargo.trailer === 'rigid_box' || options.forceTrailer === 'rigid_box') {
+      weight = 3.5 + Math.random() * 8.0; // Rigids & Vans: 3.5t to 11.5t (strictly <= 12t)
+    }
+
+    if (cargo.trailer === 'rigid_box' || options.forceTrailer === 'rigid_box') {
+      finalBaseKm = Math.min(finalBaseKm, 350); // Local / regional only, <= 350 km
+      isCrossCountry = false;
+      if (countryFrom && countryTo && countryFrom !== countryTo) {
+        const sameCountryCities = Object.keys(LOCATIONS).filter(c => c !== from && LOCATIONS[c]?.country === countryFrom);
+        if (sameCountryCities.length > 0) {
+          finalTo = rnd(sameCountryCities);
+          countryTo = LOCATIONS[finalTo]?.country;
+          finalBaseKm = Math.min(distKm(from, finalTo), 350);
+        }
+      }
+    }
+
+    const baseKm = finalBaseKm;
+    to = finalTo;
+    const routeEnv = getRouteEnv(from, to);
+    const isLongDistance = baseKm > 750 || isCrossCountry;
 
     let rate = 2.0;
 
@@ -248,8 +265,11 @@ export class FreightEngine {
       if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') rate *= 1.25;
       if ((routeEnv.roadGrade || 0) > 5.0) rate *= 1.20;
     } else {
-      // NORMAL JOB GENERATOR: More realistic logistics rates ($3.40 – $5.80/km)
+      // NORMAL JOB GENERATOR: More realistic logistics rates with trans-continental distance scaling
       rate = 3.40 + (cargo.baseValue * 0.08);
+      if (baseKm > 1500) rate *= 1.15;
+      if (baseKm > 3000) rate *= 1.30; // Trans-continental long-haul premium
+
       if (options.vip) rate *= 1.30;
       if (cargo.isHazmat) rate *= 1.45;
       if (cargo.isFragile) rate *= 1.30;
@@ -259,7 +279,9 @@ export class FreightEngine {
       if ((routeEnv.roadGrade || 0) > 5.0) rate *= 1.30;
     }
 
-    const calculatedPay = tender ? Math.round((tender.ratePerDelivery || 15000) * (0.94 + Math.random() * 0.12)) : Math.round(baseKm * rate);
+    const minPerKm = cargo.baseValue > 30 ? 5.00 : 3.50;
+    const effectiveRate = Math.max(rate, minPerKm);
+    const calculatedPay = tender ? Math.round((tender.ratePerDelivery || 15000) * (0.94 + Math.random() * 0.12)) : Math.round(baseKm * effectiveRate);
     
     // DEADHEAD FUEL PRICING: If destination is NOT a hub, calculate return fuel cost and add it to pay
     let deadheadFuelCompensation = 0;
@@ -352,17 +374,6 @@ export class FreightEngine {
       const auction = BiddingEngine.createAuction(job, options.auctionDuration);
       if (!S.auctions) S.auctions = [];
       S.auctions.push(auction);
-
-      // Notification for high-value sales lead
-      if (job.pay > 15000) {
-        const tpl = salesLeadTemplate(company.name, job.from, job.to, job.pay);
-        pushNote(S, tpl.msg, {
-          title: tpl.title,
-          type: tpl.type,
-          priority: tpl.priority,
-          body: tpl.body
-        });
-      }
 
       return { ...job, isAuction: true, auctionId: auction.id };
     }
