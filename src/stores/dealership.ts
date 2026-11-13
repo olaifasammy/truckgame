@@ -277,17 +277,8 @@ action('execute-batch-buy', () => {
   const tType = configTrailer === 'none' ? null : (configTrailer as TrailerType);
   
   const S = (window as any).__getStore?.();
-  if (S && configRegion) {
-    const hubsInRegion = getOwnedHubsInRegion(S, configRegion);
-    const isValidDest = hubsInRegion.some(h => h.city === configDestination);
-    if (!isValidDest) {
-      if (hubsInRegion.length > 0) {
-        configDestination = hubsInRegion[0].city;
-      } else {
-        toast(`Acquire a terminal hub in ${configRegion} to deliver trucks here`, 'err');
-        return;
-      }
-    }
+  if (S && !configDestination) {
+    configDestination = 'Rotterdam';
   }
 
   const inspectedModel = TRUCK_MODELS[selectedModelKey];
@@ -596,7 +587,7 @@ export default {
       { name: 'Europe', label: 'European Heavy Commercial Manufacturers', brands: ['Scania', 'Volvo', 'Mercedes-Benz', 'MAN', 'DAF', 'Iveco'] },
       { name: 'America', label: 'American Long-Haul Highway Manufacturers', brands: ['Kenworth', 'Peterbilt', 'Freightliner', 'Mack'] },
       { name: 'Asia', label: 'Asian Severe Duty & Regional Manufacturers', brands: ['Hino', 'Isuzu'] }
-    ].filter(r => isRegionUnlocked(S, r.name as RegionName));
+    ];
 
     return `
       <!-- Dealership Top Banner & Section Navigation -->

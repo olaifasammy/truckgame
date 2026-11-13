@@ -194,7 +194,6 @@ export const DEFAULT_AI_FILTERS: AiFilterConfig = {
   minTruckHealthPct: 0,
   autoRefuel: true,
   requireHazmatCert: false,
-  allowSubcontracted: true,
   priorityCargoTypes: []
 };
 

@@ -69,3 +69,35 @@ test('FreightEngine - Minimum payout floor does not distort short distance per-k
     }
   }
 });
+
+test('FreightEngine - Bid jobs mostly generate long distance jobs', () => {
+  const state = { nextId: 300, unlockedRegions: ['AFRICA', 'EUROPE'] };
+  let longDistCount = 0;
+  const samples = 40;
+  for (let i = 0; i < samples; i++) {
+    const job = FreightEngine.generate(state, { isAuction: true });
+    if (job.baseKm >= 600 || job.km >= 600) {
+      longDistCount++;
+    }
+  }
+  const longDistRatio = longDistCount / samples;
+  assert.ok(longDistRatio >= 0.7, `Bid jobs should mostly generate long distance jobs (ratio: ${longDistRatio})`);
+});
+
+test('FreightEngine - Long distance jobs mostly be round-trip jobs', () => {
+  const state = { nextId: 400, unlockedRegions: ['AFRICA', 'EUROPE'] };
+  let roundTripCount = 0;
+  let longDistTested = 0;
+  const samples = 100;
+  for (let i = 0; i < samples; i++) {
+    const job = FreightEngine.generate(state, {});
+    if (job.baseKm > 750) {
+      longDistTested++;
+      if (job.isRoundTrip) roundTripCount++;
+    }
+  }
+  if (longDistTested >= 5) {
+    const roundTripRatio = roundTripCount / longDistTested;
+    assert.ok(roundTripRatio >= 0.7, `Long distance jobs should mostly be round-trip jobs (ratio: ${roundTripRatio})`);
+  }
+});

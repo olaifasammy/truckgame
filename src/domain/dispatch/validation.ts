@@ -13,16 +13,13 @@ import { LOCATIONS } from '../../data/world';
  * this performs authoritative operational eligibility checks.
  */
 export function getDispatchEligibilityError(
-  state: { licenses: string[], subcontractedTrucks?: number[] },
+  state: { licenses: string[] },
   truck: Truck,
   job: FreightJob,
   driver?: Driver
 ): string | null {
   // 1. Basic Truck Availability
   if (truck.status !== 'idle') return 'Truck is busy';
-  if ((state.subcontractedTrucks || []).includes(truck.id)) {
-    return 'Truck is currently leased out on charter sub-contract';
-  }
 
   // Cross-Continental Boundary Check (Constitution 6.4)
   // Trucks cannot deadhead across oceans by highway (e.g. America to Europe/Africa).

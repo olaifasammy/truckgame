@@ -1,18 +1,8 @@
 import { ic } from '../core/icons';
 import { action, fmt, toast } from '../core/ui';
 import { set, refresh } from '../core/store';
-import { REGIONAL_HUBS, REGION_AUTHORITIES, RegionName, isRegionUnlocked, SAMPLE_TENDERS, SUBCONTRACT_DAILY_RATE } from '../domain/logistics/network';
+import { REGIONAL_HUBS, REGION_AUTHORITIES, RegionName, isRegionUnlocked, SAMPLE_TENDERS } from '../domain/logistics/network';
 import { getDynamicCorporateTenders, signCorporateTender } from '../domain/contracts/tenders';
-import {
-  calculateTruckCharterRate,
-  calculateTrailerCharterRate,
-  charterOutTruck,
-  recallTruck,
-  charterOutTrailer,
-  recallTrailer,
-  getTotalSubcontractInflow,
-  ALLIANCE_PARTNERS
-} from '../domain/fleet/subcontracting';
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { LOCATIONS } from '../data/world';
 import { ensureHubFacilities } from '../domain/hubs/hub-facility';
@@ -99,35 +89,7 @@ action('cancel-tender', d => {
   });
 });
 
-action('subcontract-rig', d => {
-  const truckId = +(d as any).id;
-  const allianceId = (d as any).allianceId || 'dhl_global';
-  set(S => {
-    charterOutTruck(S, truckId, allianceId);
-  });
-});
 
-action('recall-subcontract', d => {
-  const truckId = +(d as any).id;
-  set(S => {
-    recallTruck(S, truckId);
-  });
-});
-
-action('subcontract-trailer', d => {
-  const trailerType = (d as any).type;
-  const allianceId = (d as any).allianceId || 'dhl_global';
-  set(S => {
-    charterOutTrailer(S, trailerType, allianceId);
-  });
-});
-
-action('recall-trailer', d => {
-  const trailerType = (d as any).type;
-  set(S => {
-    recallTrailer(S, trailerType);
-  });
-});
 
 export default {
   id: 'network',
@@ -281,6 +243,7 @@ export default {
                 </div>
               `;
             }).join('')}
+            </div>
           </div>
         ` : ''}
 
@@ -446,12 +409,12 @@ export default {
                         <span style="color:${hasReputation ? 'var(--grn)' : '#ef4444'};">
                           ${hasReputation ? '✓' : '✕'} Min Safety: ${tender.minReputation} (${S.reputation ?? 100} current)
                         </span>
-                        ${reqCerts.length > 0 ? `
-                          <span>·</span>
-                          <span style="color:${missingCerts.length === 0 ? 'var(--grn)' : '#ef4444'};">
-                            ${missingCerts.length === 0 ? '✓' : '✕'} Permits: ${reqCerts.join(', ')}
-                          </span>
-                        ` : ''}
+                        ${reqCerts.length > 0 ? (
+                          '<span>·</span>' +
+                          `<span style="color:${missingCerts.length === 0 ? 'var(--grn)' : '#ef4444'};">` +
+                          `${missingCerts.length === 0 ? '✓' : '✕'} Permits: ${reqCerts.join(', ')}` +
+                          '</span>'
+                        ) : ''}
                       </div>
 
                     </div>
@@ -459,121 +422,6 @@ export default {
                 }).join('')}
               </div>
             </div>
-
-            <!-- Section B: Fleet Rig & Trailer Subcontracting -->
-            <div>
-              <div class="sec" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase;">3rd-Party Fleet & Trailer Charter Leasing</span>
-                <span style="font-size:10px; color:var(--grn); font-weight:900; font-family:monospace;">TOTAL RETAINER: +${fmt(getTotalSubcontractInflow(S))}/DAY</span>
-              </div>
-
-              <div style="background:#111827; border:1px solid #1f293d; border-radius:10px; padding:12px; margin-bottom:12px; font-size:10px; color:var(--mu); line-height:1.4;">
-                Sublease idle heavy tractors and storage yard trailers to global carrier alliances (DHL Express, Maersk Intermodal, FedEx Freight, DB Schenker) for guaranteed passive daily retainers ($2,400 to $6,800/day per rig; $950 to $1,950/day per trailer).
-              </div>
-
-              <!-- Tractors Subcontracting List -->
-              <div style="font-size:10px; color:var(--gold); font-weight:800; font-family:monospace; text-transform:uppercase; margin-bottom:8px;">
-                Commercial Highway Tractors (${(S.fleet || []).length} Units)
-              </div>
-
-              <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:16px;">
-                ${(S.fleet || []).map((t: any) => {
-                  const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'] || { brand: 'Tractor', name: t.name, hp: 500 };
-                  const isSubcontracted = (S.subcontractedTrucks || []).includes(t.id);
-                  const isIdle = t.status === 'idle';
-                  const charterRate = calculateTruckCharterRate(t);
-
-                  return `
-                    <div style="background:#0f172a; border:1px solid ${isSubcontracted ? 'rgba(16,185,129,0.35)' : '#1e293b'}; border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                      <div>
-                        <div style="font-size:13px; font-weight:800; color:var(--tx);">${t.name}</div>
-                        <div style="font-size:9.5px; color:var(--mu); font-family:monospace; margin-top:1px;">
-                          ${m.brand} ${m.name} (${m.hp} HP) · Base: ${t.loc} · Rate: <b style="color:var(--grn);">+${fmt(charterRate)}/day</b>
-                        </div>
-                        <div style="font-size:9px; color:${isSubcontracted ? 'var(--grn)' : isIdle ? 'var(--gold)' : 'var(--mu)'}; font-family:monospace;">
-                          ${isSubcontracted ? '● CHARTERED TO DHL GLOBAL LINEHAUL ALLIANCE' : isIdle ? '● IDLE IN DEPOT (READY TO CHARTER)' : '● IN TRANSIT ON HAUL'}
-                        </div>
-                      </div>
-                      <div>
-                        ${isSubcontracted ? `
-                          <button class="btn alt" style="padding:6px 12px; font-size:9.5px; font-weight:800; color:#ef4444;" data-act="recall-subcontract" data-id="${t.id}">
-                            RECALL TO ACTIVE FLEET
-                          </button>
-                        ` : isIdle ? `
-                          <button class="btn gold" style="padding:6px 12px; font-size:9.5px; font-weight:900;" data-act="subcontract-rig" data-id="${t.id}">
-                            CHARTER OUT (+${fmt(charterRate)}/d)
-                          </button>
-                        ` : `
-                          <span style="font-size:9px; color:var(--mu); font-family:monospace;">BUSY IN TRANSIT</span>
-                        `}
-                      </div>
-                    </div>
-                  `;
-                }).join('')}
-              </div>
-
-              <!-- Storage Yard Trailers Subcontracting List -->
-              ${(S.trailers && S.trailers.length > 0) ? `
-                <div style="font-size:10px; color:var(--gold); font-weight:800; font-family:monospace; text-transform:uppercase; margin-bottom:8px;">
-                  Storage Yard Trailer Inventory (${S.trailers.length} Units)
-                </div>
-
-                <div style="display:flex; flex-direction:column; gap:8px;">
-                  ${(() => {
-                    const trailerCounts: Record<string, number> = {};
-                    (S.trailers || []).forEach((tr: string) => {
-                      trailerCounts[tr] = (trailerCounts[tr] || 0) + 1;
-                    });
-                    const leasedCounts: Record<string, number> = {};
-                    (S.subcontractedTrailers || []).forEach((tr: string) => {
-                      leasedCounts[tr] = (leasedCounts[tr] || 0) + 1;
-                    });
-
-                    return Object.entries(trailerCounts).map(([trType, count]) => {
-                      const leased = leasedCounts[trType] || 0;
-                      const available = count - leased;
-                      const rate = calculateTrailerCharterRate(trType);
-
-                      return `
-                        <div style="background:#0f172a; border:1px solid ${leased > 0 ? 'rgba(16,185,129,0.35)' : '#1e293b'}; border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                          <div>
-                            <div style="font-size:13px; font-weight:800; color:var(--tx); text-transform:uppercase;">
-                              ${trType.replace('_', ' ')} TRAILER FLEET
-                            </div>
-                            <div style="font-size:9.5px; color:var(--mu); font-family:monospace; margin-top:1px;">
-                              Total Owned: ${count} · Chartered Out: <b style="color:var(--grn);">${leased}</b> · In Yard: ${available}
-                            </div>
-                            <div style="font-size:9px; color:var(--grn); font-family:monospace;">
-                              Charter Yield: +${fmt(rate)}/day per trailer
-                            </div>
-                          </div>
-                          <div style="display:flex; gap:6px;">
-                            ${leased > 0 ? `
-                              <button class="btn alt" style="padding:6px 10px; font-size:9px; font-weight:800; color:#ef4444;" data-act="recall-trailer" data-type="${trType}">
-                                RECALL (${leased})
-                              </button>
-                            ` : ''}
-                            ${available > 0 ? `
-                              <button class="btn gold" style="padding:6px 12px; font-size:9.5px; font-weight:900;" data-act="subcontract-trailer" data-type="${trType}">
-                                CHARTER OUT (+${fmt(rate)}/d)
-                              </button>
-                            ` : `
-                              <span style="font-size:9px; color:var(--mu); font-family:monospace;">ALL CHARTERED</span>
-                            `}
-                          </div>
-                        </div>
-                      `;
-                    }).join('');
-                  })()}
-                </div>
-              ` : `
-                <div style="font-size:10px; color:var(--mu); font-style:italic; padding:6px 0;">
-                  No storage yard trailers in inventory. Acquire specialized trailers in Garage to lease them out to carrier alliances.
-                </div>
-              `}
-
-            </div>
-
           </div>
         ` : ''}
       </div>

@@ -129,12 +129,6 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
   const minYpk = filters.minYieldUsdPerKm ?? 0;
   const maxDist = filters.maxDistanceKm ?? 50000;
   const minHealth = filters.minTruckHealthPct ?? 0;
-  const allowSub = filters.allowSubcontracted !== false;
-
-  // 5. Subcontracted status check
-  if (!allowSub && (S.subcontractedTrucks || []).includes(truck.id)) {
-    return -Infinity;
-  }
 
   // 6. Truck health check
   if (minHealth > 0) {

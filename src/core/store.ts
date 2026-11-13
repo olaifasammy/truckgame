@@ -70,7 +70,6 @@ const DEF = () => ({
     premiumActive: false,
     premiumExpiresAt: 0
   },
-  subcontractedTrucks: [] as number[],
   dailyStats: { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 },
   lastTick: Date.now()
 });

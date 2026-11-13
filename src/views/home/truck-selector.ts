@@ -279,7 +279,10 @@ export function renderSelectorOverlay(S: any) {
         <button data-act="close-truck-selector" style="position:absolute; top:12px; right:12px; background:rgba(255,255,255,0.08); border:none; color:var(--mu); font-size:16px; cursor:pointer; width:30px; height:30px; border-radius:6px; display:grid; place-items:center; z-index:10; transition:background 0.2s;">✕</button>
         
         <div style="display:flex; align-items:center; gap:12px;">
-          ${renderCargoBadge(cargo?.id || job.cargoId || 'general_freight', { size: 44, isAuctionWon: isAuctionWon })}
+          <div style="display:flex; flex-direction:column; align-items:center; flex-shrink:0;">
+            ${renderCargoBadge(cargo?.id || job.cargoId || 'general_freight', { size: 44, isAuctionWon: isAuctionWon })}
+            <span style="font-size:10px; font-weight:900; color:var(--gold); font-family:monospace; margin-top:2px;">${job.weight}t</span>
+          </div>
           <div style="min-width:0; flex:1; padding-right:24px;">
             <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase; font-family:monospace; letter-spacing:0.8px; margin-bottom:2px;">
               DISPATCH TRACTOR SELECTION
@@ -290,10 +293,10 @@ export function renderSelectorOverlay(S: any) {
             <div style="font-size:11px; color:var(--mu); font-family:monospace; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
               <span style="color:var(--gold); font-weight:800;">${job.from} ${job.isRoundTrip ? '⇄' : '→'} ${job.to}</span>
               <span>·</span>
-              <span>${job.km} km ${job.isRoundTrip ? '(Round-Trip)' : ''} (${job.weight}t)</span>
+              <span>${job.km} km</span>
               <span>·</span>
               <span style="color:var(--grn); font-weight:800;">${fmt(job.pay || 0)}</span>
-              ${job.isRoundTrip ? '<span style="color:#06b6d4; font-weight:800; background:rgba(6,182,212,0.15); padding:1px 6px; border-radius:4px; font-size:9px;">🔄 2-WAY TURNAROUND (+15% BONUS)</span>' : ''}
+              ${job.isRoundTrip ? '<span title="2-Way Round Trip Turnaround (+15% Bonus)" style="color:#06b6d4; font-weight:800; font-size:11px;">🔄</span>' : ''}
             </div>
             <div style="font-size:10px; color:var(--mu); margin-top:4px; font-family:monospace; display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
               <span>COUPLING: <b style="color:var(--tx);">${TRAILERS[trailerType as keyof typeof TRAILERS]?.toUpperCase() || 'STANDARD'}</b></span>

@@ -8,7 +8,6 @@ import { TRUCK_MODELS, TRAILERS } from '../trucks/trucks.data';
 import { REGIONAL_HUBS } from '../logistics/network';
 import { getGoldMarketData, INSURANCE_POLICIES } from './banking';
 import { getTotalCryptoValue, getCryptoMarketData } from './markets/crypto';
-import { getTotalSubcontractInflow } from '../fleet/subcontracting';
 
 // Valuation constants for trailer types
 export const TRAILER_VALUATIONS: Record<string, number> = {
@@ -67,7 +66,7 @@ export interface BalanceSheetMetrics {
 export interface IncomeStatementMetrics {
   freightRevenueUsd: number;
   warehouseInflowUsd: number;
-  subcontractInflowUsd: number;
+  subcontractInflowUsd?: number;
   expectedFreightInflowUsd: number;
   totalGrossRevenueUsd: number;
   
@@ -285,13 +284,12 @@ export function calculateIncomeStatement(S: any): IncomeStatementMetrics {
   // Daily recurring inflows
   const wh = S.warehouseUpgrades || {};
   const warehouseInflowUsd = (wh.cross_docking ? 1200 : 0) + (wh.gantry_crane ? 600 : 0);
-  const subcontractInflowUsd = getTotalSubcontractInflow(S);
   
   // Expected daily freight operations revenue based on active fleet size (~$3,500/day per operating rig)
   const activeFleetCount = (S.fleet || []).filter((t: any) => t.status !== 'expired').length;
   const expectedFreightInflowUsd = activeFleetCount * 3500;
 
-  const totalGrossRevenueUsd = freightRevenueUsd + warehouseInflowUsd + subcontractInflowUsd + expectedFreightInflowUsd;
+  const totalGrossRevenueUsd = freightRevenueUsd + warehouseInflowUsd + expectedFreightInflowUsd;
 
   // Daily recurring outflows & expenses
   const driverPayrollUsd = (S.drivers || []).reduce((acc: number, d: any) => acc + (d.salary || 250), 0);
@@ -313,7 +311,7 @@ export function calculateIncomeStatement(S: any): IncomeStatementMetrics {
   const operatingMarginPct = totalGrossRevenueUsd > 0 ? (netOperatingIncomeUsd / totalGrossRevenueUsd) * 100 : 0;
 
   // Daily Cashflow Runway
-  const dailyInflow = warehouseInflowUsd + subcontractInflowUsd + expectedFreightInflowUsd;
+  const dailyInflow = warehouseInflowUsd + expectedFreightInflowUsd;
   const dailyOutflow = driverPayrollUsd + insuranceExpenseUsd + debtServiceUsd + leaseExpenseUsd + fuelExpenseUsd + maintenanceExpenseUsd;
   const netDailyCashflowUsd = dailyInflow - dailyOutflow;
   const runwayDays = netDailyCashflowUsd < 0 ? Math.floor((S.money || 0) / Math.abs(netDailyCashflowUsd)) : null;
@@ -321,7 +319,6 @@ export function calculateIncomeStatement(S: any): IncomeStatementMetrics {
   return {
     freightRevenueUsd,
     warehouseInflowUsd,
-    subcontractInflowUsd,
     expectedFreightInflowUsd,
     totalGrossRevenueUsd,
     driverPayrollUsd,

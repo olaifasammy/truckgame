@@ -794,6 +794,7 @@ export default {
                 <input type="checkbox" ${filters.allowSubcontracted ? 'checked' : ''} onchange="window.__aiFilterChange('allowSubcontracted', this.checked)" />
                 <span>Allow Subcontracted Charter Units</span>
               </label>
+
             </div>
           </div>
         ` : ''}
@@ -937,6 +938,5 @@ export default {
   if (field === 'minTruckHealthPct') updateAiFiltersSystem({ minTruckHealthPct: Math.min(100, Math.max(10, +val || 30)) });
   if (field === 'autoRefuel') updateAiFiltersSystem({ autoRefuel: !!val });
   if (field === 'requireHazmatCert') updateAiFiltersSystem({ requireHazmatCert: !!val });
-  if (field === 'allowSubcontracted') updateAiFiltersSystem({ allowSubcontracted: !!val });
   refresh();
 };

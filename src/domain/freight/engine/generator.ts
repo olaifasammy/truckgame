@@ -9,7 +9,6 @@ import { distKm, getRouteEnv, fuelCostForTrip } from '../../../systems/calc';
 import { getCompanyProgression } from '../../company/progression';
 import { SAMPLE_TENDERS } from '../../logistics/network';
 import { getDynamicCorporateTenders } from '../../contracts/tenders';
-import { getTotalSubcontractInflow } from '../../fleet/subcontracting';
 import { pushNote } from '../../../systems/notify';
 
 // Internal constants for simulation
@@ -182,11 +181,36 @@ export class FreightEngine {
     const fallbackCities = allCityKeys.filter(c => c !== from);
     const destinationPool = otherRegionCities.length > 0 ? otherRegionCities : fallbackCities;
 
+    const destinationCandidates = destinationPool.map(c => {
+      const km = distKm(from, c);
+      const countryFrom = LOCATIONS[from]?.country;
+      const countryTo = LOCATIONS[c]?.country;
+      const isDifferentCountry = !!(countryFrom && countryTo && countryFrom !== countryTo);
+      return { city: c, km, isDifferentCountry };
+    });
+
     if (options.forceTo && LOCATIONS[options.forceTo] && options.forceTo !== from) {
       to = options.forceTo;
-    } else {
+    } else if (options.isAuction) {
+      // BID JOBS: Mostly generate long distance jobs (cross-country or km >= 600)
+      const longDistanceCandidates = destinationCandidates.filter(d => d.km >= 600 || d.isDifferentCountry);
+      const poolToUse = longDistanceCandidates.length >= 2 ? longDistanceCandidates : destinationCandidates.sort((a, b) => b.km - a.km);
+      poolToUse.sort((a, b) => b.km - a.km);
+      const topCount = Math.max(1, Math.floor(poolToUse.length * 0.45));
+      to = rnd(poolToUse.slice(0, topCount)).city;
+    } else if (tender) {
       to = rnd(destinationPool.length > 0 ? destinationPool : fallbackCities);
+    } else {
+      // NORMAL JOBS: Prioritize shorter distance (sort ascending by km)
+      destinationCandidates.sort((a, b) => a.km - b.km);
+      const shortCandidates = destinationCandidates.filter(d => d.km <= 350);
+      const poolToUse = (shortCandidates.length > 0 && Math.random() < 0.75)
+        ? shortCandidates
+        : destinationCandidates;
+      const topCount = Math.max(1, Math.floor(poolToUse.length * 0.4));
+      to = rnd(poolToUse.slice(0, topCount)).city;
     }
+
     if (!to || to === from) {
       to = fallbackCities.find(c => c !== from) || 'IBADAN';
     }
@@ -195,6 +219,11 @@ export class FreightEngine {
     const rawBaseKm = distKm(from, to);
     const baseKm = rawBaseKm > 10 ? rawBaseKm : Math.max(125, distKm(from, from === 'LAGOS' ? 'IBADAN' : 'LAGOS'));
     const routeEnv = getRouteEnv(from, to);
+
+    const countryFrom = LOCATIONS[from]?.country;
+    const countryTo = LOCATIONS[to]?.country;
+    const isCrossCountry = !!(countryFrom && countryTo && countryFrom !== countryTo);
+    const isLongDistance = baseKm > 750 || isCrossCountry;
 
     // Realistic Cargo Weight (tonnes)
     let weight = 6 + Math.random() * 18;
@@ -249,8 +278,8 @@ export class FreightEngine {
 
     const pay = Math.max(450, calculatedPay + deadheadFuelCompensation);
 
-    // Dedicated 2-Way Round-Trip Turnaround Contracts
-    const isRoundTrip = !options.isAuction && !options.tenderId && Math.random() < 0.25;
+    // Long distance jobs should mostly be round-trip jobs (85% probability), while short distance jobs are mostly one-way (15% probability)
+    const isRoundTrip = !options.tenderId && (isLongDistance ? Math.random() < 0.85 : Math.random() < 0.15);
     let finalPay = pay;
     let totalKm = baseKm;
     let returnCargoObj: any = null;
@@ -278,6 +307,7 @@ export class FreightEngine {
     const dice = Math.random();
     let kind: JobKind = tender ? 'Contract' : 'Spot';
     if (options.isAuction) kind = 'Contract';
+    else if (isLongDistance) kind = 'Contract'; // Longer distances like country to another are special/contract jobs
     else if (dice > 0.8) kind = 'Contract';
     else if (dice > 0.95) kind = 'Emergency';
 
@@ -285,7 +315,8 @@ export class FreightEngine {
     if (cargo.isFragile) requiredSkills.push('Fragile Cargo');
     if (cargo.tempControlled) requiredSkills.push('Cold Chain');
     if (cargo.isHazmat) requiredSkills.push('Hazardous ADR');
-    if (totalKm > 800) requiredSkills.push('Long Distance');
+    if (isLongDistance) requiredSkills.push('Long Distance');
+    if (isCrossCountry) requiredSkills.push('Cross-Border Transit');
     if (routeEnv.weather === 'snow' || (routeEnv.roadGrade || 0) > 5.0) requiredSkills.push('Mountain & Alpine');
 
     const job = {
@@ -497,8 +528,7 @@ export class FreightEngine {
     if (S.warehouseUpgrades?.cold_vault) dailyInflow += 800;
     if (S.warehouseUpgrades?.gantry_crane) dailyInflow += 600;
 
-    // Dynamic subcontracting inflow from chartered rigs and yard trailers
-    dailyInflow += getTotalSubcontractInflow(S);
+
 
     const totalSalaries = (S.drivers || []).reduce((acc: number, d: any) => acc + (d.salary || 250), 0);
     dailyOutflow += totalSalaries;

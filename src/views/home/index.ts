@@ -10,20 +10,13 @@ import { homeState } from './state';
 import { LOCATIONS, RegionName } from '../../data/world';
 import { getCompanyProgression } from '../../domain/company/progression';
 import { getDailyBidDispatchQuota } from '../../domain/freight/bids/quota';
-import { SAMPLE_TENDERS, SUBCONTRACT_DAILY_RATE, isRegionUnlocked, REGION_AUTHORITIES } from '../../domain/logistics/network';
+import { SAMPLE_TENDERS, isRegionUnlocked, REGION_AUTHORITIES } from '../../domain/logistics/network';
 import { getDynamicCorporateTenders, signCorporateTender } from '../../domain/contracts/tenders';
-import {
-  calculateTruckCharterRate,
-  calculateTrailerCharterRate,
-  charterOutTruck,
-  recallTruck,
-  getTotalSubcontractInflow
-} from '../../domain/fleet/subcontracting';
 import { renderTelematicsOverlay } from '../telematics-modal';
 import { TRUCK_MODELS } from '../../domain/trucks/trucks.data';
 import { FreightEngine } from '../../domain/freight/engine/generator';
 
-let homeBoardMode: 'spot' | 'tenders' | 'subcontract' = 'spot';
+let homeBoardMode: 'spot' | 'tenders' = 'spot';
 
 action('home-board-mode', d => {
   homeBoardMode = (d as any).mode;
@@ -139,17 +132,6 @@ action('buy-premium-tenders', () => {
   });
 });
 
-action('toggle-subcontract', d => {
-  const truckId = +(d as any).id;
-  set(S => {
-    const isSub = (S.subcontractedTrucks || []).includes(truckId);
-    if (isSub) {
-      recallTruck(S, truckId);
-    } else {
-      charterOutTruck(S, truckId);
-    }
-  });
-});
 
 export default {
   id: 'home',
@@ -400,57 +382,7 @@ export default {
               `;
             }).join('')}
           </div>
-        ` : `
-          <!-- Mode 3: Fleet Sub-Contracting -->
-          <div style="background:#0f172a; border:1px solid #1e293b; border-radius:10px; padding:14px; margin-bottom:14px;">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
-              <div>
-                <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">THIRD-PARTY FLEET CHARTER LEASING</div>
-                <div style="font-size:16px; font-weight:900; color:var(--tx); margin-top:2px;">Sub-Contract Idle Trucks to Logistics Alliances</div>
-              </div>
-              <div style="text-align:right;">
-                <div style="font-size:8.5px; color:var(--mu); font-family:monospace;">TOTAL RETAINER</div>
-                <div style="font-size:15px; font-weight:900; color:var(--grn); font-family:monospace;">+${fmt(getTotalSubcontractInflow(S))}/day</div>
-              </div>
-            </div>
-            <div style="font-size:10px; color:var(--mu); margin-top:4px; line-height:1.4;">
-              When freight exchange spot rates are low, sublease your idle rigs and CDL drivers to major logistics alliances (DHL Global Forwarding, FedEx Freight, Maersk, DB Schenker) for guaranteed daily retainer cashflow ($2,400 to $6,800/day per rig).
-            </div>
-          </div>
-
-          <div style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase; margin-bottom:8px;">
-            Company Fleet Asset Roster (${S.fleet.length} Units)
-          </div>
-
-          <div style="display:flex; flex-direction:column; gap:8px;">
-            ${S.fleet.map((t: any) => {
-              const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
-              const isSubcontracted = (S.subcontractedTrucks || []).includes(t.id);
-              const isBusy = t.status === 'busy';
-              const isDelivering = t.status === 'delivering';
-              const charterRate = calculateTruckCharterRate(t);
-
-              return `
-                <div style="background:#111827; border:1px solid ${isSubcontracted ? 'rgba(34,197,94,0.4)' : '#1f293d'}; border-radius:8px; padding:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-                  <div>
-                    <div style="font-size:13px; font-weight:800; color:var(--tx);">${t.name}</div>
-                    <div style="font-size:10px; color:var(--mu); margin-top:1px;">
-                      ${m.brand} ${m.name} (${m.hp} HP) · Base: ${t.loc} · Rate: <b style="color:var(--grn);">+${fmt(charterRate)}/day</b>
-                    </div>
-                    <div style="font-size:9px; color:${isSubcontracted ? 'var(--grn)' : isBusy ? '#38bdf8' : isDelivering ? 'var(--gold)' : 'var(--gold)'}; font-family:monospace; margin-top:2px;">
-                      Status: <b>${isSubcontracted ? 'CHARTERED TO DHL LINEHAUL' : isBusy ? 'IN TRANSIT' : isDelivering ? 'LOGISTICS DELIVERY' : 'IDLE IN DEPOT'}</b>
-                    </div>
-                  </div>
-                  <div>
-                    <button class="btn ${isSubcontracted ? 'alt' : 'gold'}" style="padding:6px 12px; font-size:10px; font-weight:800; ${isSubcontracted ? 'color:var(--grn); border-color:var(--grn);' : ''}" data-act="toggle-subcontract" data-id="${t.id}" ${(isBusy || isDelivering) && !isSubcontracted ? 'disabled' : ''}>
-                      ${isSubcontracted ? `RECALL TO DEPOT` : isDelivering ? 'IN TRANSIT' : `CHARTER OUT (+${fmt(charterRate)}/d)`}
-                    </button>
-                  </div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        `}
+        ` : ''}
 
       ${renderTelematicsOverlay(S)}
       <div style="height:20px;"></div>

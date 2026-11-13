@@ -37,7 +37,6 @@ export interface AiFilterConfig {
   minTruckHealthPct: number;
   autoRefuel: boolean;
   requireHazmatCert: boolean;
-  allowSubcontracted: boolean;
   priorityCargoTypes: string[];
 }
 

@@ -141,15 +141,18 @@ export function renderJobCard(S: any, j: any) {
       <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
         <!-- Left: Icon & Route Info -->
         <div style="display:flex; align-items:center; gap:12px; min-width:0;">
-          ${renderCargoBadge(cargo?.id || j.cargoId || 'general_freight', { size: 38, isAuctionWon, isTender, isHazmat: cargo?.isHazmat, trailer: cargo?.trailer })}
+          <div style="display:flex; flex-direction:column; align-items:center; flex-shrink:0;">
+            ${renderCargoBadge(cargo?.id || j.cargoId || 'general_freight', { size: 38, isAuctionWon, isTender, isHazmat: cargo?.isHazmat, trailer: cargo?.trailer })}
+            <span style="font-size:9.5px; font-weight:900; color:var(--gold); font-family:monospace; margin-top:2px;">${j.weight}t</span>
+          </div>
           <div style="min-width:0;">
             <div style="display:flex; align-items:center; gap:6px;">
               <span style="font-weight:900; font-size:13px; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
                 ${cargoName}
               </span>
               ${j.isRoundTrip ? `
-                <span title="2-Way Round Trip Turnaround" style="font-size:7px; background:rgba(245,158,11,0.2); border:1px solid #f59e0b; color:var(--gold); padding:1px 5px; border-radius:3px; font-weight:800; font-family:monospace; text-transform:uppercase; display:inline-flex; align-items:center; gap:2px;">
-                  🔄 2-WAY ROUND TRIP (+15% BONUS)
+                <span title="2-Way Round Trip Turnaround (+15% Bonus)" style="font-size:11px; color:var(--gold); display:inline-flex; align-items:center;">
+                  🔄
                 </span>
               ` : ''}
               ${isTender ? `
@@ -171,10 +174,7 @@ export function renderJobCard(S: any, j: any) {
               <span>${j.isRoundTrip ? '⇄' : '→'}</span>
               <span style="color:var(--tx); font-weight:700;">${locTo?.name || j.to}</span>
               <span>·</span>
-              <span>${j.km} km ${j.isRoundTrip ? '(Round-Trip)' : ''}</span>
-              <span>·</span>
-              <span>${j.weight}t</span>
-
+              <span>${j.km} km</span>
             </div>
 
             ${isAuctionWon && timeLeft > 0 ? `

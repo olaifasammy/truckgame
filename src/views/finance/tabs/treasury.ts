@@ -55,10 +55,6 @@ export function renderTreasuryTab(S: any) {
               <td style="padding:14px 0; color:var(--mu);">Terminal & Warehouse Cross-Docking</td>
               <td style="padding:14px 0; text-align:right; color:var(--tx); font-weight:900; font-family:monospace;">+${fmt(pnl.warehouseInflowUsd)}</td>
             </tr>
-            <tr>
-              <td style="padding:14px 0; color:var(--mu);">Subcontract Fleet Charter Inflows</td>
-              <td style="padding:14px 0; text-align:right; color:var(--tx); font-weight:900; font-family:monospace;">+${fmt(pnl.subcontractInflowUsd)}</td>
-            </tr>
           </tbody>
         </table>
 

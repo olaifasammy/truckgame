@@ -355,4 +355,3 @@ export const SAMPLE_TENDERS: CorporateTender[] = [
   }
 ];
 
-export const SUBCONTRACT_DAILY_RATE = 1800; // $1,800/day guaranteed passive retainer per sub-contracted rig

@@ -12,7 +12,6 @@ export interface GameState {
   active: ActiveJob[];
   licenses: string[];
   unlockedRegions: string[];
-  subcontractedTrucks?: number[];
   trailers?: string[];
   repairs?: any[];
   jobs?: any[];
