@@ -12,7 +12,7 @@ import { processScheduledRepair } from '../../systems/maintenance';
 import { vehicleDeliveryTemplate } from '../notifications/templates';
 import { getDispatchEligibilityError } from './validation';
 import { FreightEngine } from '../freight/engine/generator';
-import { LOCATIONS } from '../../data/world';
+import { LOCATIONS, resolveTruckRegion } from '../../data/world';
 import { isCityUnlockedHub, getHubForCity, getHubFacilityForCity } from '../hubs/hub-facility';
 
 import { getDispatchNeuralNetwork } from '../ai/neuralNetwork';
@@ -89,7 +89,16 @@ export const DispatchExecution = {
     // If it's not a round trip, j.km is the total distance.
     const leg1Km = j.isRoundTrip ? (j.baseKm || j.km / 2) : j.km;
     const totalKm = leg1Km + dh;
-    const duration = tripMs(totalKm, st.topSpeed, routeEnv);
+    
+    // Calculate raw driving time
+    const drivingTimeMs = tripMs(totalKm, st.topSpeed, routeEnv);
+    
+    // Add time for mandatory stops on long trips (> 500km)
+    const isLongTrip = totalKm > 500;
+    const restTimeMs = isLongTrip ? (45 * 60 * 1000) : 0; // 45 minute rest
+    const fuelTimeMs = isLongTrip ? (15 * 60 * 1000) : 0; // 15 minute fuel
+    
+    const duration = drivingTimeMs + restTimeMs + fuelTimeMs;
 
     const isHazmatJob = cargo?.isHazmat || (cargo?.trailer === 'tanker') || (cargo?.trailer === 'hazmat');
     const trailerType = cargo?.trailer || (j as any).trailer || 'curtain';
@@ -304,8 +313,9 @@ export const DispatchExecution = {
           return hubKey === 'LOS ANGELES' ? 'LOS_ANGELES' : hubKey;
         });
         
+        const destRegion = resolveTruckRegion(a.to);
         const nearestHub = ownedHubs
-          .filter((h: string) => LOCATIONS[h] && LOCATIONS[h].region === LOCATIONS[a.to].region)
+          .filter((h: string) => (LOCATIONS[h]?.region || resolveTruckRegion(h)) === destRegion)
           .sort((a_hub: string, b_hub: string) => distKm(a.to, a_hub) - distKm(a.to, b_hub))[0] || a.from;
 
         const dhKm = distKm(a.to, nearestHub); // Return distance to nearest hub
@@ -368,8 +378,8 @@ export const DispatchExecution = {
       pushNote(S, `Consignment Delivered to ${destHub?.name || a.to} Hub: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });
 
       // Generate immediate outbound consignments departing from this new hub
-      if (t && a.to && LOCATIONS[a.to] && (S.jobs || []).length < 17) {
-        const destRegion = LOCATIONS[a.to].region;
+      if (t && a.to && (S.jobs || []).length < 17) {
+        const destRegion = resolveTruckRegion(a.to);
         try {
           const outboundJob = FreightEngine.generate(S, {
             forceRegion: destRegion,
@@ -407,8 +417,8 @@ export const DispatchExecution = {
 
       // Generate immediate return haul from the arrival city back to departure city or regional hub
       // Only if the board isn't already overwhelmed (Limit: 17)
-      if (t && a.to && LOCATIONS[a.to] && (S.jobs || []).length < 17) {
-        const destRegion = LOCATIONS[a.to].region;
+      if (t && a.to && (S.jobs || []).length < 17) {
+        const destRegion = resolveTruckRegion(a.to);
         try {
           const returnJob = FreightEngine.generate(S, {
             forceRegion: destRegion,

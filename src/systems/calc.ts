@@ -34,67 +34,12 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 
 /**
  * Calculates realistic highway driving distances between cities.
+ * Uses the Haversine Great Circle formula combined with regional road circuity factors.
  */
 export const distKm = (a: string, b: string): number => {
   if (a === b) return 0;
   const locA = LOCATIONS[a];
   const locB = LOCATIONS[b];
-
-  // Specific real-world intercity distances for high accuracy
-  const key = `${a}_${b}`;
-  const reverseKey = `${b}_${a}`;
-  const realDistances: Record<string, number> = {
-    // Africa
-    'LAGOS_IBADAN': 135,
-    'LAGOS_ENUGU': 580,
-    'LAGOS_ABUJA': 760,
-    'LAGOS_KANO': 1020,
-    'LAGOS_MAIDUGURI': 1580,
-    'IBADAN_ABUJA': 630,
-    'ABUJA_KANO': 365,
-    'KANO_MAIDUGURI': 585,
-    'ENUGU_ABUJA': 420,
-    'CAIRO_ALEXANDRIA': 220,
-    'JOHANNESBURG_CAPE_TOWN': 1400,
-    'NAIROBI_MOMBASA': 485,
-
-    // Europe
-    'ROTTERDAM_MUNICH': 790,
-    'ROTTERDAM_LYON': 780,
-    'ROTTERDAM_INNSBRUCK': 940,
-    'ROTTERDAM_GOTHENBURG': 1180,
-    'MUNICH_INNSBRUCK': 165,
-    'MUNICH_LYON': 680,
-    'MUNICH_GOTHENBURG': 1250,
-    'LYON_INNSBRUCK': 690,
-    'GOTHENBURG_INNSBRUCK': 1420,
-    'LONDON_PARIS': 450,
-    'PARIS_BERLIN': 1050,
-
-    // America
-    'CHICAGO_DENVER': 1620,
-    'CHICAGO_DALLAS': 1490,
-    'CHICAGO_LOS_ANGELES': 3240,
-    'CHICAGO_SALT_LAKE_CITY': 2250,
-    'DENVER_DALLAS': 1060,
-    'DENVER_LOS_ANGELES': 1640,
-    'DENVER_SALT_LAKE_CITY': 850,
-    'DALLAS_LOS_ANGELES': 2310,
-    'LOS_ANGELES_SALT_LAKE_CITY': 1110,
-
-    // Asia
-    'TOKYO_NAGOYA': 350,
-    'TOKYO_NAGANO': 245,
-    'TOKYO_SHANGHAI': 1780,
-    'TOKYO_ALMATY': 5600,
-    'NAGOYA_NAGANO': 220,
-    'NAGOYA_SHANGHAI': 1560,
-    'SHANGHAI_ALMATY': 4150,
-    'NAGANO_SHANGHAI': 1680
-  };
-
-  if (realDistances[key]) return realDistances[key];
-  if (realDistances[reverseKey]) return realDistances[reverseKey];
 
   if (locA && locB) {
     const rawDist = haversineKm(
@@ -103,43 +48,37 @@ export const distKm = (a: string, b: string): number => {
     );
 
     // Apply region-specific road circuity factors (winding roads vs straight highways)
-    let circuityFactor = 1.3; // Default 30% extra for road networks
-    
-    if (locA.region === 'Africa' || locB.region === 'Africa') {
-      circuityFactor = 1.45; // Africa often has more indirect routing due to terrain/infrastructure
-    } else if (locA.region === 'Europe' && locB.region === 'Europe') {
-      circuityFactor = 1.25; // Dense European highway network
-    } else if (locA.region === 'America' && locB.region === 'America') {
-      circuityFactor = 1.2; // US interstate system is relatively direct
-    } else if (locA.region !== locB.region) {
-      circuityFactor = 1.15; // Inter-continental long-haul major transit corridors are prioritized
-    }
+    // Africa: 1.45 (indirect routing due to terrain/infrastructure)
+    // Europe: 1.25 (dense highway network)
+    // America: 1.2 (direct interstate grid)
+    // Asia: 1.35 (mountainous/varied terrain)
+    let factor = 1.3;
+    if (locA.region === 'Africa') factor = 1.45;
+    else if (locA.region === 'Europe') factor = 1.25;
+    else if (locA.region === 'America') factor = 1.2;
+    else if (locA.region === 'Asia') factor = 1.35;
 
-    const roadDist = rawDist * circuityFactor;
-
+    const roadDist = rawDist * factor;
     // Minimum distance for any inter-city trip to account for terminal exit/entry
-    return Math.max(50, Math.round(roadDist / 5) * 5);
+    return Math.max(45, Math.round(roadDist));
   }
 
-  // Fallback to canvas coordinates only if data is missing
-  const p = (CITIES as any)[a] || [50, 50];
-  const q = (CITIES as any)[b] || [150, 150];
-  const canvasDirect = Math.hypot(p[0] - q[0], p[1] - q[1]);
-  return Math.max(150, Math.round(canvasDirect * 12));
+  return 500; // Fallback
 };
 
 export function getRouteEnv(from: string, to: string): EnvironmentalConditions {
   const locFrom = LOCATIONS[from];
   const locTo = LOCATIONS[to];
 
-  if (!locFrom && !locTo) return { weather: 'clear', elevation: 200, roadGrade: 1.5, temp: 22 };
+  if (!locFrom && !locTo) return { weather: 'clear', elevation: 200, roadGrade: 1.5, temp: 22, region: 'Europe' };
 
   const weather = locTo?.typicalWeather || locFrom?.typicalWeather || 'clear';
   const elevation = Math.round(((locFrom?.elevation || 200) + (locTo?.elevation || 200)) / 2);
   const roadGrade = Math.max(locFrom?.roadGrade || 1.5, locTo?.roadGrade || 1.5);
   const temp = Math.round(((locFrom?.avgTemp || 25) + (locTo?.avgTemp || 25)) / 2);
+  const region = locFrom?.region || locTo?.region || 'Europe';
 
-  return { weather, elevation, roadGrade, temp };
+  return { weather, elevation, roadGrade, temp, region };
 }
 
 export function stats(S: any, t: any, payloadTonnes = 0, env?: EnvironmentalConditions) {

@@ -52,7 +52,6 @@ const getLocInfo = (locKey: string) => {
     name: locKey,
     region: reg,
     country: REGIONS[reg]?.countryList?.split(',')[0]?.trim() || reg,
-    coords: [150, 50] as [number, number],
     latLng: [50, 5] as [number, number],
     elevation: 10,
     typicalWeather: 'clear' as const,

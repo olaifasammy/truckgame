@@ -1,8 +1,23 @@
 import { ic } from '../core/icons';
 import { action, fmt, dur } from '../core/ui';
-import { refresh } from '../core/store';
+import { refresh, get as getState } from '../core/store';
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { getTruckTelematics, getDrivingStateBadge } from '../domain/trucks/trucks.telematics';
+
+action('set-truck-cruise-speed', d => {
+  const truckId = +(d as any).truckId;
+  const speed = +(d as any).speed;
+  const S = getState();
+  const truck = (S.fleet || []).find((t: any) => t.id === truckId);
+  if (truck) {
+    truck.targetSpeed = speed;
+    const activeJob = (S.active || []).find((a: any) => a.truck === truckId);
+    if (activeJob) {
+      activeJob.targetSpeed = speed;
+    }
+    refresh();
+  }
+});
 
 export let activeTelematicsTruckId: number | null = null;
 let telematicsInterval: any = null;
@@ -207,6 +222,27 @@ export function renderTelematicsOverlay(S: any): string {
                 ${telem.retarderActive ? 'JAKE RETARDER ON' : telem.throttlePct > 80 ? 'HIGH TORQUE' : telem.brakePct > 0 ? 'SERVICE BRAKE' : 'OVERDRIVE ECO'}
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Interactive Cruise Speed Target / Speed Limiter Selector -->
+        <div style="background:#0b1120; border:1px solid #1e293b; border-radius:8px; padding:8px 12px; margin-bottom:12px;">
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
+            <div style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase; letter-spacing:0.4px;">
+              ⚙️ CRUISE SPEED / THROTTLE TARGET & LIVE ETA CONTROL
+            </div>
+            <div style="font-size:10px; font-weight:900; color:var(--gold); font-family:monospace;">
+              TARGET: ${truck.targetSpeed || telem.speedKmh || 85} KM/H
+            </div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            ${[50, 75, 90, 100, 110].map(s => `
+              <button class="btn btn-xs ${ (truck.targetSpeed || 85) === s ? 'btn-primary' : 'btn-outline' }" 
+                      style="flex:1; font-weight:800; font-family:monospace; padding:4px 2px;"
+                      data-act="set-truck-cruise-speed" data-truck-id="${truck.id}" data-speed="${s}">
+                ${s} KM/H
+              </button>
+            `).join('')}
           </div>
         </div>
 

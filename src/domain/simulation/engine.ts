@@ -10,6 +10,7 @@ import { completeJobs, processEconomics, replenish } from '../../systems/jobs';
 import { completeRepairs } from '../../systems/maintenance';
 import { processLimitOrders } from '../finance/markets/crypto';
 import { processCryptoLoansTick } from '../finance/markets/loans';
+import { getTruckTelematics } from '../trucks/trucks.telematics';
 import { onTruckArrival } from '../../systems/fleet';
 import { runAiAutoDispatch, runAiFleetMaintenance } from '../ai/ai.engine';
 import { runAiCryptoTradingTick } from '../ai/ai.quant';
@@ -88,9 +89,29 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
       if (truck && truck.status === 'idle') {
         truck.status = 'busy';
       }
-      
+
+      // 4. Physical Distance Progression & Lively ETA Synchronization
+      if (truck) {
+        const driver = (st.drivers || []).find((d: any) => d.assignedTruckId === a.truck);
+        const telem = getTruckTelematics(truck, a, driver, now);
+        const lastTick = (st as any)._lastSimTick || (now - 1000);
+        const deltaMs = Math.max(100, Math.min(60000, now - lastTick));
+
+        // If speedKmh > 0, advance physical distance travelled (stops have speedKmh = 0, so distance pauses during rest/fuel stops)
+        if (telem.speedKmh > 0) {
+          const deltaKm = telem.speedKmh * (deltaMs / 3600000);
+          a.kmTravelled = Math.min(a.km || 100, (a.kmTravelled ?? 0) + deltaKm);
+        }
+
+        // Dynamically update activeJob.end lively so UI, map popups, and telematics modal show accurate ETA
+        if (telem.remainingMs > 0) {
+          a.end = now + telem.remainingMs;
+        }
+      }
+
       return true;
     });
+    (st as any)._lastSimTick = now;
   }
 
   // 3. Freight Consignment Arrivals & Job Completions

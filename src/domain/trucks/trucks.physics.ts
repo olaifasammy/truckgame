@@ -22,6 +22,7 @@ export interface EnvironmentalConditions {
   roadGrade?: number; // percentage incline
   temp?: number; // Celsius
   terrain?: string;
+  region?: string;
 }
 
 export interface PerformanceMetrics {
@@ -146,6 +147,12 @@ export function calculatePerformance(
   // 7. Physics Highway Cruising Speed
   const rawCruisingSpeed = (powerWeightRatio * 12.8) / Math.sqrt(cdA * gradeInclineDrag);
   let topSpeed = Math.min(110, rawCruisingSpeed) * weatherSpeedMod * driverFactor * traitSpeedMod * transHealth;
+
+  // Regional speed reduction for Africa - represents variable road infrastructure
+  if (env?.region === 'Africa') {
+    topSpeed *= 0.88;
+  }
+
   topSpeed = Math.max(30, Math.min(120, topSpeed));
 
   // 8. Acceleration Factor (0 - 1)

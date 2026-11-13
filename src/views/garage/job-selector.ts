@@ -4,7 +4,7 @@ import { CARGO_TYPES } from '../../domain/freight/cargo/registry';
 import { renderCargoBadge } from '../../domain/freight/cargo/cargo-svgs';
 import { why, takeJob } from '../../systems/jobs';
 import { ic } from '../../core/icons';
-import { LOCATIONS } from '../../data/world';
+import { LOCATIONS, resolveTruckRegion } from '../../data/world';
 import { distKm, getRouteEnv, tripMs } from '../../systems/calc';
 import { getDailyBidDispatchQuota } from '../../domain/freight/bids/quota';
 import { FreightEngine } from '../../domain/freight/engine/generator';
@@ -41,8 +41,8 @@ export function renderJobSelectorOverlay(S: any) {
 
   // Ensure there is at least one outbound load from truck.loc
   const hasLocalJob = (S.jobs || []).some((j: any) => j.from === truck.loc);
-  if (!hasLocalJob && LOCATIONS[truck.loc]) {
-    const truckRegion = LOCATIONS[truck.loc].region;
+  if (!hasLocalJob && truck.loc) {
+    const truckRegion = resolveTruckRegion(truck.loc);
     const regionCities = Object.entries(LOCATIONS)
       .filter(([k, loc]) => loc.region === truckRegion && k !== truck.loc)
       .map(([k]) => k);

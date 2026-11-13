@@ -2,7 +2,7 @@ import { salesLeadTemplate } from '../../notifications/templates';
 import { Region, FreightJob, JobKind } from '../types';
 import { COMPANIES } from '../companies/registry';
 import { CARGO_TYPES } from '../cargo/registry';
-import { CITIES, LOCATIONS, RegionName } from '../../../data/world';
+import { CITIES, LOCATIONS, RegionName, resolveTruckRegion } from '../../../data/world';
 import { rnd, toast } from '../../../core/ui';
 import { BiddingEngine } from '../bids/engine';
 import { distKm, getRouteEnv, fuelCostForTrip } from '../../../systems/calc';
@@ -126,8 +126,8 @@ export class FreightEngine {
       : [];
 
     let targetRegion: RegionName;
-    if (options.forceFrom && LOCATIONS[options.forceFrom]) {
-      targetRegion = LOCATIONS[options.forceFrom].region;
+    if (options.forceFrom) {
+      targetRegion = resolveTruckRegion(options.forceFrom);
     } else if (tender && (tender as any).region && unlockedRegions.includes((tender as any).region as RegionName)) {
       targetRegion = (tender as any).region as RegionName;
     } else if (options.forceRegion && unlockedRegions.includes(options.forceRegion)) {
@@ -420,8 +420,8 @@ export class FreightEngine {
     let addedFleetJobs = 0;
     for (const truck of fleet) {
       if (addedFleetJobs >= 4 || S.jobs.length >= 17) break;
-      if (!truck.loc || !LOCATIONS[truck.loc]) continue;
-      const truckRegion = LOCATIONS[truck.loc].region;
+      if (!truck.loc) continue;
+      const truckRegion = resolveTruckRegion(truck.loc);
       if (!unlockedRegions.includes(truckRegion)) continue;
 
       const hasJobFromTruckLoc = S.jobs.some((j: any) => j.from === truck.loc);

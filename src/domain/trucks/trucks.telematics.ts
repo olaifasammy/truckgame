@@ -1,5 +1,6 @@
 import { TRUCK_MODELS } from './trucks.data';
 import { calculatePerformance } from './trucks.physics';
+import { resolveTruckRegion } from '../../data/world';
 
 export type DrivingState =
   | 'parking'        // Parked or staged in terminal yard
@@ -123,14 +124,7 @@ export function getTruckTelematics(
     };
   }
 
-  // 2. Active Consignment Trip Progression
-  const duration = Math.max(1, activeJob.end - activeJob.start);
-  const elapsed = Math.max(0, nowMs - activeJob.start);
-  const progressRatio = Math.min(1, Math.max(0, elapsed / duration));
-  const pctCompleted = parseFloat((progressRatio * 100).toFixed(1));
-  const remainingMs = Math.max(0, activeJob.end - nowMs);
-  const distanceRemainingKm = Math.round((activeJob.km || 100) * (1 - progressRatio));
-
+  // 2. Active Consignment Trip Progression & Dynamic Physical Speed Engine
   // Environmental context
   const env = activeJob.env || {};
   const weather = env.weather || 'clear';
@@ -144,6 +138,73 @@ export function getTruckTelematics(
   // Adjust target cruise speed based on adverse weather
   if (weather === 'snow') baseTopSpeed -= 22;
   else if (weather === 'rain') baseTopSpeed -= 10;
+
+  // Target cruise speed (customizable per truck: truck.targetSpeed or activeJob.targetSpeed or vehicle top speed)
+  const targetCruiseSpeed = truck.targetSpeed || truck.cruiseSpeed || activeJob.targetSpeed || baseTopSpeed;
+
+  // Driver Trait & Vehicle Condition Speed Modifiers
+  const driverSpeedMod = driver ? (driver.fatigue > 80 ? 0.82 : driver.fatigue > 60 ? 0.90 : 1.0) : 1.0;
+  const healthSpeedMod = Math.max(0.70, (truck.engineHealth || 100) / 100);
+  const regionalSpeedMod = (activeJob.from && resolveTruckRegion(activeJob.from) === 'Africa') ? 0.88 : 1.0;
+
+  // Effective Cruising Speed when driving
+  const effectiveCruiseSpeed = Math.max(25, Math.min(130, Math.round(targetCruiseSpeed * driverSpeedMod * healthSpeedMod * regionalSpeedMod)));
+
+  // Total trip distance
+  const totalKm = Math.max(1, activeJob.km || 100);
+
+  // Initialize or track physical km travelled
+  let kmTravelled = activeJob.kmTravelled;
+  if (typeof kmTravelled !== 'number') {
+    const initElapsed = Math.max(0, nowMs - activeJob.start);
+    const initDuration = Math.max(1, activeJob.end - activeJob.start);
+    kmTravelled = Math.min(totalKm, totalKm * (initElapsed / initDuration));
+    activeJob.kmTravelled = kmTravelled;
+  }
+
+  // Calculate percentage completed based on physical distance covered
+  const pctCompleted = parseFloat((Math.min(100, Math.max(0, (kmTravelled / totalKm) * 100))).toFixed(1));
+  const distanceRemainingKm = Math.max(0, totalKm - kmTravelled);
+
+  // Long Trip Check for Mandatory Rest & Refueling Stops
+  const isLongTrip = totalKm >= 400;
+  const REST_START = 40.0;
+  const REST_END = 48.0;
+  const FUEL_START = 48.0;
+  const FUEL_END = 54.0;
+
+  // Dynamic Stop Delays Remaining (in Ms)
+  let stopDelaysMs = 0;
+  if (pctCompleted < 3.8) {
+    // Dock loading/inspection delay (5 mins = 300,000 ms)
+    const loadingTotalMs = 300000;
+    stopDelaysMs += Math.max(0, loadingTotalMs * (1 - pctCompleted / 3.8));
+  }
+
+  if (isLongTrip) {
+    if (pctCompleted < REST_START) {
+      // Rest stop ahead (45 mins) + Refuel stop ahead (15 mins)
+      stopDelaysMs += 2700000 + 900000;
+    } else if (pctCompleted >= REST_START && pctCompleted < REST_END) {
+      // Currently in Rest Stop (45 mins total)
+      const restDoneRatio = (pctCompleted - REST_START) / (REST_END - REST_START);
+      stopDelaysMs += Math.max(0, (1 - restDoneRatio) * 2700000) + 900000;
+    } else if (pctCompleted >= FUEL_START && pctCompleted < FUEL_END) {
+      // Currently in Refuel Stop (15 mins total)
+      const fuelDoneRatio = (pctCompleted - FUEL_START) / (FUEL_END - FUEL_START);
+      stopDelaysMs += Math.max(0, (1 - fuelDoneRatio) * 900000);
+    }
+  }
+
+  // Driving time remaining at effectiveCruiseSpeed
+  // e.g. 500km remaining at 50 km/h = 10 hrs driving time + stop delays
+  // 500km remaining at 100 km/h = 5 hrs driving time + stop delays
+  // 500km remaining at 75 km/h = 6.67 hrs driving time + stop delays
+  const remainingDrivingMs = Math.round((distanceRemainingKm / effectiveCruiseSpeed) * 3600000);
+  const remainingMs = Math.max(0, remainingDrivingMs + Math.round(stopDelaysMs));
+
+  // Lively update activeJob.end to reflect dynamic target speed and rest/refuel stop changes
+  activeJob.end = nowMs + remainingMs;
 
   // Weather road surface label
   const roadSurface = weather === 'snow'
@@ -172,9 +233,6 @@ export function getTruckTelematics(
   let turboBoostBar = 1.4;
   let brakeTempC = 75;
   let gradientPct = baseGrade;
-
-  // Check Long-Distance Milestones (Rest & Refuel on trips >= 240km)
-  const isLongTrip = (activeJob.km || 0) >= 240;
 
   if (pctCompleted < 3.8) {
     // Phase 1: Cargo Loading & Inspection
@@ -209,7 +267,7 @@ export function getTruckTelematics(
     currentGear = `${gearNumber} / ${totalGears}`;
     engineRpm = Math.round(1750 + Math.sin(accelFactor * 10) * 150);
     turboBoostBar = 2.3;
-  } else if (isLongTrip && pctCompleted >= 44.0 && pctCompleted < 49.0) {
+  } else if (isLongTrip && pctCompleted >= REST_START && pctCompleted < REST_END) {
     // Phase 3: Mandatory Rest Stop (Sleeper Berth)
     state = 'resting';
     phase = 'Midway HOS Rest Stop';
@@ -223,7 +281,7 @@ export function getTruckTelematics(
     engineRpm = 0;
     currentGear = 'P (Park)';
     turboBoostBar = 0.0;
-  } else if (isLongTrip && pctCompleted >= 49.0 && pctCompleted < 53.5) {
+  } else if (isLongTrip && pctCompleted >= FUEL_START && pctCompleted < FUEL_END) {
     // Phase 4: High-Flow Highway Refueling
     state = 'refueling';
     phase = 'En-Route Fueling Station';
@@ -284,7 +342,7 @@ export function getTruckTelematics(
       stateDescription = 'Maintaining steady linehaul cruise speed in overdrive top gear; automated predictive powertrain in fuel-efficient eco band.';
       stateBadgeColor = '#10b981';
       stateIcon = '🛣️';
-      speedKmh = Math.round(baseTopSpeed - 2 + Math.sin(nowMs / 3000) * 2.5);
+      speedKmh = Math.round(effectiveCruiseSpeed - 2 + Math.sin(nowMs / 3000) * 2.5);
       throttlePct = 60;
       brakePct = 0;
       gearNumber = totalGears;
@@ -297,7 +355,7 @@ export function getTruckTelematics(
       stateDescription = 'Accelerating past slower vehicles in expressway passing lane; turbocharger building positive manifold pressure.';
       stateBadgeColor = '#eab308';
       stateIcon = '⚡';
-      speedKmh = Math.min(105, Math.round(baseTopSpeed + 6 + Math.cos(nowMs / 2500) * 2));
+      speedKmh = Math.min(130, Math.round(effectiveCruiseSpeed * 1.12 + 2 + Math.cos(nowMs / 2500) * 2));
       throttlePct = 90;
       brakePct = 0;
       gearNumber = totalGears;
@@ -310,7 +368,7 @@ export function getTruckTelematics(
       stateDescription = 'Easing throttle for highway traffic congestion and road curvature; automated transmission downshifting into direct drive.';
       stateBadgeColor = '#f97316';
       stateIcon = '⚠️';
-      speedKmh = Math.round(baseTopSpeed * 0.72 + Math.sin(nowMs / 2000) * 3);
+      speedKmh = Math.round(effectiveCruiseSpeed * 0.76 + Math.sin(nowMs / 2000) * 3);
       throttlePct = 20;
       brakePct = 15;
       gearNumber = totalGears - 2;
@@ -323,7 +381,7 @@ export function getTruckTelematics(
       stateDescription = 'Exhaust brake and driveline retarder engaged down highway gradient; scrubbing momentum without overheating foundation disk brakes.';
       stateBadgeColor = '#ef4444';
       stateIcon = '🛑';
-      speedKmh = Math.max(45, Math.round(baseTopSpeed * 0.62 - (cycleSec - 40) * 4));
+      speedKmh = Math.max(25, Math.round(effectiveCruiseSpeed * 0.62 - (cycleSec - 40) * 4));
       throttlePct = 0;
       brakePct = 70;
       retarderActive = true;
@@ -340,7 +398,7 @@ export function getTruckTelematics(
       stateBadgeColor = '#38bdf8';
       stateIcon = '🚀';
       const reAccel = (cycleSec - 45) / 5;
-      speedKmh = Math.round(baseTopSpeed * 0.65 + reAccel * (baseTopSpeed * 0.32));
+      speedKmh = Math.round(effectiveCruiseSpeed * 0.65 + reAccel * (effectiveCruiseSpeed * 0.32));
       throttlePct = 85;
       brakePct = 0;
       gearNumber = Math.max(totalGears - 2, Math.floor(totalGears - 2 + reAccel * 2));

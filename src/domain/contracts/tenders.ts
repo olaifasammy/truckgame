@@ -9,6 +9,8 @@ import { LOCATIONS } from '../../data/world';
 import { REGIONAL_HUBS } from '../logistics/network';
 import { CARGO_TYPES } from '../freight/cargo/registry';
 
+import { distKm } from '../../systems/calc';
+
 export interface CorporateTender {
   id: string;
   client: string;
@@ -152,12 +154,7 @@ const CLIENT_TEMPLATES: ClientTemplate[] = [
  * Calculates straight highway distance between two city locations in kilometers.
  */
 function getLaneDistance(cityA: string, cityB: string): number {
-  const locA = LOCATIONS[cityA];
-  const locB = LOCATIONS[cityB];
-  if (!locA || !locB || !locA.coords || !locB.coords) return 500;
-  const dx = locA.coords[0] - locB.coords[0];
-  const dy = locA.coords[1] - locB.coords[1];
-  return Math.round(Math.sqrt(dx * dx + dy * dy) * 1.8) + 120;
+  return distKm(cityA, cityB);
 }
 
 /**
