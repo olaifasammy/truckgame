@@ -2,7 +2,7 @@ import { ic } from '../core/icons';
 import { action, fmt, dur } from '../core/ui';
 import { refresh, get as getState } from '../core/store';
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
-import { getTruckTelematics, getDrivingStateBadge } from '../domain/trucks/trucks.telematics';
+import { getTruckTelematics } from '../domain/trucks/trucks.telematics';
 
 action('set-truck-cruise-speed', d => {
   const truckId = +(d as any).truckId;
@@ -19,6 +19,25 @@ action('set-truck-cruise-speed', d => {
   }
 });
 
+action('adjust-truck-cruise-speed', d => {
+  const truckId = +(d as any).truckId;
+  const delta = +(d as any).delta;
+  const S = getState();
+  const truck = (S.fleet || []).find((t: any) => t.id === truckId);
+  if (truck) {
+    const model = TRUCK_MODELS.find(m => m.id === truck.modelId);
+    const maxSpeed = model ? model.topSpeed : 120;
+    const currentTarget = truck.targetSpeed || 85;
+    const newSpeed = Math.max(30, Math.min(maxSpeed, currentTarget + delta));
+    truck.targetSpeed = newSpeed;
+    const activeJob = (S.active || []).find((a: any) => a.truck === truckId);
+    if (activeJob) {
+      activeJob.targetSpeed = newSpeed;
+    }
+    refresh();
+  }
+});
+
 export let activeTelematicsTruckId: number | null = null;
 let telematicsInterval: any = null;
 
@@ -30,10 +49,8 @@ export function openTelematicsModal(truckId: number) {
       refresh();
     } else {
       clearInterval(telematicsInterval);
-      telematicsInterval = null;
     }
-  }, 750);
-  refresh();
+  }, 1000);
 }
 
 export function closeTelematicsModal() {
@@ -45,8 +62,9 @@ export function closeTelematicsModal() {
   refresh();
 }
 
-action('open-telematics', d => openTelematicsModal(+(d as any).id));
-action('close-telematics', () => closeTelematicsModal());
+action('close-telematics-modal', () => {
+  closeTelematicsModal();
+});
 
 export function renderTelematicsOverlay(S: any): string {
   if (activeTelematicsTruckId === null || !S) return '';
@@ -56,302 +74,404 @@ export function renderTelematicsOverlay(S: any): string {
   if (!t) return '';
   const truck = t;
 
-  const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
-  const drv = (S.drivers || []).find((d: any) => d.id === t.driverId);
+  const model = TRUCK_MODELS.find(m => m.id === truck.modelId);
+  const driver = (S.drivers || []).find((d: any) => d.assignedTruckId === truck.id);
   const now = Date.now();
+  const telem = getTruckTelematics(truck, a, driver, now);
 
-  // Retrieve comprehensive dynamic telematics snapshot
-  const telem = getTruckTelematics(t, a, drv, now);
+  const topSpeed = model ? model.topSpeed : 120;
+  const currentTargetSpeed = truck.targetSpeed || 85;
+  const currentSpeed = telem.speedKmh || 0;
+  const currentRpm = telem.rpm || 650;
+  const gearText = telem.gear || 'N';
 
-  const weather = a?.env?.weather || 'clear';
-  const ambientTemp = a?.env?.temp || 22;
+  // RPM calculation for circular/bar gauge
+  const rpmPct = Math.min(100, Math.max(0, ((currentRpm - 500) / 2000) * 100));
+  const speedPct = Math.min(100, Math.max(0, (currentSpeed / topSpeed) * 100));
 
-  // Compute road dash animation speed based on dynamic vehicle speed
-  const animDur = telem.isMoving
-    ? Math.max(0.2, ((125 - telem.speedKmh) / 100)).toFixed(2)
-    : '0';
+  // Telltale indicators
+  const ccActive = currentSpeed > 0 && Math.abs(currentSpeed - currentTargetSpeed) <= 5;
+  const retActive = telem.state === 'braking' || currentSpeed > currentTargetSpeed;
+  const loadActive = telem.state === 'loading' || telem.state === 'unloading';
 
   return `
-    <div style="position:fixed; inset:0; background:rgba(3,7,18,0.92); z-index:2000; display:flex; align-items:center; justify-content:center; padding:12px; backdrop-filter:blur(6px);">
-      <div style="background:#0b1120; border:1px solid var(--gold); border-radius:14px; width:100%; max-width:620px; max-height:92vh; overflow-y:auto; padding:18px; box-shadow:0 24px 60px rgba(0,0,0,0.85); position:relative;">
-        
+    <div class="modal-overlay" style="background: rgba(4, 7, 15, 0.88); backdrop-filter: blur(12px); display: flex; align-items: center; justify-content: center; z-index: 9999; padding: 16px;">
+      <style>
+        .telem-dashboard {
+          background: linear-gradient(180deg, #0b1322 0%, #060a12 100%);
+          border: 1px solid rgba(56, 189, 248, 0.25);
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.85), 0 0 30px rgba(14, 165, 233, 0.15);
+          border-radius: 16px;
+          width: 100%;
+          max-width: 920px;
+          max-height: 92vh;
+          overflow-y: auto;
+          color: #f1f5f9;
+          font-family: 'JetBrains Mono', 'Segoe UI', system-ui, sans-serif;
+        }
+
+        /* Cluster Cockpit Styling */
+        .cluster-panel {
+          background: #040811;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+          border-radius: 12px;
+          padding: 16px;
+          position: relative;
+          box-shadow: inset 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        .telltale-strip {
+          display: flex;
+          justify-content: center;
+          gap: 12px;
+          padding: 8px 12px;
+          background: #020408;
+          border-radius: 8px;
+          border: 1px solid rgba(255,255,255,0.05);
+          margin-bottom: 14px;
+        }
+
+        .telltale-icon {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 10px;
+          font-weight: 700;
+          padding: 4px 8px;
+          border-radius: 4px;
+          background: rgba(255,255,255,0.03);
+          color: rgba(255,255,255,0.3);
+          border: 1px solid rgba(255,255,255,0.05);
+          letter-spacing: 0.5px;
+        }
+
+        .telltale-icon.active-green {
+          color: #10b981;
+          background: rgba(16, 185, 129, 0.15);
+          border-color: rgba(16, 185, 129, 0.4);
+          box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);
+        }
+
+        .telltale-icon.active-amber {
+          color: #f59e0b;
+          background: rgba(245, 158, 11, 0.15);
+          border-color: rgba(245, 158, 11, 0.4);
+          box-shadow: 0 0 10px rgba(245, 158, 11, 0.3);
+        }
+
+        .telltale-icon.active-blue {
+          color: #38bdf8;
+          background: rgba(56, 189, 248, 0.15);
+          border-color: rgba(56, 189, 248, 0.4);
+          box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+        }
+
+        /* Speedometer & Tachometer Visual Gauges */
+        .gauge-grid {
+          display: grid;
+          grid-template-columns: 1fr 1.2fr 1fr;
+          gap: 16px;
+          align-items: center;
+        }
+
+        @media (max-width: 640px) {
+          .gauge-grid {
+            grid-template-columns: 1fr;
+          }
+        }
+
+        .digital-speedo {
+          text-align: center;
+          background: radial-gradient(circle, rgba(14, 165, 233, 0.1) 0%, rgba(2, 6, 12, 0.6) 80%);
+          border: 1px solid rgba(56, 189, 248, 0.2);
+          border-radius: 12px;
+          padding: 16px 8px;
+        }
+
+        .speed-val {
+          font-size: 52px;
+          font-weight: 900;
+          line-height: 1;
+          color: #ffffff;
+          text-shadow: 0 0 20px rgba(56, 189, 248, 0.6);
+        }
+
+        .gauge-bar-track {
+          width: 100%;
+          height: 8px;
+          background: rgba(255,255,255,0.08);
+          border-radius: 4px;
+          overflow: hidden;
+          margin-top: 8px;
+        }
+
+        .gauge-bar-fill {
+          height: 100%;
+          transition: width 0.3s ease;
+        }
+
+        /* Cruise Control Console */
+        .cc-console {
+          background: rgba(15, 23, 42, 0.6);
+          border: 1px solid rgba(56, 189, 248, 0.2);
+          border-radius: 12px;
+          padding: 16px;
+        }
+
+        .cc-btn {
+          background: rgba(30, 41, 59, 0.8);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          color: #cbd5e1;
+          font-weight: 700;
+          padding: 8px 12px;
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+          font-size: 12px;
+        }
+
+        .cc-btn:hover {
+          background: rgba(56, 189, 248, 0.2);
+          border-color: #38bdf8;
+          color: #ffffff;
+        }
+
+        .cc-btn.active {
+          background: #0284c7;
+          border-color: #38bdf8;
+          color: #ffffff;
+          box-shadow: 0 0 12px rgba(56, 189, 248, 0.4);
+        }
+
+        .cc-btn-delta {
+          background: rgba(15, 23, 42, 0.9);
+          border: 1px solid rgba(56, 189, 248, 0.3);
+          color: #38bdf8;
+          font-weight: 800;
+          font-size: 13px;
+          padding: 6px 14px;
+          border-radius: 6px;
+          cursor: pointer;
+        }
+
+        .cc-btn-delta:hover {
+          background: #38bdf8;
+          color: #020617;
+        }
+      </style>
+
+      <div class="telem-dashboard">
         <!-- Header -->
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; border-bottom:1px solid rgba(255,255,255,0.08); padding-bottom:10px;">
-          <div>
-            <div style="display:flex; align-items:center; gap:8px;">
-              <div style="font-size:9px; font-weight:900; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">
-                LIVE FLEET TELEMATICS · GPS SATELLITE FEED
+        <div style="padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.2);">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 40px; height: 40px; border-radius: 10px; background: rgba(56, 189, 248, 0.15); border: 1px solid rgba(56, 189, 248, 0.3); display: flex; align-items: center; justify-content: center; font-size: 20px; color: #38bdf8;">
+              🚚
+            </div>
+            <div>
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-weight: 800; font-size: 16px; color: #ffffff;">${truck.name || model?.name || 'Heavy Duty Unit'}</span>
+                <span style="font-size: 10px; font-weight: 800; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 4px; color: #94a3b8;">#${truck.id}</span>
+                <span style="font-size: 11px; font-weight: 700; color: #38bdf8; background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); padding: 2px 8px; border-radius: 12px;">${truck.plate || 'DOT-REG'}</span>
               </div>
-              ${getDrivingStateBadge(telem.state, true)}
-            </div>
-            <div style="font-size:16px; font-weight:900; color:var(--tx); margin-top:3px;">
-              ${t.name} <span style="font-size:11px; color:var(--mu); font-family:monospace;">[${m.brand} ${m.name}]</span>
-            </div>
-            <div style="font-size:10px; color:var(--mu); margin-top:2px;">
-              Operator: <b style="color:var(--tx);">${drv ? drv.name : 'Unassigned'}</b> · CDL Skill ${drv ? '★'.repeat(drv.skill) : 'N/A'} · HOS Clock: <b style="color:var(--gold);">${drv ? (drv.hosHours || 0).toFixed(1) : '0'}/11.0 hrs</b>
+              <div style="font-size: 11px; color: #64748b; margin-top: 2px;">
+                Driver: <strong style="color: #cbd5e1;">${driver ? driver.name : 'Unassigned (Auto-Pilot)'}</strong> · ${model?.brand || 'NexHaul'} ${model?.name || ''}
+              </div>
             </div>
           </div>
-          <button style="background:none; border:none; color:var(--mu); font-size:20px; cursor:pointer; padding:4px;" data-act="close-telematics">✕</button>
+          <button data-act="close-telematics-modal" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #94a3b8; width: 32px; height: 32px; border-radius: 8px; cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; transition: all 0.2s;" onmouseenter="this.style.color='#fff'; this.style.background='rgba(239, 68, 68, 0.2)'" onmouseleave="this.style.color='#94a3b8'; this.style.background='rgba(255,255,255,0.05)'">
+            ✕
+          </button>
         </div>
 
-        <!-- Simulated Road Dashcam Cockpit HUD -->
-        <div style="position:relative; width:100%; height:200px; background:linear-gradient(180deg, #091224 0%, #17243c 55%, #1e293b 56%, #0f172a 100%); border-radius:10px; overflow:hidden; border:1px solid #1f293d; margin-bottom:10px; box-shadow:inset 0 0 40px rgba(0,0,0,0.8);">
-          
-          <!-- Top HUD Header Status Strip -->
-          <div style="position:absolute; top:0; left:0; right:0; padding:6px 10px; background:linear-gradient(180deg, rgba(5,10,25,0.92) 0%, rgba(5,10,25,0.6) 80%, transparent 100%); z-index:10; display:flex; justify-content:space-between; align-items:center; font-family:monospace; font-size:9px;">
-            <div style="display:flex; align-items:center; gap:8px; color:rgba(255,255,255,0.85); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-              <span style="color:var(--gold); font-weight:800;">ENV: ${weather.toUpperCase()}</span>
-              <span>·</span>
-              <span>${ambientTemp}°C</span>
-              <span>·</span>
-              <span style="color:#38bdf8; font-weight:800;">📍 ${t.status === 'delivering' ? 'FACTORY' : t.loc} → ${a ? a.to : (t.status === 'delivering' ? t.loc : 'DEPOT')}</span>
+        <div style="padding: 20px; display: flex; flex-direction: column; gap: 20px;">
+
+          <!-- Top Section: REAL TRUCK DIGITAL DASHBOARD INSTRUMENT CLUSTER -->
+          <div class="cluster-panel">
+            <!-- Telltale Indicator Strip -->
+            <div class="telltale-strip">
+              <span class="telltale-icon ${ccActive ? 'active-green' : ''}">
+                <span style="font-size: 12px;">⏲</span> CC ${ccActive ? 'SET' : 'OFF'}
+              </span>
+              <span class="telltale-icon ${retActive ? 'active-amber' : ''}">
+                <span style="font-size: 12px;">⚡</span> RETARDER
+              </span>
+              <span class="telltale-icon ${loadActive ? 'active-blue' : ''}">
+                <span style="font-size: 12px;">📦</span> DOCK BAY
+              </span>
+              <span class="telltale-icon active-green">
+                <span style="font-size: 12px;">🛡</span> AIR BRAKE OK
+              </span>
+              <span class="telltale-icon active-green">
+                <span style="font-size: 12px;">🔧</span> ENGINE OK
+              </span>
             </div>
-            <div style="display:flex; align-items:center; gap:6px;">
-              <span style="color:${telem.stateBadgeColor}; font-weight:900; font-size:8px;">${telem.stateIcon} ${telem.state.toUpperCase()}</span>
-              <div style="color:var(--grn); font-weight:800; font-size:8px; flex-shrink:0; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); padding:2px 6px; border-radius:4px;">
-                ● 4G LTE LIVE
+
+            <!-- Digital Cluster Main Visual Gauges -->
+            <div class="gauge-grid">
+              <!-- Left: Tachometer (RPM) & Transmission -->
+              <div style="background: rgba(2, 6, 12, 0.7); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; padding: 14px; text-align: center;">
+                <div style="font-size: 10px; font-weight: 800; color: #64748b; letter-spacing: 1px;">TACHOMETER · RPM</div>
+                <div style="font-size: 32px; font-weight: 800; color: ${currentRpm > 1800 ? '#ef4444' : currentRpm > 1400 ? '#f59e0b' : '#10b981'}; font-family: monospace; margin: 4px 0;">
+                  ${currentRpm}
+                </div>
+                <div class="gauge-bar-track">
+                  <div class="gauge-bar-fill" style="width: ${rpmPct}%; background: linear-gradient(90deg, #10b981 0%, #f59e0b 75%, #ef4444 100%);"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; margin-top: 10px; font-size: 11px; color: #94a3b8; border-top: 1px dashed rgba(255,255,255,0.08); padding-top: 6px;">
+                  <span>GEAR: <strong style="color: #38bdf8; font-family: monospace;">${gearText}</strong></span>
+                  <span>PWR BAND: <strong style="color: #10b981;">1100-1500</strong></span>
+                </div>
+              </div>
+
+              <!-- Center: Digital Speedometer & Limit -->
+              <div class="digital-speedo">
+                <div style="font-size: 10px; font-weight: 800; color: #38bdf8; letter-spacing: 1.5px;">LIVE GROUND SPEED</div>
+                <div style="display: flex; align-items: baseline; justify-content: center; gap: 6px; margin: 4px 0;">
+                  <span class="speed-val">${currentSpeed}</span>
+                  <span style="font-size: 14px; color: #94a3b8; font-weight: 700;">KM/H</span>
+                </div>
+                <div style="display: inline-flex; align-items: center; gap: 6px; background: rgba(255,255,255,0.05); padding: 4px 10px; border-radius: 20px; border: 1px solid rgba(255,255,255,0.1); margin-top: 2px;">
+                  <span style="width: 18px; height: 18px; border-radius: 50%; background: #dc2626; border: 2px solid #ffffff; color: #ffffff; font-size: 8px; font-weight: 900; display: flex; align-items: center; justify-content: center; font-family: sans-serif;">90</span>
+                  <span style="font-size: 10px; color: #cbd5e1; font-weight: 700;">HWY LIMIT</span>
+                </div>
+                <div class="gauge-bar-track" style="margin-top: 12px;">
+                  <div class="gauge-bar-fill" style="width: ${speedPct}%; background: linear-gradient(90deg, #38bdf8, #0284c7);"></div>
+                </div>
+              </div>
+
+              <!-- Right: Fuel, AdBlue & Thermal Engine Temp -->
+              <div style="background: rgba(2, 6, 12, 0.7); border: 1px solid rgba(255,255,255,0.05); border-radius: 10px; padding: 14px; text-align: center;">
+                <div style="font-size: 10px; font-weight: 800; color: #64748b; letter-spacing: 1px;">DIESEL & THERMALS</div>
+                <div style="display: flex; justify-content: space-around; margin: 10px 0;">
+                  <div>
+                    <div style="font-size: 9px; color: #64748b; font-weight: 700;">FUEL TANK</div>
+                    <div style="font-size: 16px; font-weight: 800; color: #10b981;">${truck.fuelPct ?? 92}%</div>
+                  </div>
+                  <div style="width: 1px; background: rgba(255,255,255,0.08);"></div>
+                  <div>
+                    <div style="font-size: 9px; color: #64748b; font-weight: 700;">DEF / ADBLUE</div>
+                    <div style="font-size: 16px; font-weight: 800; color: #38bdf8;">88%</div>
+                  </div>
+                  <div style="width: 1px; background: rgba(255,255,255,0.08);"></div>
+                  <div>
+                    <div style="font-size: 9px; color: #64748b; font-weight: 700;">COOLANT</div>
+                    <div style="font-size: 16px; font-weight: 800; color: ${telem.engineTempC > 95 ? '#ef4444' : '#f59e0b'};">${telem.engineTempC}°C</div>
+                  </div>
+                </div>
+                <div class="gauge-bar-track">
+                  <div class="gauge-bar-fill" style="width: ${truck.fuelPct ?? 92}%; background: #10b981;"></div>
+                </div>
               </div>
             </div>
           </div>
 
-          <!-- Dynamic Driving State Overlay Badges on Dashcam -->
-          ${telem.state === 'braking' || telem.retarderActive ? `
-            <div style="position:absolute; top:32px; left:10px; z-index:10; font-size:9px; color:#ef4444; font-weight:900; background:rgba(239,68,68,0.2); border:1px solid #ef4444; padding:3px 8px; border-radius:4px; font-family:monospace; backdrop-filter:blur(4px); box-shadow:0 0 10px rgba(239,68,68,0.3);">
-              🛑 JAKE ENGINE BRAKE / RETARDER ACTIVE (-${telem.brakePct}% TORQUE)
-            </div>
-          ` : telem.state === 'speeding' ? `
-            <div style="position:absolute; top:32px; left:10px; z-index:10; font-size:9px; color:#facc15; font-weight:900; background:rgba(234,179,8,0.2); border:1px solid #facc15; padding:3px 8px; border-radius:4px; font-family:monospace; backdrop-filter:blur(4px);">
-              ⚡ PASSING LANE OVERTAKE (${telem.speedKmh} KM/H)
-            </div>
-          ` : telem.state === 'slow_down' ? `
-            <div style="position:absolute; top:32px; left:10px; z-index:10; font-size:9px; color:#fb923c; font-weight:900; background:rgba(249,115,22,0.2); border:1px solid #fb923c; padding:3px 8px; border-radius:4px; font-family:monospace; backdrop-filter:blur(4px);">
-              ⚠️ TRAFFIC SLOWDOWN / CURVATURE ADVISORY
-            </div>
-          ` : telem.state === 'resting' ? `
-            <div style="position:absolute; top:32px; left:10px; z-index:10; font-size:9px; color:#c084fc; font-weight:900; background:rgba(168,85,247,0.2); border:1px solid #c084fc; padding:3px 8px; border-radius:4px; font-family:monospace; backdrop-filter:blur(4px);">
-              ☕ MOTORWAY TRAVEL PLAZA · SLEEPER BERTH LOGGED
-            </div>
-          ` : telem.state === 'refueling' ? `
-            <div style="position:absolute; top:32px; left:10px; z-index:10; font-size:9px; color:#fde047; font-weight:900; background:rgba(234,179,8,0.2); border:1px solid #fde047; padding:3px 8px; border-radius:4px; font-family:monospace; backdrop-filter:blur(4px);">
-              ⛽ DIESEL BUNKERING CANOPY · REFUELING NOZZLE CONNECTED
-            </div>
-          ` : telem.state === 'loading' ? `
-            <div style="position:absolute; top:32px; left:10px; z-index:10; font-size:9px; color:#38bdf8; font-weight:900; background:rgba(56,189,248,0.2); border:1px solid #38bdf8; padding:3px 8px; border-radius:4px; font-family:monospace; backdrop-filter:blur(4px);">
-              📦 SHIPPERS DISTRIBUTION DOCK · LOADING BAY MANIFEST
-            </div>
-          ` : telem.state === 'unloading' ? `
-            <div style="position:absolute; top:32px; left:10px; z-index:10; font-size:9px; color:#38bdf8; font-weight:900; background:rgba(56,189,248,0.2); border:1px solid #38bdf8; padding:3px 8px; border-radius:4px; font-family:monospace; backdrop-filter:blur(4px);">
-              🏁 CONSIGNEE RECEIVING DOCK · PALLET UNLOADING
-            </div>
-          ` : ''}
-
-          <!-- Weather Advisory Banner Strip (Below Header) -->
-          ${weather === 'rain' ? `
-            <div style="position:absolute; top:32px; right:10px; z-index:10; font-size:9px; color:#38bdf8; font-weight:800; background:rgba(15,23,42,0.85); border:1px solid rgba(56,189,248,0.4); padding:3px 8px; border-radius:4px; font-family:monospace; backdrop-filter:blur(4px);">
-              🌧️ WIPERS CONTINUOUS ACTIVE
-            </div>
-          ` : ''}
-          ${weather === 'snow' ? `
-            <div style="position:absolute; top:32px; right:10px; z-index:10; font-size:9px; color:#e2e8f0; font-weight:800; background:rgba(15,23,42,0.85); border:1px solid rgba(226,232,240,0.4); padding:3px 8px; border-radius:4px; font-family:monospace; backdrop-filter:blur(4px);">
-              ❄️ TRACTION ADVISORY: WINTER ROADS
-            </div>
-          ` : ''}
-          ${weather === 'heatwave' ? `
-            <div style="position:absolute; top:32px; right:10px; z-index:10; font-size:9px; color:#f97316; font-weight:800; background:rgba(15,23,42,0.85); border:1px solid rgba(249,115,22,0.4); padding:3px 8px; border-radius:4px; font-family:monospace; backdrop-filter:blur(4px);">
-              ☀️ DESERT HEATWAVE: MONITOR COOLANT
-            </div>
-          ` : ''}
-
-          <!-- Animated Perspective Road Canvas (CSS illusion) -->
-          <svg style="position:absolute; inset:0; width:100%; height:100%; pointer-events:none;" preserveAspectRatio="none" viewBox="0 0 400 200">
-            <!-- Horizon mountains -->
-            <polygon points="0,110 70,90 140,110 230,85 320,110 400,95 400,111 0,111" fill="#0f192d" opacity="0.6"/>
-            <!-- Road Asphalt -->
-            <polygon points="175,111 225,111 380,200 20,200" fill="#1b2434"/>
-            <!-- Shoulder lines -->
-            <line x1="175" y1="111" x2="20" y2="200" stroke="#fbbf24" stroke-width="2" opacity="0.8"/>
-            <line x1="225" y1="111" x2="380" y2="200" stroke="#fbbf24" stroke-width="2" opacity="0.8"/>
-            <!-- Animated Center dashed lane marker (speed-adaptive) -->
-            <line x1="200" y1="111" x2="200" y2="200" stroke="#ffffff" stroke-dasharray="14 10" stroke-width="2.5" opacity="0.85">
-              ${telem.isMoving ? `<animate attributeName="stroke-dashoffset" values="0;24" dur="${animDur}s" repeatCount="indefinite" />` : ''}
-            </line>
-          </svg>
-
-          <!-- Braking Red Aura Glow Overlay -->
-          ${telem.state === 'braking' || telem.retarderActive ? `
-            <div style="position:absolute; inset:0; pointer-events:none; background:radial-gradient(circle at 50% 90%, rgba(239,68,68,0.3) 0%, transparent 65%);"></div>
-          ` : ''}
-
-          <!-- Rain overlay effect if raining -->
-          ${weather === 'rain' ? `
-            <div style="position:absolute; inset:0; pointer-events:none; background:repeating-linear-gradient(115deg, rgba(255,255,255,0.06) 0, rgba(255,255,255,0.06) 2px, transparent 2px, transparent 8px); opacity:0.8;"></div>
-          ` : ''}
-
-          <!-- Windshield HUD Overlay Gauge Cluster (Bottom) -->
-          <div style="position:absolute; bottom:8px; left:8px; right:8px; z-index:10; display:flex; gap:8px;">
-            <div style="flex:1.2; background:rgba(5,10,25,0.88); border:1px solid ${telem.stateBadgeColor}80; border-radius:6px; padding:5px 8px; backdrop-filter:blur(4px);">
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-size:7px; color:${telem.stateBadgeColor}; font-weight:800; text-transform:uppercase;">${telem.state.replace('_', ' ')} SPEED</span>
-                <span style="font-size:7px; color:var(--mu); font-family:monospace;">TGT: ${telem.targetSpeedKmh}</span>
+          <!-- Section 2: REDESIGNED INTEL-CRUISE CONTROL & SPEED TARGET MODULE -->
+          <div class="cc-console">
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; margin-bottom: 14px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 18px; color: #38bdf8;">⚙️</span>
+                <div>
+                  <div style="font-size: 12px; font-weight: 800; color: #ffffff; letter-spacing: 0.5px;">INTEL-CRUISE CONTROL SYSTEM</div>
+                  <div style="font-size: 10px; color: #64748b;">Dynamic speed governor & automatic terrain throttle management</div>
+                </div>
               </div>
-              <div style="font-size:19px; font-weight:900; color:#fff; font-family:monospace; line-height:1.1; margin-top:1px;">
-                ${telem.speedKmh} <span style="font-size:9px; color:var(--mu); font-weight:normal;">km/h</span>
-              </div>
-              <!-- Throttle / Brake mini bars -->
-              <div style="display:flex; gap:4px; margin-top:3px; height:3px; background:rgba(255,255,255,0.08); border-radius:2px; overflow:hidden;">
-                <div style="width:${telem.throttlePct}%; height:100%; background:var(--grn); border-radius:2px;"></div>
-                <div style="width:${telem.brakePct}%; height:100%; background:#ef4444; border-radius:2px;"></div>
-              </div>
-            </div>
-            
-            <div style="flex:1; background:rgba(5,10,25,0.88); border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:5px 8px; backdrop-filter:blur(4px);">
-              <div style="font-size:7px; color:var(--mu); font-weight:800; text-transform:uppercase;">ENGINE RPM</div>
-              <div style="font-size:16px; font-weight:900; color:#38bdf8; font-family:monospace; line-height:1.1; margin-top:1px;">
-                ${telem.engineRpm} <span style="font-size:8px; color:var(--mu); font-weight:normal;">RPM</span>
-              </div>
-              <div style="font-size:7px; color:${telem.engineRpm > 1700 ? '#f59e0b' : telem.engineRpm > 1150 ? 'var(--grn)' : 'var(--mu)'}; font-family:monospace; margin-top:2px;">
-                ${telem.engineRpm > 1700 ? '● PEAK POWER' : telem.engineRpm > 1150 ? '● ECO GREEN BAND' : telem.engineRpm === 0 ? '● ENGINE CUT' : '● IDLE 650'}
+              <div style="display: flex; align-items: center; gap: 12px; background: rgba(2, 6, 12, 0.8); padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(56, 189, 248, 0.2);">
+                <span style="font-size: 10px; font-weight: 800; color: #64748b;">CRUISE TARGET:</span>
+                <span style="font-size: 20px; font-weight: 900; color: #38bdf8; font-family: monospace;">${currentTargetSpeed} <span style="font-size: 11px; color: #94a3b8;">KM/H</span></span>
               </div>
             </div>
 
-            <div style="flex:1; background:rgba(5,10,25,0.88); border:1px solid rgba(255,255,255,0.15); border-radius:6px; padding:5px 8px; backdrop-filter:blur(4px);">
-              <div style="font-size:7px; color:var(--mu); font-weight:800; text-transform:uppercase;">DRIVELINE GEAR</div>
-              <div style="font-size:15px; font-weight:900; color:var(--tx); font-family:monospace; line-height:1.1; margin-top:1px;">
-                ${telem.currentGear}
+            <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; background: rgba(2, 6, 12, 0.4); padding: 12px; border-radius: 8px;">
+              <!-- Fine Adjustment Buttons -->
+              <div style="display: flex; align-items: center; gap: 6px;">
+                <span style="font-size: 10px; font-weight: 700; color: #64748b; margin-right: 4px;">FINE ADJ:</span>
+                <button class="cc-btn-delta" data-act="adjust-truck-cruise-speed" data-truck-id="${truck.id}" data-delta="-5">-5</button>
+                <button class="cc-btn-delta" data-act="adjust-truck-cruise-speed" data-truck-id="${truck.id}" data-delta="-1">-1</button>
+                <button class="cc-btn-delta" data-act="adjust-truck-cruise-speed" data-truck-id="${truck.id}" data-delta="1">+1</button>
+                <button class="cc-btn-delta" data-act="adjust-truck-cruise-speed" data-truck-id="${truck.id}" data-delta="5">+5</button>
               </div>
-              <div style="font-size:7px; color:${telem.retarderActive ? '#ef4444' : telem.throttlePct > 80 ? 'var(--gold)' : 'var(--mu)'}; font-family:monospace; margin-top:2px;">
-                ${telem.retarderActive ? 'JAKE RETARDER ON' : telem.throttlePct > 80 ? 'HIGH TORQUE' : telem.brakePct > 0 ? 'SERVICE BRAKE' : 'OVERDRIVE ECO'}
+
+              <!-- Quick Presets -->
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <span style="font-size: 10px; font-weight: 700; color: #64748b; margin-right: 4px;">PRESETS:</span>
+                ${[60, 75, 85, 95, 105, topSpeed].map(s => `
+                  <button class="cc-btn ${currentTargetSpeed === s ? 'active' : ''}"
+                          data-act="set-truck-cruise-speed" data-truck-id="${truck.id}" data-speed="${s}">
+                    ${s === topSpeed ? `MAX (${s})` : `${s} KM/H`}
+                  </button>
+                `).join('')}
               </div>
             </div>
           </div>
+
+          <!-- Section 3: MECHANICAL DIAGNOSTICS GRID -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px;">
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px;">
+              <div style="font-size: 9px; color: #64748b; font-weight: 700;">TURBO BOOST</div>
+              <div style="font-size: 15px; font-weight: 800; color: #38bdf8; font-family: monospace; margin-top: 2px;">${telem.turboBoostBar} BAR</div>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px;">
+              <div style="font-size: 9px; color: #64748b; font-weight: 700;">BRAKE TEMP</div>
+              <div style="font-size: 15px; font-weight: 800; color: ${telem.brakeTempC > 150 ? '#ef4444' : '#cbd5e1'}; font-family: monospace; margin-top: 2px;">${telem.brakeTempC}°C</div>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px;">
+              <div style="font-size: 9px; color: #64748b; font-weight: 700;">INST. BURN</div>
+              <div style="font-size: 15px; font-weight: 800; color: #10b981; font-family: monospace; margin-top: 2px;">${telem.instantL100km} L/100</div>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px;">
+              <div style="font-size: 9px; color: #64748b; font-weight: 700;">AVG BURN</div>
+              <div style="font-size: 15px; font-weight: 800; color: #cbd5e1; font-family: monospace; margin-top: 2px;">${telem.avgL100km} L/100</div>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px;">
+              <div style="font-size: 9px; color: #64748b; font-weight: 700;">GRADIENT</div>
+              <div style="font-size: 15px; font-weight: 800; color: ${telem.gradientPct > 3 ? '#f59e0b' : '#cbd5e1'}; font-family: monospace; margin-top: 2px;">${telem.gradientPct > 0 ? '+' : ''}${telem.gradientPct}%</div>
+            </div>
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px;">
+              <div style="font-size: 9px; color: #64748b; font-weight: 700;">ROAD SURFACE</div>
+              <div style="font-size: 11px; font-weight: 800; color: #38bdf8; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${telem.roadSurface || 'Dry Asphalt'}</div>
+            </div>
+          </div>
+
+          <!-- Section 4: CONSIGNMENT TELEMATICS & LIVE ROUTE PROGRESS -->
+          ${a ? `
+            <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 12px; padding: 16px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                <div>
+                  <div style="font-size: 11px; font-weight: 800; color: #38bdf8; letter-spacing: 0.5px;">ACTIVE CONSIGNMENT MANIFEST</div>
+                  <div style="font-size: 14px; font-weight: 800; color: #ffffff; margin-top: 2px;">${a.title || a.cargo || 'Freight Load'}</div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-size: 10px; color: #64748b; font-weight: 700;">ESTIMATED TIME EN ROUTE</div>
+                  <div style="font-size: 18px; font-weight: 900; color: #10b981; font-family: monospace;">${dur(telem.remainingMs)}</div>
+                </div>
+              </div>
+
+              <!-- Route Origin / Destination Bar -->
+              <div style="display: flex; align-items: center; justify-content: space-between; font-size: 12px; font-weight: 800; color: #cbd5e1; margin-bottom: 8px;">
+                <span>🛫 ${a.from}</span>
+                <span style="color: #38bdf8; font-size: 11px;">${telem.distanceRemainingKm} KM REMAINING</span>
+                <span>🏁 ${a.to}</span>
+              </div>
+
+              <!-- Visual Route Progress Bar -->
+              <div style="width: 100%; height: 10px; background: rgba(0,0,0,0.5); border-radius: 5px; overflow: hidden; border: 1px solid rgba(255,255,255,0.08); position: relative;">
+                <div style="width: ${telem.pctCompleted}%; height: 100%; background: linear-gradient(90deg, #38bdf8 0%, #0284c7 100%); transition: width 0.3s ease;"></div>
+              </div>
+
+              <div style="display: flex; justify-content: space-between; margin-top: 8px; font-size: 11px; color: #64748b;">
+                <span>Phase: <strong style="color: ${telem.stateBadgeColor || '#38bdf8'};">${telem.stateLabel}</strong></span>
+                <span>Completed: <strong style="color: #ffffff;">${telem.pctCompleted}%</strong></span>
+              </div>
+            </div>
+          ` : `
+            <div style="background: rgba(15, 23, 42, 0.4); border: 1px dashed rgba(255,255,255,0.1); border-radius: 12px; padding: 20px; text-align: center; color: #64748b;">
+              <span style="font-size: 24px; display: block; margin-bottom: 6px;">🅿️</span>
+              <strong style="color: #cbd5e1; font-size: 13px;">Truck Staged at Depot / Idle</strong>
+              <div style="font-size: 11px; margin-top: 2px;">Assign a freight contract from the Dispatch board to initiate telemetry tracking.</div>
+            </div>
+          `}
+
         </div>
-
-        <!-- Interactive Cruise Speed Target / Speed Limiter Selector -->
-        <div style="background:#0b1120; border:1px solid #1e293b; border-radius:8px; padding:8px 12px; margin-bottom:12px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-            <div style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase; letter-spacing:0.4px;">
-              ⚙️ CRUISE SPEED / THROTTLE TARGET & LIVE ETA CONTROL
-            </div>
-            <div style="font-size:10px; font-weight:900; color:var(--gold); font-family:monospace;">
-              TARGET: ${truck.targetSpeed || telem.speedKmh || 85} KM/H
-            </div>
-          </div>
-          <div style="display:flex; gap:6px;">
-            ${[50, 75, 90, 100, 110].map(s => `
-              <button class="btn btn-xs ${ (truck.targetSpeed || 85) === s ? 'btn-primary' : 'btn-outline' }" 
-                      style="flex:1; font-weight:800; font-family:monospace; padding:4px 2px;"
-                      data-act="set-truck-cruise-speed" data-truck-id="${truck.id}" data-speed="${s}">
-                ${s} KM/H
-              </button>
-            `).join('')}
-          </div>
-        </div>
-
-        <!-- Real-Time Driving State Narrative Strip -->
-        <div style="background:#0a0f1d; border:1px solid #1f293d; border-left:3px solid ${telem.stateBadgeColor}; border-radius:8px; padding:9px 12px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between; gap:10px;">
-          <div style="display:flex; align-items:center; gap:8px; min-width:0;">
-            <span style="font-size:18px; flex-shrink:0;">${telem.stateIcon}</span>
-            <div style="min-width:0;">
-              <div style="font-size:11px; font-weight:900; color:${telem.stateBadgeColor}; text-transform:uppercase; letter-spacing:0.3px;">
-                ${telem.stateLabel}
-              </div>
-              <div style="font-size:10px; color:var(--tx); opacity:0.85; margin-top:1px; line-height:1.3;">
-                ${telem.stateDescription}
-              </div>
-            </div>
-          </div>
-          <div style="text-align:right; flex-shrink:0; font-family:monospace; font-size:9px; color:var(--mu);">
-            <div>Grade: <b style="color:var(--tx);">${telem.gradientPct >= 0 ? '+' : ''}${telem.gradientPct}%</b></div>
-            <div style="color:${telem.roadSurface.includes('Ice') ? '#e2e8f0' : telem.roadSurface.includes('Wet') ? '#38bdf8' : 'var(--gold)'};">${telem.roadSurface}</div>
-          </div>
-        </div>
-
-        <!-- Telemetry Sensors Data Grid -->
-        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:12px;">
-          <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:8px 10px;">
-            <div style="font-size:8px; color:var(--mu); font-weight:800; text-transform:uppercase;">INSTANTANEOUS FUEL BURN</div>
-            <div style="font-size:14px; font-weight:900; color:var(--gold); font-family:monospace; margin-top:2px;">
-              ${telem.fuelBurnRate} <span style="font-size:9px; color:var(--mu);">L/100km</span>
-            </div>
-          </div>
-          <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:8px 10px;">
-            <div style="font-size:8px; color:var(--mu); font-weight:800; text-transform:uppercase;">ADBLUE / DEF LEVEL</div>
-            <div style="font-size:14px; font-weight:900; color:#38bdf8; font-family:monospace; margin-top:2px;">
-              ${t.fluids.adBlue || 100}% <span style="font-size:9px; color:var(--mu);">DEF</span>
-            </div>
-          </div>
-          <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:8px 10px;">
-            <div style="font-size:8px; color:var(--mu); font-weight:800; text-transform:uppercase;">COOLANT TEMPERATURE</div>
-            <div style="font-size:14px; font-weight:900; color:${telem.coolantTempC > 92 ? '#f97316' : 'var(--grn)'}; font-family:monospace; margin-top:2px;">
-              ${telem.coolantTempC}°C <span style="font-size:9px; color:var(--mu);">Thermal</span>
-            </div>
-          </div>
-          <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:8px 10px;">
-            <div style="font-size:8px; color:var(--mu); font-weight:800; text-transform:uppercase;">TURBO MANIFOLD BOOST</div>
-            <div style="font-size:14px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;">
-              ${telem.turboBoostBar} <span style="font-size:9px; color:var(--mu);">bar</span>
-            </div>
-          </div>
-          <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:8px 10px;">
-            <div style="font-size:8px; color:var(--mu); font-weight:800; text-transform:uppercase;">FOUNDATION BRAKE TEMP</div>
-            <div style="font-size:14px; font-weight:900; color:${telem.brakeTempC > 180 ? '#ef4444' : telem.brakeTempC > 120 ? '#f59e0b' : 'var(--tx)'}; font-family:monospace; margin-top:2px;">
-              ${telem.brakeTempC}°C <span style="font-size:9px; color:var(--mu);">${telem.retarderActive ? 'RETARDER' : 'NORMAL'}</span>
-            </div>
-          </div>
-          <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:8px 10px;">
-            <div style="font-size:8px; color:var(--mu); font-weight:800; text-transform:uppercase;">OIL MANIFOLD PRESSURE</div>
-            <div style="font-size:14px; font-weight:900; color:var(--tx); font-family:monospace; margin-top:2px;">
-              ${telem.oilPressureBar} <span style="font-size:9px; color:var(--mu);">bar</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Active Transit Consignment Details -->
-        ${a ? `
-          <div style="background:#09101d; border:1px solid #1e293b; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <span style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase;">DISPATCH CONSIGNMENT: ${a.cargo}</span>
-              <span style="font-size:10px; font-weight:800; color:var(--gold); font-family:monospace;">ETA: ${dur(telem.remainingMs)}</span>
-            </div>
-            <div style="font-size:11px; color:var(--tx); font-weight:700;">
-              Route: ${a.from} → ${a.to} (${a.km} km) · Gross Payload: ${a.weight || 18} tonnes · Phase: <b style="color:#38bdf8;">${telem.phase}</b>
-            </div>
-            <div style="margin-top:6px; height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
-              <div style="width:${telem.pctCompleted}%; height:100%; background:var(--gold); border-radius:3px;"></div>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:8px; color:var(--mu); font-family:monospace; margin-top:4px;">
-              <span>DEPARTED: ${a.from}</span>
-              <span>PROGRESS: ${telem.pctCompleted}% (${telem.distanceRemainingKm} km to go)</span>
-              <span>DESTINATION: ${a.to}</span>
-            </div>
-          </div>
-        ` : t.status === 'delivering' ? `
-          <div style="background:#09101d; border:1px solid var(--gold); border-radius:8px; padding:10px 12px; margin-bottom:12px;">
-             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <span style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase;">LOGISTICS DELIVERY MANIFEST</span>
-              <span style="font-size:10px; font-weight:800; color:var(--gold); font-family:monospace;">ETA: ${dur(telem.remainingMs)}</span>
-            </div>
-            <div style="font-size:11px; color:var(--tx); font-weight:700;">
-              Repositioning: FACTORY → ${t.loc} · Mode: <b style="color:#38bdf8;">${telem.phase}</b>
-            </div>
-            <div style="margin-top:6px; height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
-              <div style="width:${100 - (telem.remainingMs / (15 * 60 * 1000) * 100)}%; height:100%; background:var(--gold); border-radius:3px;"></div>
-            </div>
-            <div style="display:flex; justify-content:space-between; font-size:8px; color:var(--mu); font-family:monospace; margin-top:4px;">
-              <span>SHIPPING POINT: FACTORY</span>
-              <span>IN TRANSIT</span>
-              <span>DESTINATION: ${t.loc} TERMINAL</span>
-            </div>
-          </div>
-        ` : `
-          <div style="background:#09101d; border:1px dashed #1e293b; border-radius:8px; padding:14px; text-align:center; color:var(--mu); font-size:11px; margin-bottom:12px;">
-            Tractor is currently idle in <b>${t.loc}</b>. Air brakes set; pneumatic systems staged. Dispatch on a freight consignment to stream live telemetry.
-          </div>
-        `}
-
-        <button class="btn alt" style="width:100%; padding:10px; font-weight:800; font-size:11px;" data-act="close-telematics">
-          CLOSE TELEMATICS CONSOLE
-        </button>
       </div>
     </div>
   `;
