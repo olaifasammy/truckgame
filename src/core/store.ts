@@ -73,7 +73,8 @@ const DEF = () => ({
   },
   dailyStats: { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 },
   lastTick: Date.now(),
-  lastSimTick: Date.now()
+  lastSimTick: Date.now(),
+  lastEconomyTick: Date.now()
 });
 
 let S: any;

@@ -167,9 +167,11 @@ export function getTruckTelematics(
   
   // FINAL EFFECTIVE SPEED: 
   // Base calculation + Fatigue Jitter (Simulating micro-sleeps or lack of concentration)
-  const effectiveCruiseSpeed = Math.max(15, Math.min(baseTopSpeed, 
-    Math.round((userTargetSpeed + fatigueJitter) * physicsContext.weatherCoeff * roadConditionCoeff * driverPerformanceCoeff)
-  ));
+  const speedBeforeJitter = Math.min(baseTopSpeed, userTargetSpeed * physicsContext.weatherCoeff * roadConditionCoeff * driverPerformanceCoeff);
+  const effectiveCruiseSpeed = Math.max(15, Math.round(speedBeforeJitter + fatigueJitter));
+
+  // Phase 3: Final Load-Based Fuel Logic for UI display
+  const finalL100km = mech.instantL100km * traitCfg.fuelBurnMod;
 
   // Dynamic Weather road surface and feedback (used for telem object)
   const calculatedRoadSurface = weather === 'snow'
@@ -448,6 +450,9 @@ export function getTruckTelematics(
 
   return {
     state,
+    instantL100km: finalL100km,
+    avgL100km: finalL100km, // For UI, we'll use instant as avg for now
+    coolantTempC: 82 + (finalL100km / 5), // Heat engine based on burn rate
     stateLabel,
     stateDescription,
     stateBadgeColor,

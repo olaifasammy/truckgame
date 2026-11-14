@@ -129,6 +129,16 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
             
             truck.tireHealth = Math.max(0, (truck.tireHealth || 100) - finalWear);
             truck.engineHealth = Math.max(0, (truck.engineHealth || 100) - (finalWear * 0.4));
+
+            // Phase 3: Distance-First Odometer Logic & Dynamic Fuel Deduction
+            const lPerKm = (currentTelem.instantL100km || 30) / 100;
+            const fuelBurned = lPerKm * deltaKm;
+            truck.fuelUsed = (truck.fuelUsed || 0) + fuelBurned;
+            
+            // Deduct fuel from tank (Liters)
+            const tankCapacity = (TRUCK_MODELS[truck.modelId]?.fuelCapacity || 600);
+            const fuelPctLoss = (fuelBurned / tankCapacity) * 100;
+            truck.fuelPct = Math.max(0, (truck.fuelPct || 100) - fuelPctLoss);
           } else {
             const totalKm = a.km || 100;
             const currentKm = a.kmTravelled ?? 0;
