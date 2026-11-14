@@ -104,52 +104,67 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
         const traitCfg = DRIVER_TRAITS[trait] || DRIVER_TRAITS.STANDARD;
 
         const lastTick = st.lastSimTick || (now - 1000);
-  // Cap deltaMs to 1 hour to prevent extreme simulation jumps that could break UI or logic, 
-        // but allow substantial catch-up (e.g., 10 hours offline = 10 ticks of 1h catch-up)
+        // Phase 4: High-Fidelity Time Slicing (10-minute segments)
         let offlineMsRemaining = Math.max(0, now - lastTick);
-        const catchupStepMs = 3600000; // 1 hour steps
+        const catchupStepMs = 600000; // 10 minute slices
         
+        // Track cumulative consumption
+        let totalOfflineFuelL = 0;
+        let totalOfflineWear = 0;
+
         while (offlineMsRemaining > 0) {
           const deltaMs = Math.min(offlineMsRemaining, catchupStepMs);
           offlineMsRemaining -= deltaMs;
 
-          // Recalculate telem for the current simulation state
-          const currentTelem = getTruckTelematics(truck, a, driver, now);
+          // Re-evaluate physics at this specific slice in time
+          const currentTelem = getTruckTelematics(truck, a, driver, now - offlineMsRemaining);
 
-          // If speedKmh > 0, advance physical distance travelled (stops have speedKmh = 0, so distance pauses during rest/fuel stops)
           if (currentTelem.speedKmh > 0) {
-            // Use 13:1 time compression (277,000 ms per theoretical hour of driving)
+            // 1. Progress Distance
             const deltaKm = currentTelem.speedKmh * (deltaMs / 277000);
             a.kmTravelled = Math.min(a.km || 100, (a.kmTravelled ?? 0) + deltaKm);
 
-            // Phase 2: Apply dynamic wear
-            const wearBase = (deltaMs / 3600000) * 0.04; // 0.04% health loss per hour base
+            // 2. Accumulate Wear
+            const wearBase = (deltaMs / 3600000) * 0.04; 
             const envWearMod = currentTelem.roadSurface.includes('Rough') ? 1.4 : 1.0;
-            const finalWear = wearBase * traitCfg.wearMod * envWearMod;
-            
-            truck.tireHealth = Math.max(0, (truck.tireHealth || 100) - finalWear);
-            truck.engineHealth = Math.max(0, (truck.engineHealth || 100) - (finalWear * 0.4));
+            totalOfflineWear += wearBase * traitCfg.wearMod * envWearMod;
 
-            // Phase 3: Distance-First Odometer Logic & Dynamic Fuel Deduction
+            // 3. Accumulate Fuel
             const lPerKm = (currentTelem.instantL100km || 30) / 100;
-            const fuelBurned = lPerKm * deltaKm;
-            truck.fuelUsed = (truck.fuelUsed || 0) + fuelBurned;
+            totalOfflineFuelL += lPerKm * deltaKm;
             
-            // Deduct fuel from tank (Liters)
-            const tankCapacity = (TRUCK_MODELS[truck.modelId]?.fuelCapacity || 600);
-            const fuelPctLoss = (fuelBurned / tankCapacity) * 100;
-            truck.fuelPct = Math.max(0, (truck.fuelPct || 100) - fuelPctLoss);
+            // 4. Driver Fatigue Accumulation
+            if (driver) {
+              const fatigueRate = (deltaMs / 3600000) * 8.5; // ~8.5% per hour driving
+              driver.fatigue = Math.min(100, (driver.fatigue || 0) + fatigueRate);
+            }
           } else {
             const totalKm = a.km || 100;
             const currentKm = a.kmTravelled ?? 0;
             const pct = (currentKm / totalKm) * 100;
+            
             if (pct < 3.8) {
               const loadingTargetKm = (3.8 / 100) * totalKm;
-              const step = (loadingTargetKm / 120000) * deltaMs; // 2 minutes loading duration
+              const step = (loadingTargetKm / 120000) * deltaMs; 
               a.kmTravelled = Math.min(loadingTargetKm, currentKm + Math.max(0.05, step));
+            } else if (currentTelem.state === 'resting') {
+              // Driver recovers fatigue during mandatory HOS rests
+              if (driver) {
+                const recoveryRate = (deltaMs / 3600000) * 12; // ~12% recovery per hour rest
+                driver.fatigue = Math.max(0, (driver.fatigue || 0) - recoveryRate);
+              }
             }
           }
         }
+
+        // Apply accumulated offline results once
+        truck.tireHealth = Math.max(0, (truck.tireHealth || 100) - totalOfflineWear);
+        truck.engineHealth = Math.max(0, (truck.engineHealth || 100) - (totalOfflineWear * 0.4));
+        
+        truck.fuelUsed = (truck.fuelUsed || 0) + totalOfflineFuelL;
+        const tankCapacity = (TRUCK_MODELS[truck.modelId]?.fuelCapacity || 600);
+        const fuelPctLoss = (totalOfflineFuelL / tankCapacity) * 100;
+        truck.fuelPct = Math.max(0, (truck.fuelPct || 100) - fuelPctLoss);
 
         // Final telem check for UI sync
         const finalTelem = getTruckTelematics(truck, a, driver, now);
