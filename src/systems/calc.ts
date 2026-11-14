@@ -112,8 +112,8 @@ export const tripMs = (km: number, speed: number = 80, env?: EnvironmentalCondit
     }
   }
 
-  // Exact continuous physics time calculation: T_ms = (km / speed) * 150,000 ms
-  const totalSeconds = (km / effectiveSpeed) * 150;
+  // Exact continuous physics time calculation: T_ms = (km / speed) * 360,000 ms (10:1 ratio: 50h real -> 5h game)
+  const totalSeconds = (km / effectiveSpeed) * 360;
   return Math.round(totalSeconds * 1000);
 };
 
