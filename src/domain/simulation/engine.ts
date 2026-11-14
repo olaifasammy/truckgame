@@ -18,6 +18,10 @@ import { AI_SUBSCRIPTION_PLANS } from '../ai/ai.config';
 import { TRAIT_REGISTRY } from '../drivers/drivers.names';
 import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
+import { calculateIncomeStatement, calculateWeeklyAccounting, calculateMonthlyAccounting } from '../finance/accounting';
+import { getDailyAccountingMessage } from '../notifications/templates/dailyAccounting';
+import { getWeeklyAccountingMessage } from '../notifications/templates/weeklyAccounting';
+import { getMonthlyAccountingMessage } from '../notifications/templates/monthlyAccounting';
 
 export interface SimulationTickResult {
   doneCount: number;
@@ -281,6 +285,63 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
       lastFreightReplenishTime = now;
     } catch (e) {
       console.error('Simulation: Replenish error', e);
+    }
+  }
+
+  // 10. Automated Accounting Statements (Daily, Weekly, Monthly)
+  st.simulationDay = st.simulationDay || 1;
+  st.lastAccountingDayTimestamp = st.lastAccountingDayTimestamp || now;
+  
+  if (now - st.lastAccountingDayTimestamp >= 60000) {
+    st.simulationDay += 1;
+    st.lastAccountingDayTimestamp = now;
+    
+    // Daily Accounting
+    const daily = calculateIncomeStatement(st);
+    const dailyMsg = getDailyAccountingMessage({
+      dayNumber: st.simulationDay,
+      grossRevenue: daily.totalGrossRevenueUsd,
+      freightInflow: daily.expectedFreightInflowUsd + daily.freightRevenueUsd,
+      warehouseInflow: daily.warehouseInflowUsd,
+      driverWages: daily.driverPayrollUsd,
+      fuelExpense: daily.fuelExpenseUsd,
+      maintenanceExpense: daily.maintenanceExpenseUsd,
+      insuranceExpense: daily.insuranceExpenseUsd,
+      debtService: daily.debtServiceUsd,
+      leaseExpense: daily.leaseExpenseUsd,
+      netDailyCashflow: daily.netDailyCashflowUsd
+    });
+    pushNote(st, dailyMsg.msg, { title: dailyMsg.title, type: 'finance', priority: 1, body: dailyMsg.body });
+
+    // Weekly Accounting (Every 7 days)
+    if (st.simulationDay % 7 === 0) {
+      const weeklyNum = Math.floor(st.simulationDay / 7);
+      const weekly = calculateWeeklyAccounting(st);
+      const weeklyMsg = getWeeklyAccountingMessage({
+        weekNumber: weeklyNum,
+        grossRevenue: weekly.grossRevenueUsd,
+        totalOpex: weekly.totalOpexUsd,
+        ebitda: weekly.ebitdaUsd,
+        netWeeklyProfit: weekly.netWeeklyProfitUsd,
+        netMarginPct: weekly.netMarginPct
+      });
+      pushNote(st, weeklyMsg.msg, { title: weeklyMsg.title, type: 'finance', priority: 2, body: weeklyMsg.body });
+    }
+
+    // Monthly Accounting (Every 30 days)
+    if (st.simulationDay % 30 === 0) {
+      const monthlyNum = Math.floor(st.simulationDay / 30);
+      const monthly = calculateMonthlyAccounting(st);
+      const monthlyMsg = getMonthlyAccountingMessage({
+        monthNumber: monthlyNum,
+        grossRevenue: monthly.grossRevenueUsd,
+        totalOpex: monthly.totalOpexUsd,
+        ebitda: monthly.ebitdaUsd,
+        corporateTax: monthly.corporateTaxUsd,
+        netMonthlyProfit: monthly.netMonthlyProfitUsd,
+        netMarginPct: monthly.netMarginPct
+      });
+      pushNote(st, monthlyMsg.msg, { title: monthlyMsg.title, type: 'finance', priority: 2, body: monthlyMsg.body });
     }
   }
 

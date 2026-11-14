@@ -334,3 +334,124 @@ export function calculateIncomeStatement(S: any): IncomeStatementMetrics {
     runwayDays
   };
 }
+
+export interface WeeklyAccountingMetrics {
+  grossRevenueUsd: number;
+  freightInflowUsd: number;
+  warehouseInflowUsd: number;
+  tollAndTariffUsd: number;
+  driverWagesUsd: number;
+  fuelExpenseUsd: number;
+  maintenanceExpenseUsd: number;
+  insuranceUsd: number;
+  debtInterestUsd: number;
+  leaseExpenseUsd: number;
+  depreciationUsd: number;
+  totalOpexUsd: number;
+  ebitdaUsd: number;
+  netWeeklyProfitUsd: number;
+  netMarginPct: number;
+}
+
+export interface MonthlyAccountingMetrics {
+  grossRevenueUsd: number;
+  freightInflowUsd: number;
+  warehouseInflowUsd: number;
+  tollAndTariffUsd: number;
+  driverWagesUsd: number;
+  fuelExpenseUsd: number;
+  maintenanceExpenseUsd: number;
+  insuranceUsd: number;
+  debtInterestUsd: number;
+  leaseExpenseUsd: number;
+  depreciationUsd: number;
+  corporateTaxUsd: number;
+  totalOpexUsd: number;
+  ebitdaUsd: number;
+  netMonthlyProfitUsd: number;
+  netMarginPct: number;
+}
+
+export function calculateWeeklyAccounting(S: any): WeeklyAccountingMetrics {
+  const daily = calculateIncomeStatement(S);
+  const factor = 7;
+  const freightInflowUsd = Math.round(daily.expectedFreightInflowUsd * factor + daily.freightRevenueUsd);
+  const warehouseInflowUsd = Math.round(daily.warehouseInflowUsd * factor);
+  const tollAndTariffUsd = Math.round((S.dailyStats?.tolls || 450) * factor);
+  const grossRevenueUsd = freightInflowUsd + warehouseInflowUsd;
+
+  const driverWagesUsd = Math.round(daily.driverPayrollUsd * factor);
+  const fuelExpenseUsd = Math.round((daily.fuelExpenseUsd || 1200) * factor);
+  const maintenanceExpenseUsd = Math.round((daily.maintenanceExpenseUsd || 800) * factor);
+  const insuranceUsd = Math.round(daily.insuranceExpenseUsd * factor);
+  const debtInterestUsd = Math.round(daily.debtServiceUsd * factor);
+  const leaseExpenseUsd = Math.round(daily.leaseExpenseUsd * factor);
+  const depreciationUsd = 3500;
+
+  const totalOpexUsd = driverWagesUsd + fuelExpenseUsd + maintenanceExpenseUsd + insuranceUsd + debtInterestUsd + leaseExpenseUsd + tollAndTariffUsd + depreciationUsd;
+  const ebitdaUsd = grossRevenueUsd - (totalOpexUsd - depreciationUsd - debtInterestUsd);
+  const netWeeklyProfitUsd = grossRevenueUsd - totalOpexUsd;
+  const netMarginPct = grossRevenueUsd > 0 ? (netWeeklyProfitUsd / grossRevenueUsd) * 100 : 0;
+
+  return {
+    grossRevenueUsd,
+    freightInflowUsd,
+    warehouseInflowUsd,
+    tollAndTariffUsd,
+    driverWagesUsd,
+    fuelExpenseUsd,
+    maintenanceExpenseUsd,
+    insuranceUsd,
+    debtInterestUsd,
+    leaseExpenseUsd,
+    depreciationUsd,
+    totalOpexUsd,
+    ebitdaUsd,
+    netWeeklyProfitUsd,
+    netMarginPct
+  };
+}
+
+export function calculateMonthlyAccounting(S: any): MonthlyAccountingMetrics {
+  const weekly = calculateWeeklyAccounting(S);
+  const factor = 4.33;
+  const grossRevenueUsd = Math.round(weekly.grossRevenueUsd * factor);
+  const freightInflowUsd = Math.round(weekly.freightInflowUsd * factor);
+  const warehouseInflowUsd = Math.round(weekly.warehouseInflowUsd * factor);
+  const tollAndTariffUsd = Math.round(weekly.tollAndTariffUsd * factor);
+
+  const driverWagesUsd = Math.round(weekly.driverWagesUsd * factor);
+  const fuelExpenseUsd = Math.round(weekly.fuelExpenseUsd * factor);
+  const maintenanceExpenseUsd = Math.round(weekly.maintenanceExpenseUsd * factor);
+  const insuranceUsd = Math.round(weekly.insuranceUsd * factor);
+  const debtInterestUsd = Math.round(weekly.debtInterestUsd * factor);
+  const leaseExpenseUsd = Math.round(weekly.leaseExpenseUsd * factor);
+  const depreciationUsd = Math.round(weekly.depreciationUsd * factor);
+  
+  const ebitdaBeforeTax = grossRevenueUsd - (driverWagesUsd + fuelExpenseUsd + maintenanceExpenseUsd + insuranceUsd + leaseExpenseUsd + tollAndTariffUsd);
+  const corporateTaxUsd = ebitdaBeforeTax > 0 ? Math.round(ebitdaBeforeTax * 0.21) : 0;
+
+  const totalOpexUsd = driverWagesUsd + fuelExpenseUsd + maintenanceExpenseUsd + insuranceUsd + debtInterestUsd + leaseExpenseUsd + tollAndTariffUsd + depreciationUsd + corporateTaxUsd;
+  const ebitdaUsd = Math.round(weekly.ebitdaUsd * factor);
+  const netMonthlyProfitUsd = grossRevenueUsd - totalOpexUsd;
+  const netMarginPct = grossRevenueUsd > 0 ? (netMonthlyProfitUsd / grossRevenueUsd) * 100 : 0;
+
+  return {
+    grossRevenueUsd,
+    freightInflowUsd,
+    warehouseInflowUsd,
+    tollAndTariffUsd,
+    driverWagesUsd,
+    fuelExpenseUsd,
+    maintenanceExpenseUsd,
+    insuranceUsd,
+    debtInterestUsd,
+    leaseExpenseUsd,
+    depreciationUsd,
+    corporateTaxUsd,
+    totalOpexUsd,
+    ebitdaUsd,
+    netMonthlyProfitUsd,
+    netMarginPct
+  };
+}
