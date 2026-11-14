@@ -2,11 +2,13 @@ import { set, refresh } from '../core/store';
 import { $, toast, action } from '../core/ui';
 import { ic } from '../core/icons';
 import { authService } from '../domain/auth/auth.service';
+import { REGIONAL_HUBS } from '../domain/logistics/network';
 
 const state = {
   loading: false,
   mode: 'login' as 'login' | 'signup',
-  error: ''
+  error: '',
+  selectedRegion: 'Africa' as string
 };
 
 function render(S: any) {
@@ -42,7 +44,31 @@ function render(S: any) {
           ${isSignup ? `
             <div class="auth-input-group">
               <span class="auth-input-icon">${ic('company')}</span>
-              <input type="text" id="auth-company" class="auth-input" placeholder="Company Name" autocomplete="off">
+              <input type="text" id="auth-company" class="auth-input" placeholder="Company Name (e.g. Apex Freight)" autocomplete="off">
+            </div>
+
+            <div class="auth-input-group">
+              <span class="auth-input-icon">${ic('tag')}</span>
+              <input type="text" id="auth-initials" class="auth-input" placeholder="Company Initials (e.g. APX)" maxlength="4" autocomplete="off">
+            </div>
+
+            <div style="margin-bottom:12px;">
+              <label style="font-size:11px; color:var(--mu); font-weight:700; display:block; margin-bottom:4px;">Starting Region</label>
+              <select id="auth-region" class="auth-input" style="background:var(--bg); color:var(--tx); cursor:pointer;" data-act="changeRegion">
+                <option value="Africa" ${state.selectedRegion === 'Africa' ? 'selected' : ''}>Africa</option>
+                <option value="Europe" ${state.selectedRegion === 'Europe' ? 'selected' : ''}>Europe</option>
+                <option value="America" ${state.selectedRegion === 'America' ? 'selected' : ''}>North America</option>
+                <option value="Asia" ${state.selectedRegion === 'Asia' ? 'selected' : ''}>Asia</option>
+              </select>
+            </div>
+
+            <div style="margin-bottom:12px;">
+              <label style="font-size:11px; color:var(--mu); font-weight:700; display:block; margin-bottom:4px;">Initial Headquarters / Free Hub</label>
+              <select id="auth-hub" class="auth-input" style="background:var(--bg); color:var(--tx); cursor:pointer;">
+                ${REGIONAL_HUBS.filter(h => h.region === state.selectedRegion).map(h => `
+                  <option value="${h.id}">${h.name} (${h.city}) - Free HQ</option>
+                `).join('')}
+              </select>
             </div>
           ` : ''}
 
@@ -71,10 +97,12 @@ action('authQuickPlay', () => {
   refresh();
 });
 
-action('authMode', (d) => {
-  state.mode = d.mode as any;
-  state.error = '';
-  set(s => s); // Refresh
+action('changeRegion', (d, el) => {
+  const select = el as HTMLSelectElement;
+  if (select) {
+    state.selectedRegion = select.value;
+    set(s => s);
+  }
 });
 
 action('authSubmit', async () => {
@@ -95,8 +123,13 @@ action('authSubmit', async () => {
 
   try {
     if (state.mode === 'signup') {
+      const company = ($('auth-company') as HTMLInputElement)?.value;
+      const initials = ($('auth-initials') as HTMLInputElement)?.value || company.substring(0, 3).toUpperCase();
+      const region = ($('auth-region') as HTMLSelectElement)?.value || 'Africa';
+      const hubId = ($('auth-hub') as HTMLSelectElement)?.value || REGIONAL_HUBS.find(h => h.region === region)?.id || 'hub_lagos';
+
       if (!company) throw new Error('Company name required');
-      await authService.register(user, pass, company);
+      await authService.register(user, pass, company, initials, region, hubId);
       toast('Registration Successful', 'success');
       toast('Welcome, Director ' + user);
     } else {

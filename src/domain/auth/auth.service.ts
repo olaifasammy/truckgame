@@ -2,6 +2,7 @@ import { set } from '../../core/store';
 import { UserAccount } from './auth.types';
 import { pushNote } from '../../systems/notify';
 import { getWelcomeMessage } from '../notifications/templates/welcome';
+import { REGIONAL_HUBS } from '../logistics/network';
 
 const ACCOUNTS_KEY = 'sam.accounts.v1';
 
@@ -45,7 +46,7 @@ export const authService = {
     return false;
   },
 
-  async register(username: string, pass: string, company: string): Promise<void> {
+  async register(username: string, pass: string, company: string, initials: string, startingRegion: string, startingHubId: string): Promise<void> {
     await new Promise(r => setTimeout(r, 1200));
     
     const accounts = getAccounts();
@@ -53,10 +54,15 @@ export const authService = {
       throw new Error('Username already exists');
     }
 
+    const hub = REGIONAL_HUBS.find(h => h.id === startingHubId) || REGIONAL_HUBS[0];
+
     const newAccount: UserAccount = {
       username,
       passwordHash: pass,
       companyName: company,
+      companyInitials: initials,
+      startingRegion,
+      startingHubId: hub.id,
       email: `${username}@nexhaul.com`,
       createdAt: Date.now()
     };
@@ -66,9 +72,17 @@ export const authService = {
     set(s => {
       s.isAuthenticated = true;
       s.company = company;
+      s.companyInitials = initials;
+      s.hqCity = hub.city;
+      s.depots = [hub.id];
+      s.unlockedRegions = [startingRegion || hub.region];
+      s.hubFacilities = {
+        [hub.id]: { owned: true, bays: 2, fuel: 15000, repairBay: true }
+      };
+
       const welcome = getWelcomeMessage({
         companyName: company,
-        hqCity: s.hqCity || 'Lagos',
+        hqCity: hub.city,
         startingCapital: s.money || 150000
       });
       pushNote(s, welcome.msg, {
