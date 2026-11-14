@@ -8,7 +8,7 @@ const KEY = 'sam.v3';
 
 const DEF = () => ({
   company: 'NexHaul Logistics',
-  isAuthenticated: true,
+  isAuthenticated: false,
   money: 165000, 
   coins: 10,
   companyTier: 0, // 0 = Newbie, 1 = Professional, 2 = Expert, 3..132 = VIP 1..130
@@ -54,14 +54,15 @@ const DEF = () => ({
     engine: 0,
     transmission: 0
   } as Record<string, number>,
-  fleet: [createTruck(1, 'scania_s730', 'Flagship S730 #1', 'LAGOS')],
+  fleet: [createTruck(1, 'scania_s730', 'Flagship S730 #1', REGIONAL_HUBS[0].city)],
   loans: [] as any[],
   leases: [] as any[],
   insurance: { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 },
   fuelBunker: { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 },
   fuelBunkerLevel: 0,
-  depots: ['hub_lagos'] as string[],
-  unlockedRegions: ['Africa'] as ('Africa' | 'Europe' | 'America' | 'Asia')[],
+  depots: [REGIONAL_HUBS[0].id] as string[],
+  hqCity: REGIONAL_HUBS[0].city,
+  unlockedRegions: [REGIONAL_HUBS[0].region] as ('Africa' | 'Europe' | 'America' | 'Asia')[],
   warehouseUpgrades: { cross_docking: false, cold_vault: false, gantry_crane: false } as Record<string, boolean>,
   corporateTenders: [] as any[],
   tenderListingLimit: {
@@ -78,9 +79,6 @@ let S: any;
 const subs = new Set<(state: any) => void>();
 
 function fix(state: any) {
-  if (state.isAuthenticated === undefined || state.isAuthenticated === false) {
-    state.isAuthenticated = true;
-  }
   if (!state.licenses) state.licenses = ['standard'];
   if (!state.trailers) state.trailers = ['curtain', 'flatbed', 'reefer'];
   if (!state.loans) state.loans = [];
@@ -88,10 +86,11 @@ function fix(state: any) {
   if (!state.insurance) state.insurance = { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 };
   if (!state.fuelBunker) state.fuelBunker = { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
   if (state.fuelBunkerLevel === undefined) state.fuelBunkerLevel = 0;
-  if (!state.depots) state.depots = ['hub_lagos'];
+  if (!state.depots) state.depots = [REGIONAL_HUBS[0].id];
+  if (!state.hqCity) state.hqCity = REGIONAL_HUBS[0].city;
   ensureHubFacilities(state);
   if (!state.unlockedRegions || state.unlockedRegions.length === 0) {
-    state.unlockedRegions = ['Africa'];
+    state.unlockedRegions = [REGIONAL_HUBS[0].region];
   }
   // Dynamically sync unlocked regions based on owned depots in REGIONAL_HUBS
   REGIONAL_HUBS.forEach(h => {
