@@ -159,21 +159,13 @@ export class FreightEngine {
       .map(([key]) => key);
 
     // Carrier hubs owned in this region
-    const ownedHubsInRegion = (S?.depots || []).map((depotId: string) => {
-      if (depotId.includes('lagos')) return 'LAGOS';
-      if (depotId.includes('abuja')) return 'ABUJA';
-      if (depotId.includes('kano')) return 'KANO';
-      if (depotId.includes('rotterdam')) return 'ROTTERDAM';
-      if (depotId.includes('munich')) return 'MUNICH';
-      if (depotId.includes('lyon')) return 'LYON';
-      if (depotId.includes('chicago')) return 'CHICAGO';
-      if (depotId.includes('dallas')) return 'DALLAS';
-      if (depotId.includes('los_angeles')) return 'LOS_ANGELES';
-      if (depotId.includes('tokyo')) return 'TOKYO';
-      if (depotId.includes('shanghai')) return 'SHANGHAI';
-      if (depotId.includes('almaty')) return 'ALMATY';
-      return null;
-    }).filter((c: string | null) => c && LOCATIONS[c]?.region === targetRegion) as string[];
+    const ownedHubsInRegion = (S?.depots || []).filter((depotId: string) => {
+      const hub = REGIONAL_HUBS.find(h => h.id === depotId);
+      return hub && hub.region === targetRegion;
+    }).map((depotId: string) => {
+      const hub = REGIONAL_HUBS.find(h => h.id === depotId);
+      return hub ? hub.city : null;
+    }).filter((city: string | null) => city !== null) as string[];
 
     let from: string;
     let to: string;
@@ -182,9 +174,13 @@ export class FreightEngine {
     const validRegionCities = regionCities.length > 0 ? regionCities : allCityKeys;
 
     // Direct / Backhaul routing ("To & Fro" return freight)
+    // ORIGIN LOGIC: 
+    // 1. If forced, use it.
+    // 2. 80% chance to originate from a hub the player actually OWNS in that region.
+    // 3. Fallback to any valid city in the unlocked region.
     if (options.forceFrom && LOCATIONS[options.forceFrom]) {
       from = options.forceFrom;
-    } else if (ownedHubsInRegion.length > 0 && Math.random() < 0.65) {
+    } else if (ownedHubsInRegion.length > 0 && Math.random() < 0.80) {
       from = rnd(ownedHubsInRegion);
     } else {
       from = rnd(validRegionCities);
