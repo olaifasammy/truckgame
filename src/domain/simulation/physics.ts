@@ -20,6 +20,34 @@ export interface PerformanceResult {
   powerReservePct: number;
 }
 
+// Phase 2: Driver Trait Configurations
+export const DRIVER_TRAITS = {
+  SPEED_DEMON: {
+    speedMod: 1.12,      // Pushes 12% above target cruise (if physics allow)
+    fuelBurnMod: 1.25,   // 25% higher fuel consumption
+    wearMod: 1.20,       // 20% faster component wear
+    riskMod: 1.50        // Higher chance of road incidents
+  },
+  ECO_DRIVER: {
+    speedMod: 0.90,      // Caps speed at 90% of target for efficiency
+    fuelBurnMod: 0.82,   // 18% fuel savings
+    wearMod: 0.85,       // 15% less wear
+    riskMod: 0.70        // Safer driving
+  },
+  CAREFUL: {
+    speedMod: 0.95,
+    fuelBurnMod: 0.95,
+    wearMod: 0.90,
+    riskMod: 0.50
+  },
+  STANDARD: {
+    speedMod: 1.0,
+    fuelBurnMod: 1.0,
+    wearMod: 1.0,
+    riskMod: 1.0
+  }
+};
+
 /**
  * Calculates the absolute physical limits of a truck under specific load/terrain.
  */

@@ -1,7 +1,7 @@
 import { TRUCK_MODELS } from './trucks.data';
 import { calculatePerformance } from './trucks.physics';
 import { resolveTruckRegion } from '../../data/world';
-import { calculateMechanicalLimits } from '../simulation/physics';
+import { calculateMechanicalLimits, DRIVER_TRAITS } from '../simulation/physics';
 
 export type DrivingState =
   | 'parking'        // Parked or staged in terminal yard
@@ -142,25 +142,33 @@ export function getTruckTelematics(
   const mech = calculateMechanicalLimits(truck, physicsContext);
   const baseTopSpeed = mech.maxAttainableSpeed;
 
-  // Driver Traits & Skill modifiers
+  // 2. Human & Regional Modifiers (Phase 2)
+  const trait = (driver?.trait || 'STANDARD') as keyof typeof DRIVER_TRAITS;
+  const traitCfg = DRIVER_TRAITS[trait] || DRIVER_TRAITS.STANDARD;
+
   const driverLevel = driver?.level || 1;
   const driverSkill = driver?.skill || 5;
   const driverFatigue = driver?.fatigue || 0;
   
   const roadConditionCoeff = (activeJob.from && resolveTruckRegion(activeJob.from) === 'Africa') ? 0.85 : 1.0;
 
-  // Driver Performance modifier: Expert drivers maintain higher speed, tired drivers lose focus
+  // Fatigue Jitter: Tired drivers can't maintain steady speed
+  const fatigueJitter = driverFatigue > 50 
+    ? (Math.sin(nowMs / 2000) * (driverFatigue / 100) * 5) 
+    : 0;
+
+  // Driver Performance modifier: Tired drivers lose focus
   const fatiguePenalty = driverFatigue > 80 ? 0.25 : driverFatigue > 60 ? 0.15 : 0;
   const skillBonus = Math.min(0.1, (driverSkill / 100) * 0.1);
-  const driverPerformanceCoeff = (1.0 - fatiguePenalty) + skillBonus;
+  const driverPerformanceCoeff = ((1.0 - fatiguePenalty) + skillBonus) * traitCfg.speedMod;
 
-  // Integrated Speed Limit Factor
-  const targetCruiseSpeed = truck.targetSpeed || truck.cruiseSpeed || activeJob.targetSpeed || 85;
+  // Target Speed vs Physical Capability
+  const userTargetSpeed = truck.targetSpeed || truck.cruiseSpeed || activeJob.targetSpeed || 85;
   
-  // FINAL EFFECTIVE SPEED CALCULATION:
-  // The truck cannot go faster than physics allows (mech.maxAttainableSpeed)
+  // FINAL EFFECTIVE SPEED: 
+  // Base calculation + Fatigue Jitter (Simulating micro-sleeps or lack of concentration)
   const effectiveCruiseSpeed = Math.max(15, Math.min(baseTopSpeed, 
-    Math.round(targetCruiseSpeed * physicsContext.weatherCoeff * roadConditionCoeff * driverPerformanceCoeff)
+    Math.round((userTargetSpeed + fatigueJitter) * physicsContext.weatherCoeff * roadConditionCoeff * driverPerformanceCoeff)
   ));
 
   // Dynamic Weather road surface and feedback (used for telem object)

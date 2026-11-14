@@ -7,6 +7,7 @@
  */
 
 import { completeJobs, processEconomics, replenish } from '../../systems/jobs';
+import { DRIVER_TRAITS } from './physics';
 import { completeRepairs } from '../../systems/maintenance';
 import { processLimitOrders } from '../finance/markets/crypto';
 import { processCryptoLoansTick } from '../finance/markets/loans';
@@ -97,7 +98,11 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
       // 4. Physical Distance Progression & Lively ETA Synchronization
       if (truck) {
         const driver = (st.drivers || []).find((d: any) => d.assignedTruckId === a.truck);
-        const telem = getTruckTelematics(truck, a, driver, now);
+        
+        // Phase 2: Driver Trait Physics
+        const trait = (driver?.trait || 'STANDARD') as keyof typeof DRIVER_TRAITS;
+        const traitCfg = DRIVER_TRAITS[trait] || DRIVER_TRAITS.STANDARD;
+
         const lastTick = st.lastSimTick || (now - 1000);
   // Cap deltaMs to 1 hour to prevent extreme simulation jumps that could break UI or logic, 
         // but allow substantial catch-up (e.g., 10 hours offline = 10 ticks of 1h catch-up)
@@ -116,6 +121,14 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
             // Use 13:1 time compression (277,000 ms per theoretical hour of driving)
             const deltaKm = currentTelem.speedKmh * (deltaMs / 277000);
             a.kmTravelled = Math.min(a.km || 100, (a.kmTravelled ?? 0) + deltaKm);
+
+            // Phase 2: Apply dynamic wear
+            const wearBase = (deltaMs / 3600000) * 0.04; // 0.04% health loss per hour base
+            const envWearMod = currentTelem.roadSurface.includes('Rough') ? 1.4 : 1.0;
+            const finalWear = wearBase * traitCfg.wearMod * envWearMod;
+            
+            truck.tireHealth = Math.max(0, (truck.tireHealth || 100) - finalWear);
+            truck.engineHealth = Math.max(0, (truck.engineHealth || 100) - (finalWear * 0.4));
           } else {
             const totalKm = a.km || 100;
             const currentKm = a.kmTravelled ?? 0;
