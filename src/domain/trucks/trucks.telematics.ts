@@ -131,24 +131,43 @@ export function getTruckTelematics(
   const ambientTemp = env.temp || 22;
   const baseGrade = env.roadGrade || 0.5;
 
+  // Driver Traits & Skill modifiers
+  const driverLevel = driver?.level || 1;
+  const driverSkill = driver?.skill || 5;
+  const driverFatigue = driver?.fatigue || 0;
+  
+  // Weather impact coefficients (Speed & Control)
+  const weatherCoeff = weather === 'snow' ? 0.65 : weather === 'rain' ? 0.85 : weather === 'storm' ? 0.75 : 1.0;
+  const roadConditionCoeff = (activeJob.from && resolveTruckRegion(activeJob.from) === 'Africa') ? 0.85 : 1.0;
+
   // Base mechanical baseline from truck physics
   const st = calculatePerformance(truck, activeJob.weight || 18, driver, env);
-  let baseTopSpeed = Math.round(st.topSpeed * 0.95); // e.g. 90-95 km/h
+  let baseTopSpeed = st.topSpeed || 120;
 
-  // Adjust target cruise speed based on adverse weather
-  if (weather === 'snow') baseTopSpeed -= 22;
-  else if (weather === 'rain') baseTopSpeed -= 10;
+  // Driver Performance modifier: Expert drivers maintain higher speed, tired drivers lose focus
+  const fatiguePenalty = driverFatigue > 80 ? 0.25 : driverFatigue > 60 ? 0.15 : 0;
+  const skillBonus = Math.min(0.1, (driverSkill / 100) * 0.1);
+  const driverPerformanceCoeff = (1.0 - fatiguePenalty) + skillBonus;
 
-  // Target cruise speed (customizable per truck: truck.targetSpeed or activeJob.targetSpeed or vehicle top speed)
+  // Integrated Speed Limit Factor
   const targetCruiseSpeed = truck.targetSpeed || truck.cruiseSpeed || activeJob.targetSpeed || baseTopSpeed;
+  
+  // FINAL EFFECTIVE SPEED CALCULATION:
+  // Speed = Target * Weather * Road * Driver Performance * Vehicle Health
+  const healthSpeedMod = Math.max(0.60, (truck.engineHealth || 100) / 100);
+  
+  const effectiveCruiseSpeed = Math.max(25, Math.min(130, 
+    Math.round(targetCruiseSpeed * weatherCoeff * roadConditionCoeff * driverPerformanceCoeff * healthSpeedMod)
+  ));
 
-  // Driver Trait & Vehicle Condition Speed Modifiers
-  const driverSpeedMod = driver ? (driver.fatigue > 80 ? 0.82 : driver.fatigue > 60 ? 0.90 : 1.0) : 1.0;
-  const healthSpeedMod = Math.max(0.70, (truck.engineHealth || 100) / 100);
-  const regionalSpeedMod = (activeJob.from && resolveTruckRegion(activeJob.from) === 'Africa') ? 0.88 : 1.0;
-
-  // Effective Cruising Speed when driving
-  const effectiveCruiseSpeed = Math.max(25, Math.min(130, Math.round(targetCruiseSpeed * driverSpeedMod * healthSpeedMod * regionalSpeedMod)));
+  // Dynamic Weather road surface and feedback (used for telem object)
+  const calculatedRoadSurface = weather === 'snow'
+    ? 'Icy / Deep Snow'
+    : weather === 'rain'
+      ? 'Wet / Slippery'
+      : roadConditionCoeff < 1.0
+        ? 'Unpaved / Rough'
+        : 'Dry Asphalt';
 
   // Total trip distance
   const totalKm = Math.max(1, activeJob.km || 100);
@@ -203,14 +222,8 @@ export function getTruckTelematics(
   // Lively update activeJob.end to reflect dynamic target speed and rest/refuel stop changes
   activeJob.end = nowMs + remainingMs;
 
-  // Weather road surface label
-  const roadSurface = weather === 'snow'
-    ? 'Alpine Snow & Packed Ice'
-    : weather === 'rain'
-      ? 'Wet Expressway Asphalt'
-      : weather === 'heatwave'
-        ? 'High-Temp Desert Highway'
-        : 'Dry Asphalt Interstate';
+  // Dynamic road surface context
+  const roadSurface = calculatedRoadSurface;
 
   // 3. State Machine by Trip Progress & Time Cycle
   let state: DrivingState;
