@@ -94,15 +94,32 @@ export function calculateMechanicalLimits(
   // Speed is reduced by 10km/h for every 1% of positive gradient at max load
   const gradientPenalty = Math.max(0, context.gradientPct * (totalMassKg / 10000) * 2);
   
+  // 5. Final Result Construction
+  const baseTopSpeed = model.topSpeed || 120;
+  
+  // Max speed is capped by power-to-weight, mechanical health, and uphill drag
+  let maxAttainableSpeed = (baseTopSpeed * mechanicalMod) - gradientPenalty;
+
+  // Safety floor: even a struggling truck crawls at 15km/h unless engine is 0%
+  if (engineHealth > 0) {
+    maxAttainableSpeed = Math.max(15, maxAttainableSpeed);
+  } else {
+    maxAttainableSpeed = 0;
+  }
+
   // Base fuel consumption in L/100km (unloaded, flat ground, 80 km/h)
   const baseL100km = model.stats?.fuelConsumption || 32;
   
   // Phase 3: Dynamic Physics-Based Fuel Burn
+  // We use maxAttainableSpeed as the baseline for drag calculation at this mechanical state
   const loadFactor = (totalMassKg / 10000) * 1.5; // +1.5L per 10t
-  const speedFactor = (currentSpeed / 80) ** 2; // Aero drag is square of speed
+  const speedFactor = (maxAttainableSpeed / 80) ** 2; // Aero drag is square of speed
   const gradeFactor = context.gradientPct > 0 ? (context.gradientPct * 4) : 0; // +4L per 1% grade
   
   const instantL100km = (baseL100km + loadFactor + gradeFactor) * speedFactor;
+
+  // Acceleration capability (lower for heavier loads)
+  const accelerationCoeff = Math.max(0.1, (hpPerKg / 0.05) * mechanicalMod);
 
   return {
     maxAttainableSpeed: Math.round(maxAttainableSpeed * 100) / 100,
