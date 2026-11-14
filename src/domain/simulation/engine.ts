@@ -9,6 +9,7 @@
 import { completeJobs, processEconomics, replenish } from '../../systems/jobs';
 import { DRIVER_TRAITS } from './physics';
 import { completeRepairs } from '../../systems/maintenance';
+import { TRUCK_MODELS } from '../trucks/trucks.data';
 import { processLimitOrders } from '../finance/markets/crypto';
 import { processCryptoLoansTick } from '../finance/markets/loans';
 import { getTruckTelematics } from '../trucks/trucks.telematics';
