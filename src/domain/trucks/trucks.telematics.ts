@@ -257,12 +257,12 @@ export function getTruckTelematics(
     stateBadgeColor = '#10b981';
     stateIcon = '🚀';
     const accelFactor = (pctCompleted - 3.8) / (8.5 - 3.8); // 0 to 1
-    speedKmh = 15 + accelFactor * (baseTopSpeed * 0.75 - 15);
+    speedKmh = Math.round(15 + accelFactor * (baseTopSpeed * 0.75 - 15));
     throttlePct = 95;
     brakePct = 0;
     gearNumber = Math.max(3, Math.min(totalGears - 2, Math.floor(3 + accelFactor * (totalGears - 5))));
     currentGear = `${gearNumber} / ${totalGears}`;
-    engineRpm = 1750 + Math.sin(accelFactor * 10) * 150;
+    engineRpm = Math.round(1750 + Math.sin(accelFactor * 10) * 150);
     turboBoostBar = 2.3;
   } else if (isLongTrip && pctCompleted >= REST_START && pctCompleted < REST_END) {
     // Phase 3: Mandatory Rest Stop (Sleeper Berth)
@@ -339,11 +339,11 @@ export function getTruckTelematics(
       stateDescription = 'Maintaining steady linehaul cruise speed in overdrive top gear; automated predictive powertrain in fuel-efficient eco band.';
       stateBadgeColor = '#10b981';
       stateIcon = '🛣️';
-      speedKmh = effectiveCruiseSpeed - 2 + Math.sin(nowMs / 3000) * 2.5;
+      speedKmh = Math.round(effectiveCruiseSpeed - 2 + Math.sin(nowMs / 3000) * 2.5);
       throttlePct = 60;
       brakePct = 0;
       gearNumber = totalGears;
-      engineRpm = 1280 + (speedKmh % 10) * 12;
+      engineRpm = Math.round(1280 + (speedKmh % 10) * 12);
       turboBoostBar = 1.45;
     } else if (cycleSec < 31) {
       // 2. Speeding / Overtaking Passing Lane
