@@ -434,8 +434,9 @@ export function getTruckTelematics(
 
   // 4. Auxiliary Sensor Telemetry
   const isMoving = speedKmh > 0;
+  
   const fuelBurnRate = isMoving
-    ? parseFloat((st.fuelConsumption * (0.55 + (throttlePct / 100) * 0.65 + (speedKmh > 90 ? 0.15 : 0))).toFixed(1))
+    ? parseFloat((finalL100km * (0.55 + (throttlePct / 100) * 0.65 + (speedKmh > 90 ? 0.15 : 0))).toFixed(1))
     : 1.8; // Idle burn L/hr
 
   const coolantTempC = Math.round(
