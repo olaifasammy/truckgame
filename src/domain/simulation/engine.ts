@@ -103,7 +103,8 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
 
         // If speedKmh > 0, advance physical distance travelled (stops have speedKmh = 0, so distance pauses during rest/fuel stops)
         if (telem.speedKmh > 0) {
-          const deltaKm = telem.speedKmh * (deltaMs / 3600000);
+          // Use 13:1 time compression (277,000 ms per theoretical hour of driving)
+          const deltaKm = telem.speedKmh * (deltaMs / 277000);
           a.kmTravelled = Math.min(a.km || 100, (a.kmTravelled ?? 0) + deltaKm);
         } else {
           const totalKm = a.km || 100;

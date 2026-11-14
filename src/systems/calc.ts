@@ -112,8 +112,9 @@ export const tripMs = (km: number, speed: number = 80, env?: EnvironmentalCondit
     }
   }
 
-  // Exact continuous physics time calculation: T_ms = (km / speed) * 360,000 ms (10:1 ratio: 50h real -> 5h game)
-  const totalSeconds = (km / effectiveSpeed) * 360;
+  // Exact continuous physics time calculation: T_ms = (km / speed) * 277,000 ms (13:1 ratio: 50h real -> ~3.8h game)
+  // Constant factor of 277 ensures 50 real hours (180,000s) = ~3.85 hours in-game (13,846s)
+  const totalSeconds = (km / effectiveSpeed) * 277;
   return Math.round(totalSeconds * 1000);
 };
 

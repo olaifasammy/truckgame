@@ -196,8 +196,8 @@ export function getTruckTelematics(
     }
   }
 
-  // Driving time remaining at effectiveCruiseSpeed (10:1 time compression scale: 50h real -> 5h game)
-  const remainingDrivingMs = Math.round((distanceRemainingKm / effectiveCruiseSpeed) * 360000);
+  // Driving time remaining at effectiveCruiseSpeed (13:1 time compression scale: 50h real -> ~3.8h game)
+  const remainingDrivingMs = Math.round((distanceRemainingKm / effectiveCruiseSpeed) * 277000);
   const remainingMs = Math.max(0, remainingDrivingMs + Math.round(stopDelaysMs));
 
   // Lively update activeJob.end to reflect dynamic target speed and rest/refuel stop changes

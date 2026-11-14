@@ -119,9 +119,23 @@ export class FreightEngine {
     const company = rnd(COMPANIES);
 
     // Filter available regions strictly to those unlocked by company operating authority
-    const unlockedRegions: RegionName[] = (S?.unlockedRegions && S.unlockedRegions.length > 0)
+    // If state has no unlockedRegions, fallback to the region of the player's first depot/HQ
+    let unlockedRegions: RegionName[] = (S?.unlockedRegions && S.unlockedRegions.length > 0)
       ? S.unlockedRegions
       : [];
+    
+    if (unlockedRegions.length === 0 && S?.depots && S.depots.length > 0) {
+      const hqId = S.depots[0];
+      const hub = REGIONAL_HUBS.find(h => h.id === hqId);
+      if (hub) {
+        unlockedRegions = [hub.region];
+      }
+    }
+
+    // Absolute fallback to AFRICA if everything else fails (should not happen in production)
+    if (unlockedRegions.length === 0) {
+      unlockedRegions = ['AFRICA'];
+    }
 
     let targetRegion: RegionName;
     if (options.forceFrom) {
