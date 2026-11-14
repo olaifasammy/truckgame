@@ -54,6 +54,7 @@ export function renderTelematicsOverlay(S: any): string {
   const t = (S.fleet || []).find((x: any) => x.id === activeTelematicsTruckId);
   const a = (S.active || []).find((act: any) => act.truck === activeTelematicsTruckId);
   if (!t) return '';
+  const truck = t;
 
   const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
   const drv = (S.drivers || []).find((d: any) => d.id === t.driverId);
