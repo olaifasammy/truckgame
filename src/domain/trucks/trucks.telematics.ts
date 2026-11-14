@@ -3,6 +3,15 @@ import { calculatePerformance } from './trucks.physics';
 import { resolveTruckRegion } from '../../data/world';
 import { calculateMechanicalLimits, DRIVER_TRAITS } from '../simulation/physics';
 
+export const TRIP_PHASES = {
+  LOADING_END: 3.8,
+  REST_START: 40.0,
+  REST_END: 48.0,
+  FUEL_START: 48.0,
+  FUEL_END: 54.0,
+  UNLOADING_START: 97.5
+};
+
 export type DrivingState =
   | 'parking'        // Parked or staged in terminal yard
   | 'delivering'     // Vehicle in logistics transit (factory-to-depot)
@@ -198,19 +207,15 @@ export function getTruckTelematics(
   const pctCompleted = parseFloat((Math.min(100, Math.max(0, (kmTravelled / totalKm) * 100))).toFixed(1));
   const distanceRemainingKm = Math.max(0, totalKm - kmTravelled);
 
-  // Long Trip Check for Mandatory Rest & Refueling Stops
   const isLongTrip = totalKm >= 400;
-  const REST_START = 40.0;
-  const REST_END = 48.0;
-  const FUEL_START = 48.0;
-  const FUEL_END = 54.0;
+  const { REST_START, REST_END, FUEL_START, FUEL_END, LOADING_END, UNLOADING_START } = TRIP_PHASES;
 
   // Dynamic Stop Delays Remaining (in Ms)
   let stopDelaysMs = 0;
-  if (pctCompleted < 3.8) {
+  if (pctCompleted < LOADING_END) {
     // Dock loading/inspection delay (5 mins = 300,000 ms)
     const loadingTotalMs = 300000;
-    stopDelaysMs += Math.max(0, loadingTotalMs * (1 - pctCompleted / 3.8));
+    stopDelaysMs += Math.max(0, loadingTotalMs * (1 - pctCompleted / LOADING_END));
   }
 
   if (isLongTrip) {
@@ -257,7 +262,7 @@ export function getTruckTelematics(
   let brakeTempC = 75;
   let gradientPct = baseGrade;
 
-  if (pctCompleted < 3.8) {
+  if (pctCompleted < LOADING_END) {
     // Phase 1: Cargo Loading & Inspection
     const isRepositioning = activeJob.kind === 'move' || !activeJob.cargoId;
     state = isRepositioning ? 'parking' : 'loading';
@@ -282,13 +287,13 @@ export function getTruckTelematics(
     stateDescription = 'Pulling gross combination mass out of freight yard onto highway interchange; climbing transmission ratios under heavy throttle.';
     stateBadgeColor = '#10b981';
     stateIcon = '🚀';
-    const accelFactor = (pctCompleted - 3.8) / (8.5 - 3.8); // 0 to 1
-    speedKmh = Math.round(15 + accelFactor * (baseTopSpeed * 0.75 - 15));
+    const accelFactor = (pctCompleted - LOADING_END) / (8.5 - LOADING_END); // 0 to 1
+    speedKmh = 15 + accelFactor * (baseTopSpeed * 0.75 - 15);
     throttlePct = 95;
     brakePct = 0;
     gearNumber = Math.max(3, Math.min(totalGears - 2, Math.floor(3 + accelFactor * (totalGears - 5))));
     currentGear = `${gearNumber} / ${totalGears}`;
-    engineRpm = Math.round(1750 + Math.sin(accelFactor * 10) * 150);
+    engineRpm = 1750 + Math.sin(accelFactor * 10) * 150;
     turboBoostBar = 2.3;
   } else if (isLongTrip && pctCompleted >= REST_START && pctCompleted < REST_END) {
     // Phase 3: Mandatory Rest Stop (Sleeper Berth)
@@ -318,7 +323,24 @@ export function getTruckTelematics(
     engineRpm = 0;
     currentGear = 'P (Park)';
     turboBoostBar = 0.0;
-  } else if (pctCompleted >= 93.5 && pctCompleted < 97.5) {
+  } else if (pctCompleted >= UNLOADING_START) {
+    // Phase 5: Consignee Dock Unloading
+    const isRepositioning = activeJob.kind === 'move' || !activeJob.cargoId;
+    state = isRepositioning ? 'parking' : 'unloading';
+    phase = isRepositioning ? 'Final Docking' : 'Final Bay Unloading';
+    stateLabel = isRepositioning ? 'TERMINAL ARRIVAL / SHUTDOWN' : 'CONSIGNEE DOCK BAY UNLOADING';
+    stateDescription = isRepositioning
+      ? `Repositioning complete. Unit arrived at ${activeJob.to} hub terminal; engaging parking brake and performing post-trip diagnostic shutdown.`
+      : `Reversed into ${activeJob.to} receiving dock bay #4. Digital consignment bill of lading signed; palletized cargo extraction in progress.`;
+    stateBadgeColor = isRepositioning ? '#94a3b8' : '#38bdf8';
+    stateIcon = isRepositioning ? '🅿️' : '🏁';
+    speedKmh = 0;
+    throttlePct = 0;
+    brakePct = 100;
+    engineRpm = 650;
+    currentGear = 'R (Docking)';
+    turboBoostBar = 0.1;
+  } else if (pctCompleted >= 93.5 && pctCompleted < UNLOADING_START) {
     // Phase 5: Approach Deceleration & Highway Exit
     state = 'braking';
     phase = 'Terminal Arrival Approach';

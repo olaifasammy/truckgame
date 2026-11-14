@@ -12,7 +12,7 @@ import { completeRepairs } from '../../systems/maintenance';
 import { TRUCK_MODELS } from '../trucks/trucks.data';
 import { processLimitOrders } from '../finance/markets/crypto';
 import { processCryptoLoansTick } from '../finance/markets/loans';
-import { getTruckTelematics } from '../trucks/trucks.telematics';
+import { getTruckTelematics, TRIP_PHASES } from '../trucks/trucks.telematics';
 import { onTruckArrival } from '../../systems/fleet';
 import { runAiAutoDispatch, runAiFleetMaintenance } from '../ai/ai.engine';
 import { runAiCryptoTradingTick } from '../ai/ai.quant';
@@ -144,16 +144,33 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
             const currentKm = a.kmTravelled ?? 0;
             const pct = (currentKm / totalKm) * 100;
             
-            if (pct < 3.8) {
-              const loadingTargetKm = (3.8 / 100) * totalKm;
-              const step = (loadingTargetKm / 120000) * deltaMs; 
-              a.kmTravelled = Math.min(loadingTargetKm, currentKm + Math.max(0.05, step));
+            // Stationary Phase Progressions (Distance-as-Proxy for Time)
+            // This ensures trucks move through zero-speed zones like Loading, Rest Stops, and Refueling.
+            if (pct < TRIP_PHASES.LOADING_END) {
+              // Loading/Staging Phase (5 minutes real duration)
+              const phaseDist = (TRIP_PHASES.LOADING_END / 100) * totalKm;
+              const step = (phaseDist / 300000) * deltaMs;
+              a.kmTravelled = Math.min(totalKm, currentKm + Math.max(0.01, step));
             } else if (currentTelem.state === 'resting') {
-              // Driver recovers fatigue during mandatory HOS rests
+              // HOS Rest Phase (45 minutes real duration)
+              const phaseDist = ((TRIP_PHASES.REST_END - TRIP_PHASES.REST_START) / 100) * totalKm;
+              const step = (phaseDist / 2700000) * deltaMs;
+              a.kmTravelled = Math.min(totalKm, currentKm + Math.max(0.01, step));
+              
               if (driver) {
                 const recoveryRate = (deltaMs / 3600000) * 12; // ~12% recovery per hour rest
                 driver.fatigue = Math.max(0, (driver.fatigue || 0) - recoveryRate);
               }
+            } else if (currentTelem.state === 'refueling') {
+              // Refuel Phase (15 minutes real duration)
+              const phaseDist = ((TRIP_PHASES.FUEL_END - TRIP_PHASES.FUEL_START) / 100) * totalKm;
+              const step = (phaseDist / 900000) * deltaMs;
+              a.kmTravelled = Math.min(totalKm, currentKm + Math.max(0.01, step));
+            } else if (pct >= TRIP_PHASES.UNLOADING_START) {
+              // Unloading/Arrival Phase (10 minutes real duration)
+              const phaseDist = ((100 - TRIP_PHASES.UNLOADING_START) / 100) * totalKm;
+              const step = (phaseDist / 600000) * deltaMs;
+              a.kmTravelled = Math.min(totalKm, currentKm + Math.max(0.01, step));
             }
           }
         }
