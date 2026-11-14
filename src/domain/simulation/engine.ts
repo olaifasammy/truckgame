@@ -98,34 +98,47 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
       if (truck) {
         const driver = (st.drivers || []).find((d: any) => d.assignedTruckId === a.truck);
         const telem = getTruckTelematics(truck, a, driver, now);
-        const lastTick = (st as any)._lastSimTick || (now - 1000);
-        const deltaMs = Math.max(100, Math.min(60000, now - lastTick));
+        const lastTick = st.lastSimTick || (now - 1000);
+  // Cap deltaMs to 1 hour to prevent extreme simulation jumps that could break UI or logic, 
+        // but allow substantial catch-up (e.g., 10 hours offline = 10 ticks of 1h catch-up)
+        let offlineMsRemaining = Math.max(0, now - lastTick);
+        const catchupStepMs = 3600000; // 1 hour steps
+        
+        while (offlineMsRemaining > 0) {
+          const deltaMs = Math.min(offlineMsRemaining, catchupStepMs);
+          offlineMsRemaining -= deltaMs;
 
-        // If speedKmh > 0, advance physical distance travelled (stops have speedKmh = 0, so distance pauses during rest/fuel stops)
-        if (telem.speedKmh > 0) {
-          // Use 13:1 time compression (277,000 ms per theoretical hour of driving)
-          const deltaKm = telem.speedKmh * (deltaMs / 277000);
-          a.kmTravelled = Math.min(a.km || 100, (a.kmTravelled ?? 0) + deltaKm);
-        } else {
-          const totalKm = a.km || 100;
-          const currentKm = a.kmTravelled ?? 0;
-          const pct = (currentKm / totalKm) * 100;
-          if (pct < 3.8) {
-            const loadingTargetKm = (3.8 / 100) * totalKm;
-            const step = (loadingTargetKm / 120000) * deltaMs; // 2 minutes loading duration
-            a.kmTravelled = Math.min(loadingTargetKm, currentKm + Math.max(0.05, step));
+          // Recalculate telem for the current simulation state
+          const currentTelem = getTruckTelematics(truck, a, driver, now);
+
+          // If speedKmh > 0, advance physical distance travelled (stops have speedKmh = 0, so distance pauses during rest/fuel stops)
+          if (currentTelem.speedKmh > 0) {
+            // Use 13:1 time compression (277,000 ms per theoretical hour of driving)
+            const deltaKm = currentTelem.speedKmh * (deltaMs / 277000);
+            a.kmTravelled = Math.min(a.km || 100, (a.kmTravelled ?? 0) + deltaKm);
+          } else {
+            const totalKm = a.km || 100;
+            const currentKm = a.kmTravelled ?? 0;
+            const pct = (currentKm / totalKm) * 100;
+            if (pct < 3.8) {
+              const loadingTargetKm = (3.8 / 100) * totalKm;
+              const step = (loadingTargetKm / 120000) * deltaMs; // 2 minutes loading duration
+              a.kmTravelled = Math.min(loadingTargetKm, currentKm + Math.max(0.05, step));
+            }
           }
         }
 
+        // Final telem check for UI sync
+        const finalTelem = getTruckTelematics(truck, a, driver, now);
         // Dynamically update activeJob.end lively so UI, map popups, and telematics modal show accurate ETA
-        if (telem.remainingMs > 0) {
-          a.end = now + telem.remainingMs;
+        if (finalTelem.remainingMs > 0) {
+          a.end = now + finalTelem.remainingMs;
         }
       }
 
       return true;
     });
-    (st as any)._lastSimTick = now;
+    st.lastSimTick = now;
   }
 
   // 3. Freight Consignment Arrivals & Job Completions

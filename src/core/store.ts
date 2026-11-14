@@ -72,7 +72,8 @@ const DEF = () => ({
     premiumExpiresAt: 0
   },
   dailyStats: { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 },
-  lastTick: Date.now()
+  lastTick: Date.now(),
+  lastSimTick: Date.now()
 });
 
 let S: any;
@@ -300,6 +301,9 @@ function fix(state: any) {
   if (!state.dailyStats) {
     state.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
   }
+
+  if (!state.lastTick) state.lastTick = Date.now();
+  if (!state.lastSimTick) state.lastSimTick = state.lastTick || Date.now();
   
   // Migration: Fresh start for new physics if old schema found
   if (state.fleet && state.fleet.length > 0 && (state.fleet[0].model || state.fleet[0].cond !== undefined)) {
