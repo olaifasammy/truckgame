@@ -51,7 +51,7 @@ export const authService = {
     
     const accounts = getAccounts();
     if (accounts.some(a => a.username.toLowerCase() === username.toLowerCase())) {
-      throw new Error('Username already exists');
+      throw new Error(`Username "${username}" already exists. Please choose another username or log in.`);
     }
 
     const hub = REGIONAL_HUBS.find(h => h.id === startingHubId) || REGIONAL_HUBS[0];
@@ -79,6 +79,9 @@ export const authService = {
       s.hubFacilities = {
         [hub.id]: { owned: true, bays: 2, fuel: 15000, repairBay: true }
       };
+      if (s.fleet && s.fleet.length > 0) {
+        s.fleet[0].loc = hub.city;
+      }
 
       const welcome = getWelcomeMessage({
         companyName: company,

@@ -97,6 +97,12 @@ action('authQuickPlay', () => {
   refresh();
 });
 
+action('authMode', (d) => {
+  state.mode = d.mode as any;
+  state.error = '';
+  set(s => s);
+});
+
 action('changeRegion', (d, el) => {
   const select = el as HTMLSelectElement;
   if (select) {
