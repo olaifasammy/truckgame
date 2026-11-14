@@ -241,6 +241,11 @@ export class FreightEngine {
           finalBaseKm = Math.min(distKm(from, finalTo), 350);
         }
       }
+    } else {
+      // Normal job distance guardrail: Max 5,000 km for normal jobs. Bid/special jobs can exceed 5,000 km.
+      if (!options.isAuction && !tender) {
+        finalBaseKm = Math.min(5000, finalBaseKm);
+      }
     }
 
     const baseKm = finalBaseKm;
@@ -281,7 +286,14 @@ export class FreightEngine {
 
     const minPerKm = cargo.baseValue > 30 ? 5.00 : 3.50;
     const effectiveRate = Math.max(rate, minPerKm);
-    const calculatedPay = tender ? Math.round((tender.ratePerDelivery || 15000) * (0.94 + Math.random() * 0.12)) : Math.round(baseKm * effectiveRate);
+    let trailerMultiplier = 1.0;
+    if (cargo.trailer === 'lowboy') trailerMultiplier = 1.35;
+    else if (cargo.trailer === 'double_trailer') trailerMultiplier = 1.30;
+    else if (cargo.trailer === 'tanker' || cargo.trailer === 'hazmat') trailerMultiplier = 1.25;
+    else if (cargo.trailer === 'tipper') trailerMultiplier = 1.20;
+
+    const calculatedPayRaw = tender ? Math.round((tender.ratePerDelivery || 15000) * (0.94 + Math.random() * 0.12)) : Math.round(baseKm * effectiveRate);
+    const calculatedPay = Math.round(calculatedPayRaw * trailerMultiplier);
     
     // DEADHEAD FUEL PRICING: If destination is NOT a hub, calculate return fuel cost and add it to pay
     let deadheadFuelCompensation = 0;
