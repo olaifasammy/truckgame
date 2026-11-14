@@ -25,7 +25,7 @@ action('adjust-truck-cruise-speed', d => {
   const S = getState();
   const truck = (S.fleet || []).find((t: any) => t.id === truckId);
   if (truck) {
-    const model = TRUCK_MODELS.find(m => m.id === truck.modelId);
+    const model = TRUCK_MODELS[truck.modelId];
     const maxSpeed = model ? model.topSpeed : 120;
     const currentTarget = truck.targetSpeed || 85;
     const newSpeed = Math.max(30, Math.min(maxSpeed, currentTarget + delta));
@@ -81,7 +81,7 @@ export function renderTelematicsOverlay(S: any): string {
   if (!t) return '';
   const truck = t;
 
-  const model = TRUCK_MODELS.find(m => m.id === truck.modelId);
+  const model = TRUCK_MODELS[truck.modelId];
   const driver = (S.drivers || []).find((d: any) => d.assignedTruckId === truck.id);
   const now = Date.now();
   const telem = getTruckTelematics(truck, a, driver, now);
