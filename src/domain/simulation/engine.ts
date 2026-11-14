@@ -292,7 +292,7 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
   st.simulationDay = st.simulationDay || 1;
   st.lastAccountingDayTimestamp = st.lastAccountingDayTimestamp || now;
   
-  if (now - st.lastAccountingDayTimestamp >= 60000) {
+  if (now - st.lastAccountingDayTimestamp >= 300000) {
     st.simulationDay += 1;
     st.lastAccountingDayTimestamp = now;
     
