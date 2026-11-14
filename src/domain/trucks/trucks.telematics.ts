@@ -467,7 +467,6 @@ export function getTruckTelematics(
     fuelBurnRate,
     turboBoostBar: parseFloat(turboBoostBar.toFixed(2)),
     oilPressureBar,
-    coolantTempC,
     brakeTempC,
     gradientPct: parseFloat(gradientPct.toFixed(1)),
     roadSurface,
