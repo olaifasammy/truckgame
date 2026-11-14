@@ -90,6 +90,29 @@ export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_disp
       description: 'Autonomous high-frequency cryptocurrency trading engine.'
     }
   },
+  '3m': {
+    maintenance: {
+      id: 'maintenance',
+      label: 'Autonomous Fleet Maintenance',
+      priceUsd: 220000,
+      priceFlb: 160,
+      description: 'Monitors component wear and triggers automatic servicing.'
+    },
+    offline_dispatch: {
+      id: 'offline_dispatch',
+      label: 'Offline Auto-Dispatch Engine',
+      priceUsd: 220000,
+      priceFlb: 160,
+      description: 'Continuous background dispatching while offline.'
+    },
+    quant_trader: {
+      id: 'quant_trader',
+      label: 'AI Quant Trading Bot',
+      priceUsd: 320000,
+      priceFlb: 220,
+      description: 'Autonomous high-frequency cryptocurrency trading engine.'
+    }
+  },
   'auto': {
     maintenance: {
       id: 'maintenance',

@@ -225,11 +225,11 @@ export default {
 
   const quantSmart = getQuantSmartLevelInfo(S.aiCryptoBot);
 
-    const currentPlan = AI_SUBSCRIPTION_PLANS[selectedPlan];
-    const addons = AI_ADDON_PLANS[selectedPlan];
-    const maintCost = includeMaintenance && addons ? addons.maintenance : { priceUsd: 0, priceFlb: 0 };
-    const offlineCost = includeOfflineDispatch && addons ? addons.offline_dispatch : { priceUsd: 0, priceFlb: 0 };
-    const quantCost = includeQuantTrader && addons ? addons.quant_trader : { priceUsd: 0, priceFlb: 0 };
+    const currentPlan = AI_SUBSCRIPTION_PLANS[selectedPlan] || AI_SUBSCRIPTION_PLANS['1m'];
+    const addons = AI_ADDON_PLANS[selectedPlan] || AI_ADDON_PLANS['1m'];
+    const maintCost = includeMaintenance && addons?.maintenance ? addons.maintenance : { priceUsd: 0, priceFlb: 0 };
+    const offlineCost = includeOfflineDispatch && addons?.offline_dispatch ? addons.offline_dispatch : { priceUsd: 0, priceFlb: 0 };
+    const quantCost = includeQuantTrader && addons?.quant_trader ? addons.quant_trader : { priceUsd: 0, priceFlb: 0 };
 
     const totalUsd = currentPlan.priceUsd + maintCost.priceUsd + offlineCost.priceUsd + quantCost.priceUsd;
     const totalFlb = currentPlan.priceFlb + maintCost.priceFlb + offlineCost.priceFlb + quantCost.priceFlb;
