@@ -196,11 +196,8 @@ export function getTruckTelematics(
     }
   }
 
-  // Driving time remaining at effectiveCruiseSpeed
-  // e.g. 500km remaining at 50 km/h = 10 hrs driving time + stop delays
-  // 500km remaining at 100 km/h = 5 hrs driving time + stop delays
-  // 500km remaining at 75 km/h = 6.67 hrs driving time + stop delays
-  const remainingDrivingMs = Math.round((distanceRemainingKm / effectiveCruiseSpeed) * 3600000);
+  // Driving time remaining at effectiveCruiseSpeed (10:1 time compression scale: 50h real -> 5h game)
+  const remainingDrivingMs = Math.round((distanceRemainingKm / effectiveCruiseSpeed) * 360000);
   const remainingMs = Math.max(0, remainingDrivingMs + Math.round(stopDelaysMs));
 
   // Lively update activeJob.end to reflect dynamic target speed and rest/refuel stop changes
