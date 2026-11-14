@@ -292,7 +292,8 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
   st.simulationDay = st.simulationDay || 1;
   st.lastAccountingDayTimestamp = st.lastAccountingDayTimestamp || now;
   
-  if (now - st.lastAccountingDayTimestamp >= 300000) {
+  // 12 real-world hours per simulation day = twice a real day
+  if (now - st.lastAccountingDayTimestamp >= 43200000) {
     st.simulationDay += 1;
     st.lastAccountingDayTimestamp = now;
     
