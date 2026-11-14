@@ -227,9 +227,13 @@ export default {
 
     const currentPlan = AI_SUBSCRIPTION_PLANS[selectedPlan] || AI_SUBSCRIPTION_PLANS['1m'];
     const addons = AI_ADDON_PLANS[selectedPlan] || AI_ADDON_PLANS['1m'];
-    const maintCost = includeMaintenance && addons?.maintenance ? addons.maintenance : { priceUsd: 0, priceFlb: 0 };
-    const offlineCost = includeOfflineDispatch && addons?.offline_dispatch ? addons.offline_dispatch : { priceUsd: 0, priceFlb: 0 };
-    const quantCost = includeQuantTrader && addons?.quant_trader ? addons.quant_trader : { priceUsd: 0, priceFlb: 0 };
+    const maintBase = addons?.maintenance || { priceUsd: 0, priceFlb: 0 };
+    const offlineBase = addons?.offline_dispatch || { priceUsd: 0, priceFlb: 0 };
+    const quantBase = addons?.quant_trader || { priceUsd: 0, priceFlb: 0 };
+
+    const maintCost = includeMaintenance ? maintBase : { priceUsd: 0, priceFlb: 0 };
+    const offlineCost = includeOfflineDispatch ? offlineBase : { priceUsd: 0, priceFlb: 0 };
+    const quantCost = includeQuantTrader ? quantBase : { priceUsd: 0, priceFlb: 0 };
 
     const totalUsd = currentPlan.priceUsd + maintCost.priceUsd + offlineCost.priceUsd + quantCost.priceUsd;
     const totalFlb = currentPlan.priceFlb + maintCost.priceFlb + offlineCost.priceFlb + quantCost.priceFlb;
@@ -837,7 +841,7 @@ export default {
                 <input type="checkbox" ${includeMaintenance ? 'checked' : ''} data-act="ai-toggle-maint" style="margin-top:2px;" />
                 <div>
                   <span style="color:var(--tx); font-weight:800;">Autonomous Fleet Maintenance Add-on</span>
-                  <div style="font-size:10px; color:var(--mu);">Auto-repairs components below 60% health (+$${maintCost.priceUsd.toLocaleString()} USD or ${maintCost.priceFlb} FLB).</div>
+                  <div style="font-size:10px; color:var(--mu);">Auto-repairs components below 60% health (+$${maintBase.priceUsd.toLocaleString()} USD or ${maintBase.priceFlb} FLB).</div>
                 </div>
               </label>
 
@@ -845,7 +849,7 @@ export default {
                 <input type="checkbox" ${includeOfflineDispatch ? 'checked' : ''} data-act="ai-toggle-offline" style="margin-top:2px;" />
                 <div>
                   <span style="color:var(--tx); font-weight:800;">Autonomous Offline AI Dispatcher Add-on</span>
-                  <div style="font-size:10px; color:var(--mu);">Continuously matches real market jobs while offline (+$${offlineCost.priceUsd.toLocaleString()} USD or ${offlineCost.priceFlb} FLB).</div>
+                  <div style="font-size:10px; color:var(--mu);">Continuously matches real market jobs while offline (+$${offlineBase.priceUsd.toLocaleString()} USD or ${offlineBase.priceFlb} FLB).</div>
                 </div>
               </label>
 
@@ -853,7 +857,7 @@ export default {
                 <input type="checkbox" ${includeQuantTrader ? 'checked' : ''} data-act="ai-modal-toggle-quant" style="margin-top:2px;" />
                 <div>
                   <span style="color:var(--tx); font-weight:800;">Autonomous AI Quant Trader Bot Add-on</span>
-                  <div style="font-size:10px; color:var(--mu);">Enables high-frequency algorithmic crypto trading engine (+$${quantCost.priceUsd.toLocaleString()} USD or ${quantCost.priceFlb} FLB).</div>
+                  <div style="font-size:10px; color:var(--mu);">Enables high-frequency algorithmic crypto trading engine (+$${quantBase.priceUsd.toLocaleString()} USD or ${quantBase.priceFlb} FLB).</div>
                 </div>
               </label>
 
