@@ -105,6 +105,15 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
         if (telem.speedKmh > 0) {
           const deltaKm = telem.speedKmh * (deltaMs / 3600000);
           a.kmTravelled = Math.min(a.km || 100, (a.kmTravelled ?? 0) + deltaKm);
+        } else {
+          const totalKm = a.km || 100;
+          const currentKm = a.kmTravelled ?? 0;
+          const pct = (currentKm / totalKm) * 100;
+          if (pct < 3.8) {
+            const loadingTargetKm = (3.8 / 100) * totalKm;
+            const step = (loadingTargetKm / 120000) * deltaMs; // 2 minutes loading duration
+            a.kmTravelled = Math.min(loadingTargetKm, currentKm + Math.max(0.05, step));
+          }
         }
 
         // Dynamically update activeJob.end lively so UI, map popups, and telematics modal show accurate ETA
