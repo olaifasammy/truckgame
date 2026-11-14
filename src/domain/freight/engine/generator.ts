@@ -2,6 +2,7 @@ import { Region, FreightJob, JobKind } from '../types';
 import { COMPANIES } from '../companies/registry';
 import { CARGO_TYPES } from '../cargo/registry';
 import { CITIES, LOCATIONS, RegionName, resolveTruckRegion } from '../../../data/world';
+import { REGIONAL_HUBS } from '../../logistics/network';
 import { rnd, toast } from '../../../core/ui';
 import { BiddingEngine } from '../bids/engine';
 import { distKm, getRouteEnv, fuelCostForTrip } from '../../../systems/calc';
