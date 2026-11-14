@@ -38,6 +38,13 @@ action('adjust-truck-cruise-speed', d => {
   }
 });
 
+action('open-telematics', d => {
+  const truckId = +(d as any).id || +(d as any).truckId || +(d as any).truck;
+  if (truckId) {
+    openTelematicsModal(truckId);
+  }
+});
+
 export let activeTelematicsTruckId: number | null = null;
 let telematicsInterval: any = null;
 
