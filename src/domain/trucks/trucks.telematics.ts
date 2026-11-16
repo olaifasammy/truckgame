@@ -205,39 +205,86 @@ export function getTruckTelematics(
 
   // Calculate percentage completed based on physical distance covered
   const pctCompleted = parseFloat((Math.min(100, Math.max(0, (kmTravelled / totalKm) * 100))).toFixed(1));
-  const distanceRemainingKm = Math.max(0, totalKm - kmTravelled);
 
   const isLongTrip = totalKm >= 400;
   const { REST_START, REST_END, FUEL_START, FUEL_END, LOADING_END, UNLOADING_START } = TRIP_PHASES;
+  
+  // Phase 1: Terminal Operations (Loading, Weighbridge, Inspection)
+  const LOADING_DURATION_MS = 600000; // 10 minutes total for professional terminal turnaround
 
-  // Dynamic Stop Delays Remaining (in Ms)
-  let stopDelaysMs = 0;
-  if (pctCompleted < LOADING_END) {
-    // Dock loading/inspection delay (5 mins = 300,000 ms)
-    const loadingTotalMs = 300000;
-    stopDelaysMs += Math.max(0, loadingTotalMs * (1 - pctCompleted / LOADING_END));
-  }
-
+  // 1. Precise Driving Distance Calculation
+  // We calculate exactly how many "Driving Kilometers" are left in the journey.
+  // The timeline has stationary gaps: [0-2 Loading], [42-46 Rest], [78-80 Fuel], [98-100 Unloading]
+  let drivingPctRemaining = 0;
+  
   if (isLongTrip) {
+    // Segment 1: Drive to Rest
     if (pctCompleted < REST_START) {
-      // Rest stop ahead (45 mins) + Refuel stop ahead (15 mins)
-      stopDelaysMs += 2700000 + 900000;
-    } else if (pctCompleted >= REST_START && pctCompleted < REST_END) {
-      // Currently in Rest Stop (45 mins total)
-      const restDoneRatio = (pctCompleted - REST_START) / (REST_END - REST_START);
-      stopDelaysMs += Math.max(0, (1 - restDoneRatio) * 2700000) + 900000;
-    } else if (pctCompleted >= FUEL_START && pctCompleted < FUEL_END) {
-      // Currently in Refuel Stop (15 mins total)
-      const fuelDoneRatio = (pctCompleted - FUEL_START) / (FUEL_END - FUEL_START);
-      stopDelaysMs += Math.max(0, (1 - fuelDoneRatio) * 900000);
+      drivingPctRemaining += (REST_START - Math.max(pctCompleted, LOADING_END));
+    }
+    // Segment 2: Mid-Trip Drive
+    if (pctCompleted < FUEL_START) {
+      drivingPctRemaining += (FUEL_START - Math.max(pctCompleted, REST_END));
+    }
+    // Segment 3: Final Drive
+    if (pctCompleted < UNLOADING_START) {
+      drivingPctRemaining += (UNLOADING_START - Math.max(pctCompleted, FUEL_END));
+    }
+  } else {
+    // Short Trip: Only Segment 1 (to Unloading)
+    if (pctCompleted < UNLOADING_START) {
+      drivingPctRemaining += (UNLOADING_START - Math.max(pctCompleted, LOADING_END));
     }
   }
 
-  // Driving time remaining at effectiveCruiseSpeed (13:1 time compression scale: 50h real -> ~3.8h game)
-  const remainingDrivingMs = Math.round((distanceRemainingKm / effectiveCruiseSpeed) * 277000);
-  const remainingMs = Math.max(0, remainingDrivingMs + Math.round(stopDelaysMs));
+  const physicalDistanceRemainingKm = (drivingPctRemaining / 100) * totalKm;
 
-  // Lively update activeJob.end to reflect dynamic target speed and rest/refuel stop changes
+  // 2. Stable Speed for ETA Projection (Google Maps Style)
+  // We use the truck's physical potential on the current terrain/load, capped by the driver's target.
+  // We DO NOT use the temporary "accelerating" speed, as it causes massive ETA jumps on on-ramps.
+  const projectedSpeed = Math.min(effectiveCruiseSpeed, mech.maxAttainableSpeed);
+  const stableTravelSpeed = Math.max(25, projectedSpeed);
+
+  // 3. Dynamic Stop Delays Remaining (in Ms)
+  let stopDelaysMs = 0;
+  
+  // Loading delay
+  if (pctCompleted < LOADING_END) {
+    const ratio = Math.max(0, 1 - (pctCompleted / LOADING_END));
+    stopDelaysMs += ratio * LOADING_DURATION_MS;
+  }
+
+  if (isLongTrip) {
+    // Rest Stop (45m)
+    if (pctCompleted < REST_START) {
+      stopDelaysMs += 2700000;
+    } else if (pctCompleted >= REST_START && pctCompleted < REST_END) {
+      const ratio = Math.max(0, 1 - (pctCompleted - REST_START) / (REST_END - REST_START));
+      stopDelaysMs += ratio * 2700000;
+    }
+    
+    // Refuel Stop (15m)
+    if (pctCompleted < FUEL_START) {
+      stopDelaysMs += 900000;
+    } else if (pctCompleted >= FUEL_START && pctCompleted < FUEL_END) {
+      const ratio = Math.max(0, 1 - (pctCompleted - FUEL_START) / (FUEL_END - FUEL_START));
+      stopDelaysMs += ratio * 900000;
+    }
+  }
+
+  // Unloading delay (10m)
+  if (pctCompleted < UNLOADING_START) {
+    stopDelaysMs += 600000;
+  } else if (pctCompleted < 100) {
+    const ratio = Math.max(0, 1 - (pctCompleted - UNLOADING_START) / (100 - UNLOADING_START));
+    stopDelaysMs += ratio * 600000;
+  }
+
+  // 4. Final ETA Summation (Real-Time Ms)
+  // Time compression: 13:1 scale (~276,923ms per game hour)
+  const remainingDrivingMs = Math.round((physicalDistanceRemainingKm / stableTravelSpeed) * 276923);
+  const remainingMs = Math.max(0, remainingDrivingMs + Math.round(stopDelaysMs));
+  
   activeJob.end = nowMs + remainingMs;
 
   // Dynamic road surface context
@@ -288,7 +335,7 @@ export function getTruckTelematics(
     stateBadgeColor = '#10b981';
     stateIcon = '🚀';
     const accelFactor = (pctCompleted - LOADING_END) / (8.5 - LOADING_END); // 0 to 1
-    speedKmh = 15 + accelFactor * (baseTopSpeed * 0.75 - 15);
+    speedKmh = Math.round(45 + accelFactor * (baseTopSpeed - 45));
     throttlePct = 95;
     brakePct = 0;
     gearNumber = Math.max(3, Math.min(totalGears - 2, Math.floor(3 + accelFactor * (totalGears - 5))));
@@ -462,7 +509,8 @@ export function getTruckTelematics(
     : 1.8; // Idle burn L/hr
 
   const coolantTempC = Math.round(
-    (ambientTemp > 30 ? 93 : 87) +
+    82 + (finalL100km / 5) + 
+    (ambientTemp > 30 ? 5 : 0) +
     (throttlePct > 80 ? 4 : 0) +
     (state === 'resting' || state === 'refueling' ? -15 : 0)
   );
@@ -475,7 +523,7 @@ export function getTruckTelematics(
     state,
     instantL100km: finalL100km,
     avgL100km: finalL100km, // For UI, we'll use instant as avg for now
-    coolantTempC: 82 + (finalL100km / 5), // Heat engine based on burn rate
+    coolantTempC,
     stateLabel,
     stateDescription,
     stateBadgeColor,
@@ -497,7 +545,7 @@ export function getTruckTelematics(
     phase,
     isMoving,
     remainingMs,
-    distanceRemainingKm
+    distanceRemainingKm: Math.round(physicalDistanceRemainingKm)
   };
 }
 

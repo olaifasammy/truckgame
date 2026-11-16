@@ -175,16 +175,22 @@ export class FreightEngine {
     const validRegionCities = regionCities.length > 0 ? regionCities : allCityKeys;
 
     // Direct / Backhaul routing ("To & Fro" return freight)
-    // ORIGIN LOGIC: 
-    // 1. If forced, use it.
-    // 2. 80% chance to originate from a hub the player actually OWNS in that region.
-    // 3. Fallback to any valid city in the unlocked region.
+    // Strict Origin Rules: Jobs must ONLY originate from locations where the player owns a hub/depot OR has trucks located/parked.
+    const ownedHubCities = (S?.depots || []).map((depotId: string) => {
+      const hub = REGIONAL_HUBS.find(h => h.id === depotId);
+      return hub ? hub.city : null;
+    }).filter(Boolean) as string[];
+
+    const truckLocationCities = (S?.trucks || []).map((t: any) => t.loc || t.registeredCity).filter(Boolean) as string[];
+
+    const availableOrigins = Array.from(new Set([...ownedHubCities, ...truckLocationCities]));
+
     if (options.forceFrom && LOCATIONS[options.forceFrom]) {
       from = options.forceFrom;
-    } else if (ownedHubsInRegion.length > 0 && Math.random() < 0.80) {
-      from = rnd(ownedHubsInRegion);
+    } else if (availableOrigins.length > 0) {
+      from = rnd(availableOrigins);
     } else {
-      from = rnd(validRegionCities);
+      from = S?.hqCity || ownedHubCities[0] || truckLocationCities[0] || Object.keys(LOCATIONS)[0];
     }
 
     const otherRegionCities = validRegionCities.filter(c => c !== from);

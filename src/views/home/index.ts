@@ -51,7 +51,11 @@ action('refresh-freight-board', () => {
     const securedJobs = (S.jobs || []).filter((j: any) => j.isAuctionWon || j.tenderId);
     S.jobs = [...securedJobs];
     replenish(S);
-    toast('Freight exchange board refreshed ($250 fee paid)!', 'success');
+    
+    // Also refresh special corporate tenders
+    S.tenderRefreshSeed = (S.tenderRefreshSeed || 0) + 1;
+
+    toast('Freight exchange board & special tenders refreshed ($250 fee paid)!', 'success');
   });
 });
 

@@ -162,22 +162,17 @@ function getLaneDistance(cityA: string, cityB: string): number {
  * unlocked operating regions, actual highway corridors, and market pricing.
  */
 export function getDynamicCorporateTenders(S: any): CorporateTender[] {
-  // Use authoritative unlocked regions, but fallback to hub ownership to ensure 
-  // zero-latency regional activation after hub purchase.
   const unlockedFromState: string[] = S.unlockedRegions || [];
   const hubs = (S.depots || []).map((id: string) => {
-    if (id.includes('lagos') || id.includes('abuja') || id.includes('kano')) return 'Africa';
-    if (id.includes('rotterdam') || id.includes('munich') || id.includes('lyon')) return 'Europe';
-    if (id.includes('chicago') || id.includes('dallas') || id.includes('los_angeles')) return 'America';
-    if (id.includes('tokyo') || id.includes('shanghai') || id.includes('almaty')) return 'Asia';
-    return null;
+    const hub = REGIONAL_HUBS.find(h => h.id === id);
+    return hub ? hub.region : null;
   }).filter(Boolean) as string[];
   
   const unlockedRegions = Array.from(new Set([...unlockedFromState, ...hubs]));
   
   const now = Date.now();
-  // 6-hour dynamic rotation cycle
-  const cycleSeed = Math.floor(now / (1000 * 60 * 60 * 6));
+  // 6-hour dynamic rotation cycle + manual refresh seed
+  const cycleSeed = Math.floor(now / (1000 * 60 * 60 * 6)) + (S?.tenderRefreshSeed || 0);
   
   // Group cities by region
   const citiesByRegion: Record<string, string[]> = {};
@@ -186,66 +181,87 @@ export function getDynamicCorporateTenders(S: any): CorporateTender[] {
     citiesByRegion[loc.region].push(key);
   }
 
+  // Strict Origin Rules: Tenders must ONLY originate from locations where the player owns a hub/depot OR has trucks located/parked.
+  const ownedHubCities = (S?.depots || []).map((depotId: string) => {
+    const hub = REGIONAL_HUBS.find(h => h.id === depotId);
+    return hub ? hub.city : null;
+  }).filter(Boolean) as string[];
+
+  const truckLocationCities = (S?.trucks || []).map((t: any) => t.loc || t.registeredCity).filter(Boolean) as string[];
+
+  const availableOrigins = Array.from(new Set([...ownedHubCities, ...truckLocationCities]));
+
   const generatedTenders: CorporateTender[] = [];
 
-  CLIENT_TEMPLATES.forEach((tpl, idx) => {
-    // Pick an unlocked region for this tender
+  const clientPool = [
+    { client: 'Continental Automotive AG', industry: 'Tier-1 Automotive Components', icon: '🚗', baseRateMultiplier: 1.15 },
+    { client: 'BASF Chemical Logistics Europe', industry: 'Specialty Chemical Processing', icon: '🧪', baseRateMultiplier: 1.25 },
+    { client: 'Nordic Cold Chain Solutions', industry: 'Pharmaceutical & Bio-Logistics', icon: '❄️', baseRateMultiplier: 1.30 },
+    { client: 'Apex Semiconductor & Microelectronics', industry: 'High-Tech Electronics & Silicon', icon: '💻', baseRateMultiplier: 1.35 },
+    { client: 'Sovereign Heavy Industries', industry: 'Construction Machinery & Mining', icon: '🏗️', baseRateMultiplier: 1.20 },
+    { client: 'Trans-Atlantic Maritime Group', industry: 'Intermodal Container Freight', icon: '🚢', baseRateMultiplier: 1.10 }
+  ];
+
+  for (let idx = 0; idx < 4; idx++) {
+    const seedVal = cycleSeed * 43 + idx * 109;
+    const clientInfo = clientPool[seedVal % clientPool.length];
+
     const eligibleRegions = unlockedRegions.filter((r: string) => citiesByRegion[r] && citiesByRegion[r].length >= 2);
-    if (eligibleRegions.length === 0) return;
+    if (eligibleRegions.length === 0) continue;
     
-    const regionIdx = (idx + cycleSeed) % eligibleRegions.length;
-    const region = eligibleRegions[regionIdx];
+    const region = eligibleRegions[(seedVal + idx) % eligibleRegions.length];
     const cities = citiesByRegion[region] || ['ROTTERDAM', 'MUNICH'];
 
-    const fromCity = cities[(idx * 2 + cycleSeed) % cities.length];
-    let toCity = cities[(idx * 2 + 1 + cycleSeed) % cities.length];
+    let fromCity: string;
+    if (availableOrigins.length > 0) {
+      fromCity = availableOrigins[(seedVal + idx) % availableOrigins.length];
+    } else {
+      fromCity = S?.hqCity || ownedHubCities[0] || truckLocationCities[0] || Object.keys(LOCATIONS)[0];
+    }
+    let toCity = cities[(seedVal + 3) % cities.length];
     if (toCity === fromCity) {
-      toCity = cities[(cities.indexOf(fromCity) + 1) % cities.length];
+      toCity = cities[(seedVal + 7) % cities.length] || cities[0];
     }
 
+    const cargo = CARGO_TYPES[(seedVal + idx * 7) % CARGO_TYPES.length] || CARGO_TYPES[0];
     const distKm = getLaneDistance(fromCity, toCity);
 
-    // Realistic volume commitment: 10 to 24 consignments over 30 days
-    const totalLoads = 10 + ((idx * 3 + cycleSeed) % 15);
-    
-    // Dynamic enterprise pricing calibrated to distance and industry multiplier
-    const ratePerKm = 14.5 * tpl.baseRateMultiplier;
+    const totalLoads = 10 + (seedVal % 15);
+    const ratePerKm = 14.5 * clientInfo.baseRateMultiplier;
     const rawRate = Math.round(distKm * ratePerKm);
     const ratePerDelivery = Math.max(5500, rawRate);
 
-    // Lucrative completion bonus: 25% to 35% of total contract value
     const totalContractValue = ratePerDelivery * totalLoads;
     const bonusPayout = Math.round((totalContractValue * 0.30) / 5000) * 5000;
 
     const expiresAtMs = (cycleSeed + 1) * (1000 * 60 * 60 * 6);
-
-    const tenderId = `tender_${tpl.cargoId}_${idx}`;
+    const tenderId = `tender_${cargo.id}_${cycleSeed}_${idx}`;
 
     generatedTenders.push({
       id: tenderId,
-      client: tpl.client,
-      industry: tpl.industry,
+      client: clientInfo.client,
+      industry: clientInfo.industry,
       lane: `${fromCity} ⇄ ${toCity}`,
       from: fromCity,
       to: toCity,
       region,
-      cargoType: tpl.cargoId,
-      trailerRequired: tpl.trailerRequired,
+      cargoType: cargo.id,
+      trailerRequired: cargo.trailer,
       durationDays: 30,
       ratePerDelivery,
-      slaTarget: 95 + (idx % 4), // 95% - 98%
-      requiredCerts: tpl.requiredCerts,
-      minFleetSize: tpl.minFleetSize,
-      minReputation: tpl.minReputation,
+      slaTarget: 95 + (seedVal % 4),
+      requiredCerts: cargo.isHazmat ? ['ADR Hazmat'] : cargo.tempControlled ? ['Cold Chain'] : [],
+      minFleetSize: 1 + (seedVal % 3),
+      minReputation: 100,
       totalLoads,
       completedLoads: 0,
       loadsRemaining: totalLoads,
       bonusPayout,
-      desc: `${tpl.desc} Dedicated lane: ${fromCity} ⇄ ${toCity} (${distKm} km).`,
-      icon: tpl.icon,
+      desc: `${clientInfo.industry} priority supply contract. Dedicated lane: ${fromCity} ⇄ ${toCity} (${distKm} km).`,
+      icon: clientInfo.icon,
       expiresAtMs
     });
-  });
+  }
 
   return generatedTenders;
 }

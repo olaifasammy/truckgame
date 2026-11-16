@@ -147,9 +147,9 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
             // Stationary Phase Progressions (Distance-as-Proxy for Time)
             // This ensures trucks move through zero-speed zones like Loading, Rest Stops, and Refueling.
             if (pct < TRIP_PHASES.LOADING_END) {
-              // Loading/Staging Phase (5 minutes real duration)
+              // Loading/Staging Phase (10 minutes real duration)
               const phaseDist = (TRIP_PHASES.LOADING_END / 100) * totalKm;
-              const step = (phaseDist / 300000) * deltaMs;
+              const step = (phaseDist / 600000) * deltaMs;
               a.kmTravelled = Math.min(totalKm, currentKm + Math.max(0.01, step));
             } else if (currentTelem.state === 'resting') {
               // HOS Rest Phase (45 minutes real duration)
