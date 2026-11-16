@@ -139,8 +139,28 @@ action('assign', d => FleetService.assignDriver(+(d as any).id, (d as any).drive
 action('move', d => transport(+(d as any).id, (d as any).city));
 action('upgrade-garage', () => upgradeGarage());
 
+let recallTruckConfirmId: number | null = null;
+let recallTruckTimeout: any = null;
+
 action('recall-truck', d => {
   const truckId = +(d as any).id;
+
+  if (recallTruckConfirmId !== truckId) {
+    recallTruckConfirmId = truckId;
+    if (recallTruckTimeout) clearTimeout(recallTruckTimeout);
+    
+    toast(`⚠️ Tap RECALL again within 4s to confirm recalling Truck #${truckId}.`, 'err');
+
+    recallTruckTimeout = setTimeout(() => {
+      recallTruckConfirmId = null;
+    }, 4000);
+    return;
+  }
+
+  // Confirmed
+  recallTruckConfirmId = null;
+  if (recallTruckTimeout) clearTimeout(recallTruckTimeout);
+
   set((S: GameState) => {
     DispatchActions.recallTruck(S, truckId);
     toast(`Truck #${truckId} recalled to garage.`, 'success');

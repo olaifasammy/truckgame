@@ -10,6 +10,19 @@ import { getCryptoMarketData } from '../finance/markets/crypto';
 import { activeAuctionModalId, renderModalOverlay } from '../../views/home/auction-modal';
 
 /**
+ * Km actually driven on a job so far (deadhead + loaded leg). Reads the journey engine's real
+ * distance; falls back to elapsed-time share only for jobs saved before the journey engine existed.
+ */
+function jobKmDone(a: any, now: number): number {
+  if (a.stage) return (a.dhTravelled || 0) + (a.kmTravelled || 0);
+  if (a.end > a.start) {
+    const pct = Math.min(1, Math.max(0, (now - a.start) / (a.end - a.start)));
+    return (a.km || 0) * pct;
+  }
+  return 0;
+}
+
+/**
  * Updates all live UI elements in the current document seamlessly.
  */
 export function syncLiveDomTelemetry(st: any, now: number): void {
@@ -92,10 +105,7 @@ export function syncLiveDomTelemetry(st: any, now: number): void {
     if (truck) {
       const activeJob = (st.active || []).find((a: any) => a.truck === truck.id);
       let liveOdo = truck.odometer || 0;
-      if (activeJob && activeJob.end > activeJob.start) {
-        const pct = Math.min(1, Math.max(0, (now - activeJob.start) / (activeJob.end - activeJob.start)));
-        liveOdo += (activeJob.km || 0) * pct;
-      }
+      if (activeJob) liveOdo += jobKmDone(activeJob, now);
       const formatted = `${Math.round(liveOdo).toLocaleString()} km`;
       if (el.textContent?.trim() !== formatted) el.textContent = formatted;
     }
@@ -104,10 +114,7 @@ export function syncLiveDomTelemetry(st: any, now: number): void {
   // 6. Company Cumulative Distance
   let inTransitTotalKm = 0;
   (st.active || []).forEach((a: any) => {
-    if (a.end > a.start) {
-      const pct = Math.min(1, Math.max(0, (now - a.start) / (a.end - a.start)));
-      inTransitTotalKm += (a.km || 0) * pct;
-    }
+    inTransitTotalKm += jobKmDone(a, now);
   });
   document.querySelectorAll('[data-stat-km]').forEach(el => {
     const formatted = `${Math.round((st.stats?.km || 0) + inTransitTotalKm).toLocaleString()} km`;
@@ -127,7 +134,9 @@ export function syncLiveDomTelemetry(st: any, now: number): void {
     });
 
     document.querySelectorAll(`[data-truck-telem-btn="${truck.id}"]`).forEach(el => {
-      const label = `🛰️ LIVE TELEMATICS · ${telem.stateLabel} (${telem.speedKmh} KM/H)`;
+      const label = telem.isStationary
+        ? `🛰️ LIVE TELEMATICS · ${telem.stateLabel}`
+        : `🛰️ LIVE TELEMATICS · ${telem.stateLabel} (${telem.speedKmh} KM/H · ${telem.distanceRemainingKm} KM LEFT)`;
       if (el.textContent?.trim() !== label) {
         el.innerHTML = `<span>🛰️</span> ${label}`;
       }

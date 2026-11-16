@@ -1,15 +1,14 @@
 import { TRUCK_MODELS } from './trucks.data';
-import { calculatePerformance } from './trucks.physics';
-import { resolveTruckRegion } from '../../data/world';
-import { calculateMechanicalLimits, DRIVER_TRAITS } from '../simulation/physics';
+import { ensureJourney, isRepositioning, tankCapacity } from './trucks.journey';
 
+/** @deprecated Phases are now real timed stages on the job (see trucks.journey.ts). Kept so old imports compile. */
 export const TRIP_PHASES = {
-  LOADING_END: 3.8,
+  LOADING_END: 1.5,
   REST_START: 40.0,
   REST_END: 48.0,
   FUEL_START: 48.0,
   FUEL_END: 54.0,
-  UNLOADING_START: 97.5
+  UNLOADING_START: 98.5
 };
 
 export type DrivingState =
@@ -17,11 +16,11 @@ export type DrivingState =
   | 'delivering'     // Vehicle in logistics transit (factory-to-depot)
   | 'loading'        // Docked at shipper warehouse, cargo manifest loading
   | 'accelerating'   // Leaving depot / accelerating through gears
-  | 'cruising'       // Steady linehaul cruise in overdrive top gear
-  | 'speeding'       // Overtaking lane / descent momentum
-  | 'slow_down'      // Traffic congestion / highway curve / urban limit
-  | 'braking'        // Heavy service brakes & engine retarder active
-  | 'resting'        // Driver mandatory HOS sleeper berth / truck plaza
+  | 'cruising'       // Steady linehaul cruise
+  | 'speeding'       // Pushing above target (speed-demon drivers)
+  | 'slow_down'      // Urban zone / approaching a stop
+  | 'braking'        // Service brakes & engine retarder active
+  | 'resting'        // Driver mandatory HOS rest
   | 'refueling'      // Highway diesel travel plaza refueling
   | 'unloading';     // Docked at consignee warehouse, unloading pallets
 
@@ -31,34 +30,81 @@ export interface TelematicsSnapshot {
   stateDescription: string;
   stateBadgeColor: string;
   stateIcon: string;
-  
+
   // Real-time dynamic mechanical values
   speedKmh: number;
-  targetSpeedKmh: number;
+  targetSpeedKmh: number;      // current speed limit the truck is working toward
   throttlePct: number;
   brakePct: number;
   retarderActive: boolean;
   engineRpm: number;
   currentGear: string;
-  fuelBurnRate: number;     // Instantaneous L/100km
+  fuelBurnRate: number;        // L/100km while moving, L/h while idling (see fuelBurnUnit)
+  fuelBurnUnit: 'L/100km' | 'L/h';
+  instantL100km: number;
+  avgL100km: number;
   turboBoostBar: number;
   oilPressureBar: number;
   coolantTempC: number;
   brakeTempC: number;
-  
+  fuelPct: number;
+  tankLiters: number;
+
   // Road & Trip telemetry
   gradientPct: number;
   roadSurface: string;
   pctCompleted: number;
   phase: string;
   isMoving: boolean;
-  remainingMs: number;
-  distanceRemainingKm: number;
+  isStationary: boolean;
+  stage: string;
+  legIndex: number;            // 1-based
+  legCount: number;            // 2 for round trips
+  legLabel: string;
+
+  // ETA (Google-Maps style)
+  remainingMs: number;         // total time to finish this leg, incl. stops still to come
+  etaAtMs: number;
+  distanceRemainingKm: number; // driving distance left on this leg (incl. deadhead to pickup)
+  distanceTotalKm: number;
+  avgSpeedKmh: number;         // smoothed speed the ETA is based on
+  stopTimeRemainingMs: number; // loading/unloading/rest/fuel time still ahead
+}
+
+const EXTRA_IDLE = {
+  fuelBurnUnit: 'L/h' as const,
+  instantL100km: 0,
+  avgL100km: 0,
+  fuelPct: 100,
+  tankLiters: 0,
+  isStationary: true,
+  stage: 'idle',
+  legIndex: 1,
+  legCount: 1,
+  legLabel: '',
+  etaAtMs: 0,
+  distanceTotalKm: 0,
+  avgSpeedKmh: 0,
+  stopTimeRemainingMs: 0
+};
+
+const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n));
+
+/** Gear + RPM from road speed. Gear spans widen toward top gear like a real 12/16-speed box. */
+function drivetrain(speedKmh: number, topKmh: number, totalGears: number, throttlePct: number, engineOn: boolean) {
+  if (!engineOn) return { gear: 'P (Park)', rpm: 0, gearNumber: 0 };
+  if (speedKmh < 1) return { gear: 'N (Neutral)', rpm: 650, gearNumber: 0 };
+  const bound = (g: number) => topKmh * Math.pow(g / totalGears, 1.25);
+  let g = 1;
+  while (g < totalGears && speedKmh > bound(g)) g++;
+  const lo = g === 1 ? 0 : bound(g - 1);
+  const frac = clamp((speedKmh - lo) / Math.max(1, bound(g) - lo), 0, 1);
+  return { gear: `${g} / ${totalGears}`, rpm: Math.round(1000 + frac * 800 + throttlePct), gearNumber: g };
 }
 
 /**
- * Computes ultra-realistic, dynamic driving dynamics and vehicle telematics
- * for any tractor across its complete dispatch lifecycle.
+ * PURE reader. All physics lives in trucks.journey.ts (advanceJourney); this only turns the
+ * job's journey fields into a dashboard snapshot. Safe to call every frame from any UI.
  */
 export function getTruckTelematics(
   truck: any,
@@ -66,7 +112,7 @@ export function getTruckTelematics(
   driver?: any,
   nowMs: number = Date.now()
 ): TelematicsSnapshot {
-  const model = TRUCK_MODELS[truck?.modelId] || TRUCK_MODELS['scania_s730'];
+  const model = (TRUCK_MODELS[truck?.modelId] || TRUCK_MODELS['scania_s730']) as any;
   const hasCrawler = truck?.upgrades?.gearbox === '16spd_crawler';
   const totalGears = hasCrawler ? 16 : 12;
 
@@ -102,7 +148,8 @@ export function getTruckTelematics(
         phase: isRoRo ? 'Maritime Shipping' : 'Dealer Delivery',
         isMoving: true,
         remainingMs: remaining,
-        distanceRemainingKm: Math.round(remaining / 60000 * 1.5)
+        distanceRemainingKm: Math.round(remaining / 60000 * 1.5),
+        ...EXTRA_IDLE
       };
     }
 
@@ -130,167 +177,31 @@ export function getTruckTelematics(
       phase: 'Staged at Terminal',
       isMoving: false,
       remainingMs: 0,
-      distanceRemainingKm: 0
+      distanceRemainingKm: 0,
+      ...EXTRA_IDLE
     };
   }
 
-  // 2. Active Consignment Trip Progression & Dynamic Physical Speed Engine
-  // Environmental context
-  const env = activeJob.env || {};
-  const weather = env.weather || 'clear';
+  // 2. Active job: read the journey state
+  const a = activeJob;
+  ensureJourney(a, truck, nowMs);
+
+  const stage: string = a.stage;
+  const repo = isRepositioning(a);
+  const env = a.env || {};
   const ambientTemp = env.temp || 22;
-  const baseGrade = env.roadGrade || 0.5;
+  const weather = env.weather || 'clear';
+  const legCount = a.isRoundTrip ? 2 : 1;
+  const legIndex = a.currentLeg || 1;
+  const legLabel = legCount === 2 ? (legIndex === 1 ? 'OUTBOUND LEG 1/2' : 'RETURN LEG 2/2') : '';
+  const tag = legLabel ? `${legLabel} · ` : '';
 
-  // 1. Mechanical Baseline (Phase 1 Physics Engine)
-  const physicsContext = {
-    cargoWeightKg: (activeJob.weight || 0) * 1000,
-    gradientPct: baseGrade,
-    weatherCoeff: weather === 'snow' ? 0.60 : weather === 'rain' ? 0.85 : 1.0
-  };
+  const speedKmh = Math.round(a.speedKmh || 0);
+  let throttlePct = a.throttlePct || 0;
+  const brakePct = a.brakePct || 0;
+  const retarderActive = !!a.retarder;
+  const moving = speedKmh > 0;
 
-  const mech = calculateMechanicalLimits(truck, physicsContext);
-  const baseTopSpeed = mech.maxAttainableSpeed;
-
-  // 2. Human & Regional Modifiers (Phase 2)
-  const trait = (driver?.trait || 'STANDARD') as keyof typeof DRIVER_TRAITS;
-  const traitCfg = DRIVER_TRAITS[trait] || DRIVER_TRAITS.STANDARD;
-
-  const driverLevel = driver?.level || 1;
-  const driverSkill = driver?.skill || 5;
-  const driverFatigue = driver?.fatigue || 0;
-  
-  const roadConditionCoeff = (activeJob.from && resolveTruckRegion(activeJob.from) === 'Africa') ? 0.85 : 1.0;
-
-  // Fatigue Jitter: Tired drivers can't maintain steady speed
-  const fatigueJitter = driverFatigue > 50 
-    ? (Math.sin(nowMs / 2000) * (driverFatigue / 100) * 5) 
-    : 0;
-
-  // Driver Performance modifier: Tired drivers lose focus
-  const fatiguePenalty = driverFatigue > 80 ? 0.25 : driverFatigue > 60 ? 0.15 : 0;
-  const skillBonus = Math.min(0.1, (driverSkill / 100) * 0.1);
-  const driverPerformanceCoeff = ((1.0 - fatiguePenalty) + skillBonus) * traitCfg.speedMod;
-
-  // Target Speed vs Physical Capability
-  const userTargetSpeed = truck.targetSpeed || truck.cruiseSpeed || activeJob.targetSpeed || 85;
-  
-  // FINAL EFFECTIVE SPEED: 
-  // Base calculation + Fatigue Jitter (Simulating micro-sleeps or lack of concentration)
-  const speedBeforeJitter = Math.min(baseTopSpeed, userTargetSpeed * physicsContext.weatherCoeff * roadConditionCoeff * driverPerformanceCoeff);
-  const effectiveCruiseSpeed = Math.max(15, Math.round(speedBeforeJitter + fatigueJitter));
-
-  // Phase 3: Final Load-Based Fuel Logic for UI display
-  const finalL100km = mech.instantL100km * traitCfg.fuelBurnMod;
-
-  // Dynamic Weather road surface and feedback (used for telem object)
-  const calculatedRoadSurface = weather === 'snow'
-    ? 'Icy / Deep Snow'
-    : weather === 'rain'
-      ? 'Wet / Slippery'
-      : roadConditionCoeff < 1.0
-        ? 'Unpaved / Rough'
-        : 'Dry Asphalt';
-
-  // Total trip distance
-  const totalKm = Math.max(1, activeJob.km || 100);
-
-  // Initialize or track physical km travelled
-  let kmTravelled = activeJob.kmTravelled;
-  if (typeof kmTravelled !== 'number') {
-    const initElapsed = Math.max(0, nowMs - activeJob.start);
-    const initDuration = Math.max(1, activeJob.end - activeJob.start);
-    kmTravelled = Math.min(totalKm, totalKm * (initElapsed / initDuration));
-    activeJob.kmTravelled = kmTravelled;
-  }
-
-  // Calculate percentage completed based on physical distance covered
-  const pctCompleted = parseFloat((Math.min(100, Math.max(0, (kmTravelled / totalKm) * 100))).toFixed(1));
-
-  const isLongTrip = totalKm >= 400;
-  const { REST_START, REST_END, FUEL_START, FUEL_END, LOADING_END, UNLOADING_START } = TRIP_PHASES;
-  
-  // Phase 1: Terminal Operations (Loading, Weighbridge, Inspection)
-  const LOADING_DURATION_MS = 600000; // 10 minutes total for professional terminal turnaround
-
-  // 1. Precise Driving Distance Calculation
-  // We calculate exactly how many "Driving Kilometers" are left in the journey.
-  // The timeline has stationary gaps: [0-2 Loading], [42-46 Rest], [78-80 Fuel], [98-100 Unloading]
-  let drivingPctRemaining = 0;
-  
-  if (isLongTrip) {
-    // Segment 1: Drive to Rest
-    if (pctCompleted < REST_START) {
-      drivingPctRemaining += (REST_START - Math.max(pctCompleted, LOADING_END));
-    }
-    // Segment 2: Mid-Trip Drive
-    if (pctCompleted < FUEL_START) {
-      drivingPctRemaining += (FUEL_START - Math.max(pctCompleted, REST_END));
-    }
-    // Segment 3: Final Drive
-    if (pctCompleted < UNLOADING_START) {
-      drivingPctRemaining += (UNLOADING_START - Math.max(pctCompleted, FUEL_END));
-    }
-  } else {
-    // Short Trip: Only Segment 1 (to Unloading)
-    if (pctCompleted < UNLOADING_START) {
-      drivingPctRemaining += (UNLOADING_START - Math.max(pctCompleted, LOADING_END));
-    }
-  }
-
-  const physicalDistanceRemainingKm = (drivingPctRemaining / 100) * totalKm;
-
-  // 2. Stable Speed for ETA Projection (Google Maps Style)
-  // We use the truck's physical potential on the current terrain/load, capped by the driver's target.
-  // We DO NOT use the temporary "accelerating" speed, as it causes massive ETA jumps on on-ramps.
-  const projectedSpeed = Math.min(effectiveCruiseSpeed, mech.maxAttainableSpeed);
-  const stableTravelSpeed = Math.max(25, projectedSpeed);
-
-  // 3. Dynamic Stop Delays Remaining (in Ms)
-  let stopDelaysMs = 0;
-  
-  // Loading delay
-  if (pctCompleted < LOADING_END) {
-    const ratio = Math.max(0, 1 - (pctCompleted / LOADING_END));
-    stopDelaysMs += ratio * LOADING_DURATION_MS;
-  }
-
-  if (isLongTrip) {
-    // Rest Stop (45m)
-    if (pctCompleted < REST_START) {
-      stopDelaysMs += 2700000;
-    } else if (pctCompleted >= REST_START && pctCompleted < REST_END) {
-      const ratio = Math.max(0, 1 - (pctCompleted - REST_START) / (REST_END - REST_START));
-      stopDelaysMs += ratio * 2700000;
-    }
-    
-    // Refuel Stop (15m)
-    if (pctCompleted < FUEL_START) {
-      stopDelaysMs += 900000;
-    } else if (pctCompleted >= FUEL_START && pctCompleted < FUEL_END) {
-      const ratio = Math.max(0, 1 - (pctCompleted - FUEL_START) / (FUEL_END - FUEL_START));
-      stopDelaysMs += ratio * 900000;
-    }
-  }
-
-  // Unloading delay (10m)
-  if (pctCompleted < UNLOADING_START) {
-    stopDelaysMs += 600000;
-  } else if (pctCompleted < 100) {
-    const ratio = Math.max(0, 1 - (pctCompleted - UNLOADING_START) / (100 - UNLOADING_START));
-    stopDelaysMs += ratio * 600000;
-  }
-
-  // 4. Final ETA Summation (Real-Time Ms)
-  // Time compression: 13:1 scale (~276,923ms per game hour)
-  const remainingDrivingMs = Math.round((physicalDistanceRemainingKm / stableTravelSpeed) * 276923);
-  const remainingMs = Math.max(0, remainingDrivingMs + Math.round(stopDelaysMs));
-  
-  activeJob.end = nowMs + remainingMs;
-
-  // Dynamic road surface context
-  const roadSurface = calculatedRoadSurface;
-
-  // 3. State Machine by Trip Progress & Time Cycle
   let state: DrivingState;
   let stateLabel: string;
   let stateDescription: string;
@@ -298,254 +209,140 @@ export function getTruckTelematics(
   let stateIcon: string;
   let phase: string;
 
-  let speedKmh = 0;
-  let throttlePct = 0;
-  let brakePct = 0;
-  let retarderActive = false;
-  let engineRpm = 650;
-  let gearNumber = totalGears;
-  let currentGear = `${gearNumber} / ${totalGears}`;
-  let turboBoostBar = 1.4;
-  let brakeTempC = 75;
-  let gradientPct = baseGrade;
+  const dhPrefix = stage === 'deadhead' ? 'DEADHEAD · ' : '';
+  const moveLabel: Record<string, [DrivingState, string, string, string, string]> = {
+    accelerating: ['accelerating', 'ACCELERATING', 'Building speed through the gears under load; predictive powertrain managing shift points.', '#10b981', '🚀'],
+    cruising: ['cruising', 'HIGHWAY LINEHAUL CRUISING', 'Holding steady linehaul speed in a high gear; automated predictive powertrain in fuel-efficient eco band.', '#10b981', '🛣️'],
+    speeding: ['speeding', 'PUSHING ABOVE TARGET', 'Driver is running above the set cruise speed; fuel burn and wear rising.', '#eab308', '⚡'],
+    slow_down: ['slow_down', 'SLOW DOWN / ZONE LIMIT', 'Holding a reduced speed for the urban/terminal zone or the approach to the next stop.', '#f97316', '⚠️'],
+    braking: ['braking', 'BRAKING / ENGINE RETARDER', 'Service brakes and driveline retarder scrubbing speed for the stop ahead.', '#ef4444', '🛑']
+  };
 
-  if (pctCompleted < LOADING_END) {
-    // Phase 1: Cargo Loading & Inspection
-    const isRepositioning = activeJob.kind === 'move' || !activeJob.cargoId;
-    state = isRepositioning ? 'parking' : 'loading';
-    phase = isRepositioning ? 'Staging for Transit' : 'Terminal Loading';
-    stateLabel = isRepositioning ? 'PRE-TRIP INSPECTION / STAGING' : 'CARGO DOCK LOADING & WEIGHBRIDGE';
-    stateDescription = isRepositioning
-      ? `Unit staged at ${activeJob.from} depot. Performing multi-point safety inspection and air system pressure check before repositioning deadhead.`
-      : `Docked at ${activeJob.from} terminal warehouse. Securing ${activeJob.cargo} payload (${activeJob.weight || 18}t) & validating bridge axle weights.`;
-    stateBadgeColor = isRepositioning ? '#94a3b8' : '#38bdf8';
-    stateIcon = isRepositioning ? '📋' : '📦';
-    speedKmh = 0;
-    throttlePct = 0;
-    brakePct = 100;
-    engineRpm = 650;
-    currentGear = 'N (Neutral)';
-    turboBoostBar = 0.1;
-  } else if (pctCompleted < 8.5) {
-    // Phase 2: Terminal Departure & Acceleration
-    state = 'accelerating';
-    phase = 'Departure & On-Ramp';
-    stateLabel = 'TERMINAL DEPARTURE / ACCELERATING';
-    stateDescription = 'Pulling gross combination mass out of freight yard onto highway interchange; climbing transmission ratios under heavy throttle.';
-    stateBadgeColor = '#10b981';
-    stateIcon = '🚀';
-    const accelFactor = (pctCompleted - LOADING_END) / (8.5 - LOADING_END); // 0 to 1
-    speedKmh = Math.round(45 + accelFactor * (baseTopSpeed - 45));
-    throttlePct = 95;
-    brakePct = 0;
-    gearNumber = Math.max(3, Math.min(totalGears - 2, Math.floor(3 + accelFactor * (totalGears - 5))));
-    currentGear = `${gearNumber} / ${totalGears}`;
-    engineRpm = 1750 + Math.sin(accelFactor * 10) * 150;
-    turboBoostBar = 2.3;
-  } else if (isLongTrip && pctCompleted >= REST_START && pctCompleted < REST_END) {
-    // Phase 3: Mandatory Rest Stop (Sleeper Berth)
+  if (stage === 'loading') {
+    state = repo ? 'parking' : 'loading';
+    phase = repo ? 'Staging for Transit' : 'Terminal Loading';
+    stateLabel = repo ? 'PRE-TRIP INSPECTION / STAGING' : 'CARGO DOCK LOADING & WEIGHBRIDGE';
+    stateDescription = repo
+      ? `Unit staged at ${a.from} depot. Multi-point safety inspection and air system pressure check before departure.`
+      : `Docked at ${a.from} terminal. Securing ${a.cargo} payload (${a.weight || 18}t) & validating axle weights.`;
+    stateBadgeColor = repo ? '#94a3b8' : '#38bdf8';
+    stateIcon = repo ? '📋' : '📦';
+  } else if (stage === 'unloading' || stage === 'done') {
+    state = repo ? 'parking' : 'unloading';
+    phase = repo ? 'Final Docking' : 'Final Bay Unloading';
+    stateLabel = repo ? 'TERMINAL ARRIVAL / SHUTDOWN' : 'CONSIGNEE DOCK BAY UNLOADING';
+    stateDescription = repo
+      ? `Arrived at ${a.to}. Engaging parking brake and performing post-trip shutdown.`
+      : `Reversed into ${a.to} receiving dock. Bill of lading signed; palletized cargo extraction in progress.`;
+    stateBadgeColor = repo ? '#94a3b8' : '#38bdf8';
+    stateIcon = repo ? '🅿️' : '🏁';
+  } else if (stage === 'resting') {
     state = 'resting';
-    phase = 'Midway HOS Rest Stop';
+    phase = 'Safety Rest Break';
     stateLabel = 'MANDATORY HOS REST / SLEEPER BERTH';
-    stateDescription = 'Parked at highway travel plaza for mandatory electronic tachograph logbook rest break & tire inspection walkaround.';
+    stateDescription = 'Parked at a highway travel plaza for the mandatory tachograph rest break and tire walkaround.';
     stateBadgeColor = '#a855f7';
     stateIcon = '☕';
-    speedKmh = 0;
-    throttlePct = 0;
-    brakePct = 100;
-    engineRpm = 0;
-    currentGear = 'P (Park)';
-    turboBoostBar = 0.0;
-  } else if (isLongTrip && pctCompleted >= FUEL_START && pctCompleted < FUEL_END) {
-    // Phase 4: High-Flow Highway Refueling
+  } else if (stage === 'refueling') {
     state = 'refueling';
     phase = 'En-Route Fueling Station';
     stateLabel = 'HIGH-FLOW COMMERCIAL DIESEL REFUELING';
-    stateDescription = 'Stationed at interstate travel plaza commercial canopy; bunkering ultra-low sulfur diesel fuel and replenishing DEF adBlue reservoir.';
+    stateDescription = 'Stationed at an interstate travel plaza; bunkering ultra-low sulfur diesel and topping up DEF.';
     stateBadgeColor = '#eab308';
     stateIcon = '⛽';
-    speedKmh = 0;
-    throttlePct = 0;
-    brakePct = 100;
-    engineRpm = 0;
-    currentGear = 'P (Park)';
-    turboBoostBar = 0.0;
-  } else if (pctCompleted >= UNLOADING_START) {
-    // Phase 5: Consignee Dock Unloading
-    const isRepositioning = activeJob.kind === 'move' || !activeJob.cargoId;
-    state = isRepositioning ? 'parking' : 'unloading';
-    phase = isRepositioning ? 'Final Docking' : 'Final Bay Unloading';
-    stateLabel = isRepositioning ? 'TERMINAL ARRIVAL / SHUTDOWN' : 'CONSIGNEE DOCK BAY UNLOADING';
-    stateDescription = isRepositioning
-      ? `Repositioning complete. Unit arrived at ${activeJob.to} hub terminal; engaging parking brake and performing post-trip diagnostic shutdown.`
-      : `Reversed into ${activeJob.to} receiving dock bay #4. Digital consignment bill of lading signed; palletized cargo extraction in progress.`;
-    stateBadgeColor = isRepositioning ? '#94a3b8' : '#38bdf8';
-    stateIcon = isRepositioning ? '🅿️' : '🏁';
-    speedKmh = 0;
-    throttlePct = 0;
-    brakePct = 100;
-    engineRpm = 650;
-    currentGear = 'R (Docking)';
-    turboBoostBar = 0.1;
-  } else if (pctCompleted >= 93.5 && pctCompleted < UNLOADING_START) {
-    // Phase 5: Approach Deceleration & Highway Exit
-    state = 'braking';
-    phase = 'Terminal Arrival Approach';
-    stateLabel = 'HIGHWAY OFF-RAMP / ENGINE RETARDER';
-    stateDescription = `Exiting expressway toward ${activeJob.to} industrial park; hydraulic driveline retarder and service brakes actively scrubbing kinetic speed.`;
-    stateBadgeColor = '#f97316';
-    stateIcon = '🛑';
-    const decelFactor = (pctCompleted - 93.5) / (97.5 - 93.5);
-    speedKmh = Math.max(25, Math.round(baseTopSpeed * 0.85 - decelFactor * 50));
-    throttlePct = 0;
-    brakePct = 65;
-    retarderActive = true;
-    gearNumber = Math.max(4, Math.floor(totalGears - 3 - decelFactor * 4));
-    currentGear = `${gearNumber} / ${totalGears}`;
-    engineRpm = 1750; // Jake brake compression RPM
-    turboBoostBar = 0.3;
-    brakeTempC = 240;
-  } else if (pctCompleted >= 97.5) {
-    // Phase 6: Consignee Dock Unloading
-    const isRepositioning = activeJob.kind === 'move' || !activeJob.cargoId;
-    state = isRepositioning ? 'parking' : 'unloading';
-    phase = isRepositioning ? 'Final Docking' : 'Final Bay Unloading';
-    stateLabel = isRepositioning ? 'TERMINAL ARRIVAL / SHUTDOWN' : 'CONSIGNEE DOCK BAY UNLOADING';
-    stateDescription = isRepositioning
-      ? `Repositioning complete. Unit arrived at ${activeJob.to} hub terminal; engaging parking brake and performing post-trip diagnostic shutdown.`
-      : `Reversed into ${activeJob.to} receiving dock bay #4. Digital consignment bill of lading signed; palletized cargo extraction in progress.`;
-    stateBadgeColor = isRepositioning ? '#94a3b8' : '#38bdf8';
-    stateIcon = isRepositioning ? '🅿️' : '🏁';
-    speedKmh = 0;
-    throttlePct = 0;
-    brakePct = 100;
-    engineRpm = 650;
-    currentGear = 'R (Docking)';
-    turboBoostBar = 0.1;
   } else {
-    // Phase 7: Dynamic Linehaul Highway Transit (Simulated continuous 50-second traffic & terrain cycle)
-    phase = pctCompleted < 50 ? 'Long-Haul Leg 1' : 'Long-Haul Leg 2';
-    const cycleSec = ((Math.floor(nowMs / 1000) + (truck.id * 11)) % 50);
-
-    if (cycleSec < 22) {
-      // 1. Cruising (Steady Highway Linehaul)
-      state = 'cruising';
-      stateLabel = 'HIGHWAY LINEHAUL CRUISING';
-      stateDescription = 'Maintaining steady linehaul cruise speed in overdrive top gear; automated predictive powertrain in fuel-efficient eco band.';
-      stateBadgeColor = '#10b981';
-      stateIcon = '🛣️';
-      speedKmh = Math.round(effectiveCruiseSpeed - 2 + Math.sin(nowMs / 3000) * 2.5);
-      throttlePct = 60;
-      brakePct = 0;
-      gearNumber = totalGears;
-      engineRpm = Math.round(1280 + (speedKmh % 10) * 12);
-      turboBoostBar = 1.45;
-    } else if (cycleSec < 31) {
-      // 2. Speeding / Overtaking Passing Lane
-      state = 'speeding';
-      stateLabel = 'PASSING LANE / OVERTAKING SPEED';
-      stateDescription = 'Accelerating past slower vehicles in expressway passing lane; turbocharger building positive manifold pressure.';
-      stateBadgeColor = '#eab308';
-      stateIcon = '⚡';
-      speedKmh = Math.min(130, Math.round(effectiveCruiseSpeed * 1.12 + 2 + Math.cos(nowMs / 2500) * 2));
-      throttlePct = 90;
-      brakePct = 0;
-      gearNumber = totalGears;
-      engineRpm = Math.round(1480 + (speedKmh % 8) * 16);
-      turboBoostBar = 2.15;
-    } else if (cycleSec < 40) {
-      // 3. Slow Down (Traffic Congestion or Road Curvature)
-      state = 'slow_down';
-      stateLabel = 'TRAFFIC SLOWDOWN / CURVATURE';
-      stateDescription = 'Easing throttle for highway traffic congestion and road curvature; automated transmission downshifting into direct drive.';
-      stateBadgeColor = '#f97316';
-      stateIcon = '⚠️';
-      speedKmh = Math.round(effectiveCruiseSpeed * 0.76 + Math.sin(nowMs / 2000) * 3);
-      throttlePct = 20;
-      brakePct = 15;
-      gearNumber = totalGears - 2;
-      engineRpm = Math.round(1220 + (speedKmh % 6) * 14);
-      turboBoostBar = 0.7;
-    } else if (cycleSec < 45) {
-      // 4. Braking (Engine Retarder & Service Braking)
-      state = 'braking';
-      stateLabel = 'ENGINE RETARDER & SERVICE BRAKING';
-      stateDescription = 'Exhaust brake and driveline retarder engaged down highway gradient; scrubbing momentum without overheating foundation disk brakes.';
-      stateBadgeColor = '#ef4444';
-      stateIcon = '🛑';
-      speedKmh = Math.max(25, Math.round(effectiveCruiseSpeed * 0.62 - (cycleSec - 40) * 4));
-      throttlePct = 0;
-      brakePct = 70;
-      retarderActive = true;
-      gearNumber = totalGears - 3;
-      engineRpm = 1720; // High engine compression braking RPM
-      turboBoostBar = 0.25;
-      brakeTempC = 190;
-      gradientPct = -3.8;
-    } else {
-      // 5. Re-Accelerating back up to cruise
-      state = 'accelerating';
-      stateLabel = 'RE-ACCELERATING TO CRUISE SPEED';
-      stateDescription = 'Traffic cleared; applying progressive throttle to spool turbocharger and regain target linehaul cruise speed.';
-      stateBadgeColor = '#38bdf8';
-      stateIcon = '🚀';
-      const reAccel = (cycleSec - 45) / 5;
-      speedKmh = Math.round(effectiveCruiseSpeed * 0.65 + reAccel * (effectiveCruiseSpeed * 0.32));
-      throttlePct = 85;
-      brakePct = 0;
-      gearNumber = Math.max(totalGears - 2, Math.floor(totalGears - 2 + reAccel * 2));
-      engineRpm = Math.round(1680 - reAccel * 250);
-      turboBoostBar = 2.05;
-    }
-
-    currentGear = `${gearNumber} / ${totalGears}`;
+    const m = moveLabel[a.mode] || moveLabel.cruising;
+    state = m[0];
+    stateLabel = dhPrefix + m[1];
+    stateDescription = stage === 'deadhead'
+      ? `Running empty to the pickup at ${a.from}. ${m[2]}`
+      : m[2];
+    stateBadgeColor = m[3];
+    stateIcon = m[4];
+    phase = stage === 'deadhead'
+      ? 'Deadhead to Pickup'
+      : legCount === 2
+        ? (legIndex === 1 ? 'Outbound Haul' : 'Return Haul')
+        : (a.km >= 400 ? 'Long-Haul' : 'Regional Haul');
   }
 
-  // 4. Auxiliary Sensor Telemetry
-  const isMoving = speedKmh > 0;
-  
-  const fuelBurnRate = isMoving
-    ? parseFloat((finalL100km * (0.55 + (throttlePct / 100) * 0.65 + (speedKmh > 90 ? 0.15 : 0))).toFixed(1))
-    : 1.8; // Idle burn L/hr
+  // Cruise throttle breathes a little (display only)
+  if (state === 'cruising') throttlePct = clamp(throttlePct + Math.round(Math.sin(nowMs / 900) * 2), 0, 100);
+
+  const engineOn = stage !== 'resting' && stage !== 'refueling';
+  const dt = drivetrain(speedKmh, model.topSpeed || 120, totalGears, throttlePct, engineOn);
+  const engineRpm = stage === 'loading' || stage === 'unloading' || stage === 'done' ? 650 : dt.rpm;
+
+  const cap = tankCapacity(truck);
+  const tankLiters = a.tankL ?? 0;
+  const fuelPct = Math.round(clamp((tankLiters / cap) * 100, 0, 100) * 10) / 10;
+
+  const idling = !moving && engineOn;
+  const instL100 = a.instL100km || 0;
+  const fuelBurnRate = moving
+    ? parseFloat((instL100 * (0.8 + 0.4 * (throttlePct / 100))).toFixed(1))
+    : idling ? 1.8 : 0;
 
   const coolantTempC = Math.round(
-    82 + (finalL100km / 5) + 
-    (ambientTemp > 30 ? 5 : 0) +
-    (throttlePct > 80 ? 4 : 0) +
-    (state === 'resting' || state === 'refueling' ? -15 : 0)
+    82 + throttlePct * 0.12 + (ambientTemp > 30 ? 5 : 0) + (!engineOn ? -15 : 0)
   );
+  const oilPressureBar = parseFloat((moving ? 4.2 + (engineRpm / 2000) * 0.8 : engineOn ? 2.4 : 0).toFixed(1));
+  const turboBoostBar = parseFloat((engineOn ? 0.1 + (throttlePct / 100) * 1.8 : 0).toFixed(2));
+  const brakeTempC = Math.round(80 + brakePct * 1.8 + (retarderActive ? 25 : 0));
 
-  const oilPressureBar = parseFloat(
-    (isMoving ? 4.2 + (engineRpm / 2000) * 0.8 : 2.4).toFixed(1)
-  );
+  const dhTotal = a.dh || 0;
+  const kmTotal = Math.max(1, a.km || 1);
+  const distTotal = dhTotal + kmTotal;
+  const distDone = Math.min(distTotal, (a.dhTravelled || 0) + (a.kmTravelled || 0));
+  const pctCompleted = parseFloat(clamp((distDone / distTotal) * 100, 0, 100).toFixed(1));
+
+  const roadSurface = weather === 'snow'
+    ? 'Icy / Deep Snow'
+    : weather === 'rain'
+      ? 'Wet / Slippery'
+      : stage === 'loading' || stage === 'unloading' || stage === 'resting' || stage === 'refueling'
+        ? 'Terminal / Plaza Concrete'
+        : (a.from && a.env?.region === 'Africa') ? 'Unpaved / Rough' : 'Dry Asphalt';
 
   return {
     state,
-    instantL100km: finalL100km,
-    avgL100km: finalL100km, // For UI, we'll use instant as avg for now
-    coolantTempC,
-    stateLabel,
+    stateLabel: tag + stateLabel,
     stateDescription,
     stateBadgeColor,
     stateIcon,
     speedKmh,
-    targetSpeedKmh: baseTopSpeed,
+    targetSpeedKmh: Math.round(a.limitKmh || 0),
     throttlePct,
     brakePct,
     retarderActive,
     engineRpm,
-    currentGear,
+    currentGear: dt.gear,
     fuelBurnRate,
-    turboBoostBar: parseFloat(turboBoostBar.toFixed(2)),
+    fuelBurnUnit: moving ? 'L/100km' : 'L/h',
+    instantL100km: instL100,
+    avgL100km: instL100,
+    turboBoostBar,
     oilPressureBar,
+    coolantTempC,
     brakeTempC,
-    gradientPct: parseFloat(gradientPct.toFixed(1)),
+    fuelPct,
+    tankLiters: Math.round(tankLiters),
+    gradientPct: parseFloat((a.gradePct || 0).toFixed(1)),
     roadSurface,
     pctCompleted,
     phase,
-    isMoving,
-    remainingMs,
-    distanceRemainingKm: Math.round(physicalDistanceRemainingKm)
+    isMoving: moving,
+    isStationary: !moving,
+    stage,
+    legIndex,
+    legCount,
+    legLabel,
+    remainingMs: Math.max(0, (a.end || nowMs) - nowMs),
+    etaAtMs: a.end || nowMs,
+    distanceRemainingKm: Math.round(a.remainingDriveKm ?? 0),
+    distanceTotalKm: Math.round(distTotal),
+    avgSpeedKmh: Math.round(a.planSpeedKmh || a.avgSpeedKmh || 0),
+    stopTimeRemainingMs: Math.round(a.remainingStopMs || 0)
   };
 }
 

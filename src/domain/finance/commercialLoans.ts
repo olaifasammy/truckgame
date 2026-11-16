@@ -283,9 +283,36 @@ export function getAvailableLoanOffers(S: any): LoanOffer[] {
 /**
  * Executes a loan application with strict guardrails, rank checks, permit verifications, and committee approval.
  */
-export function executeTakeLoan(S: any, offerId: string): boolean {
-  const offers = getAvailableLoanOffers(S);
-  const offer = offers.find(o => o.id === offerId);
+export function executeTakeLoan(S: any, offerId: string, customAmount?: number): boolean {
+  let offer: LoanOffer | undefined;
+  if (offerId === 'custom_drawdown') {
+    const amt = customAmount || 25000;
+    const profile = calculateEnterpriseCreditProfile(S);
+    const customApr = profile.rating === 'AAA' ? 3.4 : profile.rating === 'AA' ? 4.2 : profile.rating === 'A' ? 5.2 : 6.5;
+    const customAmort = calculateLoanAmortization(amt, customApr, 60);
+    offer = {
+      id: 'custom_drawdown',
+      name: `Custom Revolving Line of Credit ($${amt.toLocaleString()})`,
+      category: 'startup',
+      lender: 'Nexus Fleet Syndicate Commercial Bank',
+      principal: amt,
+      apr: customApr,
+      termDays: 60,
+      dailyRate: customAmort.dailyRate,
+      totalRepayment: customAmort.totalRepayment,
+      totalInterest: customAmort.totalInterest,
+      requiredRating: profile.rating,
+      requiredTier: 1,
+      minAssetsRequired: 0,
+      badge: 'CUSTOM DRAWDOWN',
+      description: `Custom revolving credit facility drawn against enterprise asset valuation.`,
+      benefits: ['60-day institutional term', `${customApr}% APR interest rate`]
+    };
+  } else {
+    const offers = getAvailableLoanOffers(S);
+    offer = offers.find(o => o.id === offerId);
+  }
+
   if (!offer) {
     toast('Loan offer not found or expired.', 'err');
     return false;

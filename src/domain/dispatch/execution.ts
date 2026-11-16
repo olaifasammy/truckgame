@@ -17,6 +17,7 @@ import { isCityUnlockedHub, getHubForCity, getHubFacilityForCity } from '../hubs
 import { calculateTripToll } from '../economy/tolls';
 
 import { getDispatchNeuralNetwork } from '../ai/neuralNetwork';
+import { initJourney } from '../trucks/trucks.journey';
 
 /**
  * Authoritative engine for dispatch lifecycle.
@@ -91,15 +92,9 @@ export const DispatchExecution = {
     const leg1Km = j.isRoundTrip ? (j.baseKm || j.km / 2) : j.km;
     const totalKm = leg1Km + dh;
     
-    // Calculate raw driving time
-    const drivingTimeMs = tripMs(totalKm, st.topSpeed, routeEnv);
-    
-    // Add time for mandatory stops on long trips (> 500km)
-    const isLongTrip = totalKm > 500;
-    const restTimeMs = isLongTrip ? (45 * 60 * 1000) : 0; // 45 minute rest
-    const fuelTimeMs = isLongTrip ? (15 * 60 * 1000) : 0; // 15 minute fuel
-    
-    const duration = drivingTimeMs + restTimeMs + fuelTimeMs;
+    // Rough first estimate only; initJourney() replaces `end` with the live ETA
+    // (deadhead + loading + driving + unloading + predicted rests/fuel stops).
+    const duration = tripMs(totalKm, st.topSpeed, routeEnv);
 
     const isHazmatJob = cargo?.isHazmat || (cargo?.trailer === 'tanker') || (cargo?.trailer === 'hazmat');
     const trailerType = cargo?.trailer || (j as any).trailer || 'curtain';
@@ -141,6 +136,10 @@ export const DispatchExecution = {
       (activeEntry as any).currentLeg = 1;
     }
 
+    // Boots the stage machine: deadhead -> loading -> driving -> unloading, with live fuel/ETA.
+    // (Fuel was topped up above, so the tank snapshot taken here is the real departure level.)
+    initJourney(activeEntry, t, now);
+
     S.active.push(activeEntry);
     
     t.status = 'busy';
@@ -153,7 +152,7 @@ export const DispatchExecution = {
    * Internal helper for refueling before departure.
    */
   _handleAutoRefuel(S: any, t: any): void {
-    const tankCapacity = 800;
+    const tankCapacity = (TRUCK_MODELS[t.modelId] as any)?.tankSize || 800;
     const currentFuel = t.fluids?.fuel ?? tankCapacity;
     const neededFuel = Math.max(0, tankCapacity - currentFuel);
     if (neededFuel <= 0) return;
@@ -182,7 +181,7 @@ export const DispatchExecution = {
     
     const msg = stillNeeded > 0 
       ? `Topped up tank (${Math.round(fromBunker)}L from ${fuelSourceLabel}, ${Math.round(stillNeeded)}L station: -$${stationCost}).`
-      : `Filled tank (800L) from ${fuelSourceLabel} ($0 cash).`;
+      : `Filled tank (${tankCapacity}L) from ${fuelSourceLabel} ($0 cash).`;
     pushNote(S, `${t.name}: ${msg}`, { title: 'AUTO-REFUEL', type: 'ops' });
   },
 
@@ -199,16 +198,69 @@ export const DispatchExecution = {
     const aucRes = BiddingEngine.tickAuctions(S, now);
     const auctionChanged = aucRes.listChanged;
     const bidChanged = aucRes.bidChanged;
-    const done: any[] = S.active.filter((a: any) => a.end <= now);
+    const isDone = (a: any) => a.stage === 'done' || (a.stage === undefined && a.end <= now);
+    const done: any[] = S.active.filter(isDone);
     
     if (done.length > 0) {
-      S.active = S.active.filter((a: any) => a.end > now);
+      S.active = S.active.filter((a: any) => !isDone(a));
       for (const job of done) {
         this._finalizeJob(S, job);
       }
     }
 
     return { done, auctionChanged, bidChanged };
+  },
+
+  /**
+   * 2-way operation for one-way jobs: the moment a truck delivers to an external city, generate a load
+   * back toward the origin and dispatch it on the same truck. Returns true if the truck is now rolling
+   * again. If it can't (trailer/driver/eligibility), the load stays on the board and the caller deadheads.
+   */
+  _dispatchBackhaul(S: any, t: any, a: any): boolean {
+    let job: any;
+    try {
+      job = FreightEngine.generate(S, {
+        forceRegion: resolveTruckRegion(a.to),
+        forceFrom: a.to,
+        forceTo: a.from,
+        forceTrailer: t.trailer || undefined
+      });
+    } catch (e) {
+      console.error('Failed to generate backhaul', e);
+      return false;
+    }
+    if (!job) return false;
+
+    // A backhaul is always a plain one-way load home.
+    job.isRoundTrip = false;
+    job.km = job.baseKm;
+    job.pay = job.leg1Pay;
+    job.leg2Pay = 0;
+    job.turnaroundBonus = 0;
+    job.returnCargoId = undefined;
+    job.returnCargoName = undefined;
+
+    if (!S.jobs) S.jobs = [];
+    S.jobs.unshift(job);
+
+    const prevStatus = t.status;
+    t.status = 'idle'; // eligibility check requires an idle truck
+    t.loc = a.to;
+    const res = this.takeJob(S, job.id, t.id, true);
+    if (res.success) {
+      pushNote(S, `${t.name} delivered to ${LOCATIONS[a.to]?.name || a.to} and took a backhaul load to ${LOCATIONS[job.to]?.name || job.to}.`, {
+        title: 'BACKHAUL SECURED',
+        type: 'ops'
+      });
+      return true;
+    }
+
+    t.status = prevStatus;
+    pushNote(S, `Freight manifest ready: ${LOCATIONS[a.to]?.name || a.to} → ${LOCATIONS[a.from]?.name || a.from}. Available on Freight Board (${res.reason || 'truck not eligible'}).`, {
+      title: 'RETURN HAUL READY',
+      type: 'ops'
+    });
+    return false;
   },
 
   _processAssetDeliveries(S: any, now: number): void {
@@ -256,18 +308,33 @@ export const DispatchExecution = {
       // If destination is an unlocked hub owned by the player, it parks at that hub and awaits new jobs!
       if (isDestinationUnlockedHub) {
         t.loc = a.to; 
-      } else if (a.isRoundTrip && a.currentLeg === 2) {
-        t.loc = a.from;
       } else {
+        // Truck stays at the external city after delivery
         t.loc = a.to;
       }
 
+      // The journey engine already tracked fuel live (burn + mid-route stops). Neutralise syncUsage's
+      // own fuel/roadside billing, then restore the real tank level and bill the stations we used.
+      const trackedTank = typeof a.tankL === 'number';
+      if (trackedTank) t.fluids.fuel = 1e9;
       syncUsage(t, km, st, a.env, S);
+      if (trackedTank) {
+        t.fluids.fuel = Math.max(0, Math.round(a.tankL));
+        const refuelL = Math.round(a.refuelLiters || 0);
+        if (refuelL > 0) {
+          const stationCost = Math.round(refuelL * 1.25);
+          S.money = Math.max(0, S.money - stationCost);
+          if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
+          S.dailyStats.fuel += stationCost;
+          pushNote(S, `${t.name} refueled ${refuelL}L en-route (-$${stationCost.toLocaleString()}).`, { title: 'EN-ROUTE FUEL', type: 'ops' });
+        }
+      }
       applyWear(t, km, a.weight || 0, a.env, drv);
       processScheduledRepair(S, t.id);
 
       if (drv) {
-        drv.fatigue = 0; drv.hosHours = 0; drv.hosRestUntil = null;
+        const midRoundTrip = a.isRoundTrip && a.currentLeg === 1;
+        if (!midRoundTrip) { drv.fatigue = 0; drv.hosHours = 0; drv.hosRestUntil = null; }
         if (!drv.stats) drv.stats = { tripsCompleted: 0, kmDriven: 0, earned: 0 };
         drv.stats.tripsCompleted++; drv.stats.kmDriven += km;
         
@@ -279,39 +346,40 @@ export const DispatchExecution = {
         }
       }
 
-      // Handle Round Trip Leg Transition
-      if (a.isRoundTrip && a.currentLeg === 1 && !isDestinationUnlockedHub) {
-        // Start Leg 2 immediately (Standard Round Trip to external city)
+      // Handle Round Trip Leg Transition (2-way contract: deliver, load the backhaul, drive home)
+      if (a.isRoundTrip && a.currentLeg === 1) {
         const now = Date.now();
         const routeEnvLeg2 = getRouteEnv(a.to, a.from);
-        const stLeg2 = stats(S, t, a.weight || 0, routeEnvLeg2);
-        const durationLeg2 = tripMs(a.km, stLeg2.topSpeed, routeEnvLeg2);
-        
-        S.active.push({
+        const leg2: any = {
           ...a,
           currentLeg: 2,
+          cargoId: a.returnCargoId || a.cargoId,
           cargo: a.returnCargoName || a.cargo,
           from: a.to,
           to: a.from,
           dh: 0,
           start: now,
-          end: now + durationLeg2,
           env: routeEnvLeg2,
           pay: (a.leg2Pay || Math.round(a.pay * 1.1)) + (a.turnaroundBonus || 0),
           km: a.km // baseKm
-        });
-        
+        };
+        t.fluids.fuel = Math.max(0, Math.round(a.tankL ?? t.fluids.fuel)); // carry the real tank into leg 2
+        initJourney(leg2, t, now); // fresh stage machine: load backhaul -> drive -> unload
+        S.active.push(leg2);
+
         t.status = 'busy';
-        t.loc = a.to; // Update location to the turnaround point
-      } else if (!isDestinationUnlockedHub) {
-        // CRITICAL FIX: Truck delivered to an UNOWNED city. 
-        // We MUST force an immediate deadhead return to the origin hub or the nearest regional hub.
+        t.loc = a.to; // Turnaround point
+      } else if (!isDestinationUnlockedHub && a.kind !== 'move') {
+        // Delivered to an external city. One-way jobs: the truck immediately takes a load back toward base
+        // (2-way operation). If no backhaul can be taken (or this was leg 2 of a round trip), deadhead to a hub.
+        const tookBackhaul = !a.isRoundTrip && this._dispatchBackhaul(S, t, a);
+        if (!tookBackhaul) {
         const now = Date.now();
         
         // Find the most logical return destination (Nearest Owned Hub)
         const ownedHubs = (S.depots || []).map((id: string) => {
-          const hubKey = id.replace('hub_', '').toUpperCase();
-          return hubKey === 'LOS ANGELES' ? 'LOS_ANGELES' : hubKey;
+          const hubKey = id.replace('hub_', '').toUpperCase().replace(/\s+/g, '_');
+          return hubKey;
         });
         
         const destRegion = resolveTruckRegion(a.to);
@@ -320,12 +388,8 @@ export const DispatchExecution = {
           .sort((a_hub: string, b_hub: string) => distKm(a.to, a_hub) - distKm(a.to, b_hub))[0] || a.from;
 
         const dhKm = distKm(a.to, nearestHub); // Return distance to nearest hub
-        const stReturn = stats(S, t, 0); // Empty return
-        
-        // HASTE: Speed up empty deadhead returns to base (35% faster) since they don't generate pay
-        const returnDuration = Math.round(tripMs(dhKm, stReturn.topSpeed) * 0.65);
 
-        S.active.push({
+        const returnLeg: any = {
           id: S.nextId++,
           kind: 'move',
           cargo: 'Terminal Return (Deadhead)',
@@ -336,9 +400,12 @@ export const DispatchExecution = {
           pay: 0,
           truck: t.id,
           start: now,
-          end: now + returnDuration,
+          end: now,
+          env: getRouteEnv(a.to, nearestHub),
           status: 'returning'
-        });
+        };
+        initJourney(returnLeg, t, now); // empty run: short staging, drive, shutdown
+        S.active.push(returnLeg);
 
         t.status = 'busy';
         t.loc = a.to; // Logically at destination before starting return
@@ -347,10 +414,11 @@ export const DispatchExecution = {
           type: 'ops',
           priority: 1
         });
+        }
       } else {
-        // Destination IS an unlocked player hub
+        // Destination is an unlocked player hub (or a finished repositioning move)
         t.status = 'idle';
-        t.loc = a.to; // Parked at the hub
+        t.loc = a.to;
         if (a.isShipperTanker) t.trailer = null;
         
         pushNote(S, `🏢 Unit #${t.id} (${t.name}) docked at ${destHub?.name || a.to} Terminal Hub. Tractor parked at berth and awaiting new outbound freight consignments.`, {
@@ -386,7 +454,7 @@ export const DispatchExecution = {
     S.stats.earned += finalPay;
     S.stats.km += a.km;
     
-    if (isDestinationUnlockedHub) {
+    if (isDestinationUnlockedHub && !a.isRoundTrip) {
       S.reputation = (S.reputation || 0) + (a.isAuctionWon ? 45 : 20);
       pushNote(S, `Consignment Delivered to ${destHub?.name || a.to} Hub: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });
 
@@ -428,28 +496,7 @@ export const DispatchExecution = {
       S.reputation = (S.reputation || 0) + (a.isAuctionWon ? 45 : 15);
       pushNote(S, `Payment for ${cargo?.name || 'Freight'}: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });
 
-      // Generate immediate return haul from the arrival city back to departure city or regional hub
-      // Only if the board isn't already overwhelmed (Limit: 17)
-      if (t && a.to && (S.jobs || []).length < 17) {
-        const destRegion = resolveTruckRegion(a.to);
-        try {
-          const returnJob = FreightEngine.generate(S, {
-            forceRegion: destRegion,
-            forceFrom: a.to,
-            forceTo: a.from // Return leg back to origin
-          });
-          if (returnJob) {
-            if (!S.jobs) S.jobs = [];
-            S.jobs.unshift(returnJob);
-            pushNote(S, `Freight manifest ready: ${LOCATIONS[a.to]?.name || a.to} → ${LOCATIONS[a.from]?.name || a.from}. Available on Freight Board for any compatible tractor.`, {
-              title: 'RETURN HAUL READY',
-              type: 'ops'
-            });
-          }
-        } catch (e) {
-          console.error('Failed to generate return haul', e);
-        }
-      }
+      // Return load is dispatched automatically in the truck block above (_dispatchBackhaul).
     }
 
     // PoD Bonus

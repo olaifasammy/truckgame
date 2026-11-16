@@ -18,6 +18,22 @@ export interface PerformanceResult {
   accelerationCoeff: number; // 0 to 1 scaling
   isLimpMode: boolean;
   powerReservePct: number;
+  instantL100km?: number;
+}
+
+/**
+ * Fuel use (L/100km) at an arbitrary speed. Same model as calculateMechanicalLimits,
+ * but evaluated at the speed the truck is actually doing (journey engine uses this per tick).
+ * Floor of 0.6 so crawling is never "free" (low-gear / stop-start inefficiency).
+ */
+export function fuelPer100km(truck: any, context: PhysicsContext, speedKmh: number): number {
+  const model = TRUCK_MODELS[truck?.modelId] as any;
+  const totalMassKg = (model?.weight || 8000) + context.cargoWeightKg;
+  const base = model?.stats?.fuelConsumption || 32;
+  const loadFactor = (totalMassKg / 10000) * 1.5;
+  const gradeFactor = context.gradientPct > 0 ? context.gradientPct * 4 : 0;
+  const speedFactor = Math.max(0.6, (speedKmh / 80) ** 2);
+  return (base + loadFactor + gradeFactor) * speedFactor;
 }
 
 // Phase 2: Driver Trait Configurations
@@ -70,9 +86,11 @@ export function calculateMechanicalLimits(
   const hpPerKg = hp / totalMassKg;
   
   // 3. Health Impacts (Surgical Mechanical Degradation)
-  const engineHealth = truck.engineHealth ?? 100;
-  const transmissionHealth = truck.transmissionHealth ?? 100;
-  const tireHealth = truck.tireHealth ?? 100;
+  // Fleet code stores health under truck.components.<part>.health; flat fields are legacy fallbacks.
+  const comp = (truck as any).components || {};
+  const engineHealth = comp.engine?.health ?? (truck as any).engineHealth ?? 100;
+  const transmissionHealth = comp.transmission?.health ?? (truck as any).transmissionHealth ?? 100;
+  const tireHealth = comp.tires?.health ?? (truck as any).tireHealth ?? 100;
 
   let isLimpMode = false;
   let mechanicalMod = 1.0;
