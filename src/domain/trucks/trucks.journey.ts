@@ -2,6 +2,7 @@ import { TRUCK_MODELS } from './trucks.data';
 import { calculateMechanicalLimits, DRIVER_TRAITS, fuelPer100km } from '../simulation/physics';
 import { TRAIT_REGISTRY } from '../drivers/drivers.names';
 import { resolveTruckRegion } from '../../data/world';
+import { getRouteEnv } from '../../systems/calc';
 
 /**
  * NexHaul Journey Engine
@@ -67,6 +68,22 @@ function cargoKgFor(a: any, stage: Stage): number {
 
 function mechFor(a: any, truck: any, stage: Stage, gradePct: number) {
   const cargoKg = cargoKgFor(a, stage);
+  
+  // Dynamic Route Environment update:
+  // Recalculate environmental conditions based on current position along the route.
+  const isDh = a.stage === 'deadhead';
+  const currentKm = isDh ? (a.dhTravelled || 0) : (a.kmTravelled || 0);
+  const totalKm = isDh ? (a.dh || 0) : (a.km || 0);
+  
+  // Use getRouteEnv from systems/calc (imported in dispatch/execution and often globally available or via shared util)
+  // Since trucks.journey.ts is deep, we re-evaluate using the injected environment logic if available.
+  if (a.from && a.to) {
+    const updatedEnv = (a.getRouteEnv || getRouteEnv)(a.from, a.to, currentKm, totalKm);
+    if (updatedEnv.weather !== a.env?.weather) {
+      a.env = { ...(a.env || {}), ...updatedEnv };
+    }
+  }
+
   const ctx = { cargoWeightKg: cargoKg, gradientPct: gradePct, weatherCoeff: weatherCoeff(a) };
   return { ctx, mech: calculateMechanicalLimits(truck, ctx) };
 }

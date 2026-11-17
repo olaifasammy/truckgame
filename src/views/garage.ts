@@ -4,7 +4,7 @@ import { refresh, set } from '../core/store';
 import { TRUCK_MODELS, TRAILERS, getTrailerIcon } from '../domain/trucks/trucks.data';
 import { CITIES, LOCATIONS, REGIONS, RegionName, resolveTruckRegion } from '../data/world';
 import { stats, distKm } from '../systems/calc';
-import { refuel, repair, inspect, transport, refuelCost, repairCost, transportInfo, inspectCost } from '../systems/fleet';
+import { refuel, repair, inspect, transport, refuelCost, repairCost, transportInfo, inspectCost, expediteTruckDelivery } from '../systems/fleet';
 import { why } from '../systems/jobs';
 import { slots, upgradeGarage, upgradeGarageCost } from '../systems/offices';
 import { openJobSelector, renderJobSelectorOverlay, activeJobSelectorTruckId } from './garage/job-selector';
@@ -257,6 +257,11 @@ action('book-roro-shipping', d => {
   refresh();
 });
 
+action('expedite-delivery', d => {
+  expediteTruckDelivery(+(d as any).id);
+  refresh();
+});
+
 const bar = (label: string, value: number, barColor: string, formattedText: string, isAlert?: boolean) => {
   return `
     <div style="margin-bottom:8px;">
@@ -477,6 +482,12 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
           ${isRoRo 
             ? 'Ocean car-carrier vessel is navigating international deepwater sea lanes. Upon arrival, unit will complete customs discharge and dock at destination terminal.' 
             : 'Professional merchandise transport is currently repositioning this unit from the manufacturer regional distribution hub to your local terminal.'}
+        </div>
+
+        <div style="margin-top:14px;">
+          <button data-act="expedite-delivery" data-id="${t.id}" style="width:100%; padding:10px; background:var(--gold); color:#000; border:none; border-radius:8px; font-weight:900; font-size:11px; font-family:monospace; cursor:pointer; text-transform:uppercase;">
+            ⚡ EXPEDITE DELIVERY VIA AIR FREIGHT CHARTER ($${Math.max(1500, Math.ceil(remaining / 60000) * 200).toLocaleString()})
+          </button>
         </div>
       </div>
     `;

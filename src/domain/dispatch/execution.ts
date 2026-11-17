@@ -347,7 +347,7 @@ export const DispatchExecution = {
       }
 
       // Handle Round Trip Leg Transition (2-way contract: deliver, load the backhaul, drive home)
-      if (a.isRoundTrip && a.currentLeg === 1) {
+      if (!isDestinationUnlockedHub && a.isRoundTrip && a.currentLeg === 1) {
         const now = Date.now();
         const routeEnvLeg2 = getRouteEnv(a.to, a.from);
         const leg2: any = {

@@ -66,13 +66,25 @@ export const distKm = (a: string, b: string): number => {
   return 500; // Fallback
 };
 
-export function getRouteEnv(from: string, to: string): EnvironmentalConditions {
+export function getRouteEnv(from: string, to: string, currentKm?: number, totalKm?: number): EnvironmentalConditions {
   const locFrom = LOCATIONS[from];
   const locTo = LOCATIONS[to];
 
   if (!locFrom && !locTo) return { weather: 'clear', elevation: 200, roadGrade: 1.5, temp: 22, region: 'Europe' };
 
-  const weather = locTo?.typicalWeather || locFrom?.typicalWeather || 'clear';
+  // Dynamic weather interpolation: determine which city's weather influences the truck
+  // based on its progress (currentKm / totalKm).
+  let weather: EnvironmentalConditions['weather'] = 'clear';
+  if (typeof currentKm === 'number' && typeof totalKm === 'number' && totalKm > 0) {
+    const progress = Math.max(0, Math.min(1, currentKm / totalKm));
+    // Simple 50/50 split for weather zones
+    const locNear = progress < 0.5 ? locFrom : locTo;
+    weather = locNear?.typicalWeather || 'clear';
+  } else {
+    // Fallback to legacy logic: prefer destination weather for planning
+    weather = locTo?.typicalWeather || locFrom?.typicalWeather || 'clear';
+  }
+
   const elevation = Math.round(((locFrom?.elevation || 200) + (locTo?.elevation || 200)) / 2);
   const roadGrade = Math.max(locFrom?.roadGrade || 1.5, locTo?.roadGrade || 1.5);
   const temp = Math.round(((locFrom?.avgTemp || 25) + (locTo?.avgTemp || 25)) / 2);

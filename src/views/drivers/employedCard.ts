@@ -52,57 +52,48 @@ export function renderEmployedCard(d: any, S: any, isExpanded: boolean): string 
 
       ${isExpanded ? `
         <div style="margin-top:14px; padding-top:14px; border-top:1px solid var(--line);">
-          <!-- Driver Skill Academy Promotion -->
+          <!-- Professional Qualifications: Skill & Endorsements (Compacted) -->
           <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line); padding-bottom:8px; margin-bottom:8px;">
               <div>
                 <div style="font-size:11px; font-weight:800; color:var(--tx);">Commercial Skill Advancement</div>
-                <div style="font-size:9px; color:var(--mu); margin-top:1px;">Higher skill reduces transit time, fuel consumption, and vehicle stress.</div>
+                <div style="font-size:9px; color:var(--mu); font-weight:700;">Level ${d.skill} Professional Operator</div>
               </div>
               <div>
                 ${d.skill >= 5 ? `
-                  <span style="font-size:9px; font-weight:900; color:var(--gold); font-family:monospace; background:rgba(193,154,91,0.15); border:1px solid var(--gold); padding:4px 8px; border-radius:4px;">
+                  <span style="font-size:9px; font-weight:900; color:var(--gold); font-family:monospace; background:rgba(193,154,91,0.1); border:1px solid var(--gold); padding:3px 8px; border-radius:4px;">
                     ★ MASTER CDL (5/5)
                   </span>
                 ` : `
-                  <button class="btn gold" style="padding:6px 12px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="train-driver-skill" data-id="${d.id}" ${S.money >= upgradeFee ? '' : 'disabled'}>
-                    TRAIN TO LVL ${d.skill + 1}★ ($${(upgradeFee || 0).toLocaleString()})
+                  <button class="btn gold" style="padding:4px 10px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="train-driver-skill" data-id="${d.id}" ${S.money >= upgradeFee ? '' : 'disabled'}>
+                    UPGRADE TO LVL ${d.skill + 1}★ ($${(upgradeFee || 0).toLocaleString()})
                   </button>
                 `}
               </div>
             </div>
-          </div>
 
-          <!-- Specialized Freight Endorsements & Certifications -->
-          <div style="background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:12px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-              <span style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">COMMERCIAL ENDORSEMENTS & CERTIFICATIONS</span>
-              <span style="font-size:9px; font-family:monospace; color:var(--mu);">${certs.length} / ${DRIVER_CERTIFICATIONS.length} ENDORSED</span>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+              <span style="font-size:9px; font-weight:800; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">ENDORSEMENTS & CERTIFICATIONS</span>
+              <span style="font-size:9px; font-family:monospace; color:var(--mu);">${certs.length} / ${DRIVER_CERTIFICATIONS.length}</span>
             </div>
-            <div style="display:flex; flex-direction:column; gap:6px;">
+
+            <div style="display:flex; flex-direction:column; gap:3px;">
               ${DRIVER_CERTIFICATIONS.map(cert => {
                 const hasCert = certs.includes(cert.id);
                 const canAfford = S.money >= cert.cost;
                 return `
-                  <div style="display:flex; justify-content:space-between; align-items:center; background:#111827; border:1px solid ${hasCert ? 'rgba(34,197,94,0.3)' : '#1e293b'}; border-radius:6px; padding:8px 10px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); border-radius:4px; padding:4px 8px; border:1px solid ${hasCert ? 'rgba(34,197,94,0.15)' : 'rgba(255,255,255,0.05)'};">
                     <div style="display:flex; align-items:center; gap:8px;">
-                      <span style="font-size:16px;">${cert.icon}</span>
-                      <div>
-                        <div style="font-size:11px; font-weight:800; color:var(--tx);">${cert.name}</div>
-                        <div style="font-size:9px; color:var(--mu);">${cert.desc}</div>
-                      </div>
+                      <span style="font-size:13px;">${cert.icon}</span>
+                      <span style="font-size:10px; font-weight:700; color:${hasCert ? 'var(--tx)' : 'var(--mu)'};">${cert.name}</span>
                     </div>
-                    <div>
-                      ${hasCert ? `
-                        <span style="font-size:9px; font-weight:900; color:var(--grn); font-family:monospace; background:rgba(34,197,94,0.12); border:1px solid var(--grn); padding:3px 8px; border-radius:4px;">
-                          ✓ ENDORSED
-                        </span>
-                      ` : `
-                        <button class="btn gold" style="padding:4px 10px; font-size:9px; font-weight:900; white-space:nowrap;" data-act="certify-driver" data-id="${d.id}" data-cert="${cert.id}" ${canAfford ? '' : 'disabled'}>
-                          ENROLL $${(cert.cost || 0).toLocaleString()}
-                        </button>
-                      `}
-                    </div>
+                    ${hasCert ? `
+                      <span style="font-size:8px; font-weight:900; color:var(--grn); font-family:monospace;">✓ ACTIVE</span>
+                    ` : `
+                      <button class="btn gold" style="padding:2px 8px; font-size:8px; font-weight:900; white-space:nowrap;" data-act="certify-driver" data-id="${d.id}" data-cert="${cert.id}" ${canAfford ? '' : 'disabled'}>
+                        ENROLL $${(cert.cost || 0).toLocaleString()}
+                      </button>
+                    `}
                   </div>
                 `;
               }).join('')}

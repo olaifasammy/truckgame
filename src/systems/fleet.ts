@@ -297,3 +297,29 @@ export function buyTrailerToYard(trailerType: TrailerType) {
   });
 }
 
+export function expediteTruckDelivery(truckId: number) {
+  set(S => {
+    const t = S.fleet.find((x: any) => x.id === truckId);
+    if (!t || t.status !== 'delivering') return;
+
+    const remainingMin = Math.ceil(((t.availableAt || Date.now()) - Date.now()) / 60000);
+    const cost = Math.max(1500, remainingMin * 200);
+
+    if (!pay(S, cost, `Expedite Delivery: Unit #${t.id}`)) return;
+
+    t.availableAt = Date.now();
+    t.status = 'idle';
+    delete t.shippingMode;
+    delete t.shippingVessel;
+    delete t.shippingOrigin;
+
+    pushNote(S, `Express air-freight charter expedited delivery for Unit #${t.id} (${t.name}). Unit is now ready at terminal ${t.loc || 'HQ'}. Cost: $${cost.toLocaleString()}`, {
+      title: 'DELIVERY EXPEDITED',
+      type: 'ops',
+      priority: 'high'
+    });
+    toast(`Vehicle delivery expedited successfully for $${cost.toLocaleString()}!`, 'success');
+  });
+}
+
+
