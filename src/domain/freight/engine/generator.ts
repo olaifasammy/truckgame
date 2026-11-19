@@ -8,7 +8,7 @@ import { BiddingEngine } from '../bids/engine';
 import { distKm, getRouteEnv, fuelCostForTrip } from '../../../systems/calc';
 import { getCompanyProgression } from '../../company/progression';
 import { SAMPLE_TENDERS } from '../../logistics/network';
-import { getDynamicCorporateTenders } from '../../contracts/tenders';
+import { getDynamicCorporateTenders, planTenderLoads, consumeTenderListing } from '../../contracts/tenders';
 import { pushNote } from '../../../systems/notify';
 
 // Internal constants for simulation
@@ -181,13 +181,14 @@ export class FreightEngine {
       return hub ? hub.city : null;
     }).filter(Boolean) as string[];
 
-    const truckLocationCities = (S?.trucks || []).map((t: any) => t.loc || t.registeredCity).filter(Boolean) as string[];
+    const truckLocationCities = (S?.fleet || S?.trucks || []).map((t: any) => t.loc || t.registeredCity).filter(Boolean) as string[];
 
     const availableOrigins = Array.from(new Set([...ownedHubCities, ...truckLocationCities]));
 
     if (options.forceFrom && LOCATIONS[options.forceFrom]) {
       from = options.forceFrom;
     } else if (availableOrigins.length > 0) {
+      // Both normal and bid jobs generate from only the hub/truck locations owned
       from = rnd(availableOrigins);
     } else {
       from = S?.hqCity || ownedHubCities[0] || truckLocationCities[0] || Object.keys(LOCATIONS)[0];
@@ -458,28 +459,22 @@ export class FreightEngine {
     const prog = S ? getCompanyProgression(S) : { tier: 0 };
     const isVipCarrier = prog.tier >= 3;
     
-    // Inject corporate tender loads if active (Enforce 5 jobs per 5 hours limit unless premium)
+    // Contract (tender) loads: planned by the tender engine (paced, parallel, never over-listed).
+    // Listed at the FRONT of the board so trimming and the "17 jobs" cap can never push them off.
+    // Free carriers keep the 5-listings-per-5-hours allowance; premium is unlimited.
     if (S.corporateTenders && S.corporateTenders.length > 0) {
       const limit = FreightEngine.getTenderLimit(S);
       const now = Date.now();
       const isPremium = limit.premiumActive && limit.premiumExpiresAt > now;
       const MAX_FREE_LISTINGS = 5;
 
-      for (const tender of S.corporateTenders) {
-        const activeLoadsOnBoard = (S.jobs || []).filter((j: any) => j.tenderId === tender.id).length;
-        if (activeLoadsOnBoard < 1 && (tender.loadsRemaining || 0) > 0) {
-          // Check limit
-          if (!isPremium && limit.count >= MAX_FREE_LISTINGS) {
-            continue; // Skip listing if limit reached and not premium
-          }
-
-          const newJob = this.generate(S, { tenderId: tender.id });
-          if (newJob) {
-            S.jobs.push(newJob);
-            if (!isPremium) {
-              limit.count++;
-            }
-          }
+      for (const plan of planTenderLoads(S, now)) {
+        if (!isPremium && limit.count >= MAX_FREE_LISTINGS) break;
+        const newJob = this.generate(S, { tenderId: plan.tenderId });
+        if (newJob) {
+          S.jobs.unshift(newJob);
+          consumeTenderListing(S, plan.tenderId, now);
+          if (!isPremium) limit.count++;
         }
       }
     }

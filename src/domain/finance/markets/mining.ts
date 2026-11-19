@@ -1,4 +1,5 @@
 import { CRYPTO_ASSETS, getCryptoMarketData } from './crypto';
+import { recordTransaction } from '../../../core/ledger';
 
 // Simulation time acceleration factor for mining (360x speed: 4 real minutes = 1 simulation day)
 export const MINING_TIME_SCALE = 360;
@@ -504,7 +505,7 @@ export function processMiningTick(S: any, elapsedMs: number) {
   }
 
   if (totalPowerCostUSD > 0) {
-    S.money = Math.max(0, S.money - totalPowerCostUSD);
+    recordTransaction(S, 'expense_fuel', -totalPowerCostUSD, `Crypto Data Center Electricity & Power Draw`);
   }
 }
 

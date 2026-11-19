@@ -145,15 +145,15 @@ export function calculatePerformance(
   const powerWeightRatio = effectiveHp / grossVehicleMass; // HP per tonne
 
   // 7. Physics Highway Cruising Speed
-  const rawCruisingSpeed = (powerWeightRatio * 12.8) / Math.sqrt(cdA * gradeInclineDrag);
-  let topSpeed = Math.min(110, rawCruisingSpeed) * weatherSpeedMod * driverFactor * traitSpeedMod * transHealth;
+  const rawCruisingSpeed = (powerWeightRatio * 15.5) / Math.sqrt(cdA * gradeInclineDrag);
+  let topSpeed = Math.min(135, rawCruisingSpeed) * weatherSpeedMod * driverFactor * traitSpeedMod * transHealth;
 
   // Regional speed reduction for Africa - represents variable road infrastructure
   if (env?.region === 'Africa') {
-    topSpeed *= 0.88;
+    topSpeed *= 0.92;
   }
 
-  topSpeed = Math.max(30, Math.min(120, topSpeed));
+  topSpeed = Math.max(30, Math.min(145, topSpeed));
 
   // 8. Acceleration Factor (0 - 1)
   const acceleration = Math.max(0.1, Math.min(1.0, (powerWeightRatio / 60) * transHealth * weatherTractionMod * traitSpeedMod));

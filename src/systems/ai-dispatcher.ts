@@ -10,6 +10,8 @@ import { AI_SUBSCRIPTION_PLANS, AI_ADDON_PLANS, DEFAULT_AI_STATE } from '../doma
 import { AiFilterConfig } from '../domain/ai/ai.types';
 import { runAiAutoDispatch } from '../domain/ai/ai.engine';
 
+import { recordTransaction } from '../core/ledger';
+
 export function activateAiSuiteSystem(
   planId: '7d' | '1m' | 'auto' | 'year',
   useFlb: boolean = false,
@@ -64,7 +66,7 @@ export function activateAiSuiteSystem(
         toast(`Insufficient Treasury ($${(S.money || 0).toLocaleString()} available, $${totalUsd.toLocaleString()} required)`, 'err');
         return;
       }
-      S.money -= totalUsd;
+      recordTransaction(S, 'expense_unlock', -totalUsd, `Enterprise AI Suite: ${plan.label}`);
     }
 
     // Calculate new expiration timestamps

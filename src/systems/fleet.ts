@@ -12,6 +12,8 @@ import { createTruck } from '../domain/trucks/trucks.physics';
 import { LOCATIONS } from '../data/world';
 import { getHubFacilityForCity } from '../domain/hubs/hub-facility';
 
+import { recordTransaction, LedgerCategory } from '../core/ledger';
+
 export const FUEL_PRICE = 2.5;
 export const inspectCost = () => Math.round(500 * disc('scanner'));
 
@@ -46,9 +48,9 @@ const idle = (S: any, id: number) => {
   if (!t || t.status !== 'idle') { toast('Truck is busy'); return null; }
   return t;
 };
-const pay = (S: any, c: number, purpose: string) => {
+const pay = (S: any, c: number, purpose: string, category: LedgerCategory = 'expense_other') => {
   if (S.money < c) { toast('Not enough cash'); return false; }
-  S.money -= c;
+  recordTransaction(S, category, -c, purpose);
   pushNote(S, `Transaction: ${purpose} (-$${c.toLocaleString()})`, {
     title: 'Financial Transaction',
     type: 'finance',
@@ -82,7 +84,7 @@ export const refuel = (id: number) => set(S => {
   let cashCost = 0;
   if (remaining > 0) {
     cashCost = Math.round(remaining * FUEL_PRICE * disc('fuelcard'));
-    if (!pay(S, cashCost, `Commercial Station Refuel Unit #${id} (${t.name})`)) {
+    if (!pay(S, cashCost, `Commercial Station Refuel Unit #${id} (${t.name})`, 'expense_fuel')) {
       if (hubFacility && fromTank > 0) hubFacility.fuelLiters += fromTank;
       else if (S.fuelBunker && fromTank > 0) S.fuelBunker.currentLiters += fromTank;
       return;
@@ -105,7 +107,7 @@ export const repair = (id: number) => set(S => {
   const t = idle(S, id);
   if (!t) return;
   const c = repairCost(t);
-  if (c <= 0 || !pay(S, c, `Repair Service Unit #${id} (${t.name})`)) return;
+  if (c <= 0 || !pay(S, c, `Repair Service Unit #${id} (${t.name})`, 'expense_maintenance')) return;
   if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
   S.dailyStats.maintenance += c;
   Object.values(t.components).forEach((comp: any) => {
@@ -117,7 +119,7 @@ export const inspect = (id: number) => set(S => {
   const t = idle(S, id);
   if (!t) return;
   const cost = inspectCost();
-  if (!pay(S, cost, `Safety Inspection Unit #${id} (${t.name})`)) return;
+  if (!pay(S, cost, `Safety Inspection Unit #${id} (${t.name})`, 'expense_permit')) return;
   t.lastInspection = { at: Date.now(), components: JSON.parse(JSON.stringify(t.components)) };
 });
 
@@ -198,7 +200,7 @@ export const buyTruckBatch = (modelId: string, trailerType: TrailerType | null, 
       toast(`Garage slots full! Need ${S.fleet.length + quantity} slots (Capacity: ${slots(S)})`, 'err');
       return;
     }
-    if (!pay(S, totalPrice, `Fleet Purchase: ${quantity}x ${m.brand} ${m.name}`)) return;
+    if (!pay(S, totalPrice, `Fleet Purchase: ${quantity}x ${m.brand} ${m.name}`, 'expense_purchase')) return;
 
     const deliveryTimeMs = 15 * 60 * 1000; // 15 Minutes Factory-to-Depot Transit
     const arrivalTime = Date.now() + deliveryTimeMs;
@@ -272,7 +274,7 @@ export function hitchTrailer(truckId: number, trailerType: TrailerType) {
 export function buyTrailerToYard(trailerType: TrailerType) {
   set(S => {
     const price = TRAILER_PRICES[trailerType] || 15000;
-    if (!pay(S, price, `Trailer Purchase: ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}`)) return;
+    if (!pay(S, price, `Trailer Purchase: ${TRAILERS[trailerType as keyof typeof TRAILERS] || trailerType}`, 'expense_purchase')) return;
     
     if (trailerType === 'hazmat') {
       toast('ADR Hazmat tankers are provided by consignor terminals on dispatch (no purchase necessary)', 'info');

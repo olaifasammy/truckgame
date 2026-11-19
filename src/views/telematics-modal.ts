@@ -226,22 +226,17 @@ export function renderTelematicsOverlay(S: any): string {
           </div>
         </div>
 
-        <!-- Interactive Cruise Speed Target / Speed Limiter Selector -->
-        <div style="background:#0b1120; border:1px solid #1e293b; border-radius:8px; padding:8px 12px; margin-bottom:12px;">
-          <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">
-            <div style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase; letter-spacing:0.4px;">
-              ⚙️ CRUISE SPEED / THROTTLE TARGET & LIVE ETA CONTROL
-            </div>
-            <div style="font-size:10px; font-weight:900; color:var(--gold); font-family:monospace;">
-              TARGET: ${truck.targetSpeed || telem.speedKmh || 85} KM/H
-            </div>
+        <!-- Compact Cruise Control -->
+        <div style="background:#0b1120; border:1px solid #1e293b; border-radius:8px; padding:6px 12px; margin-bottom:12px; display:flex; align-items:center; justify-content:space-between;">
+          <div style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase; letter-spacing:0.4px;">
+            CRUISE TARGET: <span style="color:var(--gold); font-family:monospace;">${truck.targetSpeed || telem.speedKmh || 85} KM/H</span>
           </div>
-          <div style="display:flex; gap:6px;">
-            ${[50, 75, 90, 100, 110].map(s => `
+          <div style="display:flex; gap:4px;">
+            ${[60, 80, 100, 120].map(s => `
               <button class="btn btn-xs ${ (truck.targetSpeed || 85) === s ? 'btn-primary' : 'btn-outline' }" 
-                      style="flex:1; font-weight:800; font-family:monospace; padding:4px 2px;"
+                      style="font-weight:900; font-family:monospace; padding:3px 8px; font-size:9px;"
                       data-act="set-truck-cruise-speed" data-truck-id="${truck.id}" data-speed="${s}">
-                ${s} KM/H
+                ${s}
               </button>
             `).join('')}
           </div>

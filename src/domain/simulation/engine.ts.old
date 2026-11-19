@@ -7,17 +7,14 @@
  */
 
 import { completeJobs, processEconomics, replenish } from '../../systems/jobs';
-import { DRIVER_TRAITS } from './physics';
 import { completeRepairs } from '../../systems/maintenance';
-import { TRUCK_MODELS } from '../trucks/trucks.data';
 import { processLimitOrders } from '../finance/markets/crypto';
 import { processCryptoLoansTick } from '../finance/markets/loans';
-import { getTruckTelematics, TRIP_PHASES } from '../trucks/trucks.telematics';
+import { advanceJourney } from '../trucks/trucks.journey';
 import { onTruckArrival } from '../../systems/fleet';
 import { runAiAutoDispatch, runAiFleetMaintenance } from '../ai/ai.engine';
 import { runAiCryptoTradingTick } from '../ai/ai.quant';
 import { AI_SUBSCRIPTION_PLANS } from '../ai/ai.config';
-import { TRAIT_REGISTRY } from '../drivers/drivers.names';
 import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
 import { calculateIncomeStatement, calculateWeeklyAccounting, calculateMonthlyAccounting } from '../finance/accounting';
@@ -96,95 +93,18 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
         truck.status = 'busy';
       }
 
-      // 4. Physical Distance Progression & Lively ETA Synchronization
+      // 4. Journey simulation (single authority: stages, speed, fuel, fatigue, HOS rests, ETA)
       if (truck) {
-        const driver = (st.drivers || []).find((d: any) => d.assignedTruckId === a.truck);
-        
-        // Phase 2: Driver Trait Physics
-        const trait = (driver?.trait || 'STANDARD') as keyof typeof DRIVER_TRAITS;
-        const traitCfg = DRIVER_TRAITS[trait] || DRIVER_TRAITS.STANDARD;
-
-        const lastTick = st.lastSimTick || (now - 1000);
-        // Phase 4: High-Fidelity Time Slicing (10-minute segments)
-        let offlineMsRemaining = Math.max(0, now - lastTick);
-        const catchupStepMs = 600000; // 10 minute slices
-        
-        // Track cumulative consumption
-        let totalOfflineFuelL = 0;
-        let totalOfflineWear = 0;
-
-        while (offlineMsRemaining > 0) {
-          const deltaMs = Math.min(offlineMsRemaining, catchupStepMs);
-          offlineMsRemaining -= deltaMs;
-
-          // Re-evaluate physics at this specific slice in time
-          const currentTelem = getTruckTelematics(truck, a, driver, now - offlineMsRemaining);
-
-          if (currentTelem.speedKmh > 0) {
-            // 1. Progress Distance
-            const deltaKm = currentTelem.speedKmh * (deltaMs / 277000);
-            a.kmTravelled = Math.min(a.km || 100, (a.kmTravelled ?? 0) + deltaKm);
-
-            // 2. Accumulate Wear
-            const wearBase = (deltaMs / 3600000) * 0.04; 
-            const envWearMod = currentTelem.roadSurface.includes('Rough') ? 1.4 : 1.0;
-            totalOfflineWear += wearBase * traitCfg.wearMod * envWearMod;
-
-            // 3. Accumulate Fuel
-            const lPerKm = (currentTelem.instantL100km || 30) / 100;
-            totalOfflineFuelL += lPerKm * deltaKm;
-            
-            // 4. Driver Fatigue Accumulation
-            if (driver) {
-              const fatigueRate = (deltaMs / 3600000) * 8.5; // ~8.5% per hour driving
-              driver.fatigue = Math.min(100, (driver.fatigue || 0) + fatigueRate);
-            }
-          } else {
-            const totalKm = a.km || 100;
-            const currentKm = a.kmTravelled ?? 0;
-            const pct = (currentKm / totalKm) * 100;
-            
-            // Stationary Phase Progressions (Distance-as-Proxy for Time)
-            // This ensures trucks move through terminal zones like Loading and Unloading.
-            if (pct < TRIP_PHASES.LOADING_END) {
-              // Loading/Staging Phase (10 minutes real duration)
-              const phaseDist = (TRIP_PHASES.LOADING_END / 100) * totalKm;
-              const step = (phaseDist / 600000) * deltaMs;
-              a.kmTravelled = Math.min(totalKm, currentKm + Math.max(0.001, step));
-            } else if (currentTelem.state === 'resting') {
-              // HOS Rest Phase - No distance movement (Real Physics)
-              if (driver) {
-                const recoveryRate = (deltaMs / 3600000) * 20; // Faster recovery for gameplay (~5 hours for full)
-                driver.fatigue = Math.max(0, (driver.fatigue || 0) - recoveryRate);
-              }
-            } else if (currentTelem.state === 'refueling') {
-              // Refuel Phase - No distance movement (Real Physics)
-              const refillRate = (deltaMs / 600000) * 100; // Full tank in 10 minutes
-              truck.fuelPct = Math.min(100, (truck.fuelPct || 0) + refillRate);
-            } else if (pct >= TRIP_PHASES.UNLOADING_START) {
-              // Unloading/Arrival Phase (10 minutes real duration)
-              const phaseDist = ((100 - TRIP_PHASES.UNLOADING_START) / 100) * totalKm;
-              const step = (phaseDist / 600000) * deltaMs;
-              a.kmTravelled = Math.min(totalKm, currentKm + Math.max(0.001, step));
-            }
+        const driver = (st.drivers || []).find((d: any) => d.id === truck.driverId)
+          || (st.drivers || []).find((d: any) => d.assignedTruckId === a.truck);
+        advanceJourney(a, truck, driver, now, {
+          onRest: (drv: any) => {
+            pushNote(st, `${drv.name} reached 80% fatigue en-route and pulled over at a travel plaza for mandatory sleeper berth rest.`, {
+              title: 'HOS SAFETY REST',
+              type: 'ops'
+            });
           }
-        }
-
-        // Apply accumulated offline results once
-        truck.tireHealth = Math.max(0, (truck.tireHealth || 100) - totalOfflineWear);
-        truck.engineHealth = Math.max(0, (truck.engineHealth || 100) - (totalOfflineWear * 0.4));
-        
-        truck.fuelUsed = (truck.fuelUsed || 0) + totalOfflineFuelL;
-        const tankCapacity = (TRUCK_MODELS[truck.modelId]?.fuelCapacity || 600);
-        const fuelPctLoss = (totalOfflineFuelL / tankCapacity) * 100;
-        truck.fuelPct = Math.max(0, (truck.fuelPct || 100) - fuelPctLoss);
-
-        // Final telem check for UI sync
-        const finalTelem = getTruckTelematics(truck, a, driver, now);
-        // Dynamically update activeJob.end lively so UI, map popups, and telematics modal show accurate ETA
-        if (finalTelem.remainingMs > 0) {
-          a.end = now + finalTelem.remainingMs;
-        }
+        });
       }
 
       return true;
@@ -228,52 +148,7 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
     console.error('Simulation: Repairs error', e);
   }
 
-  // 5. Driver Fatigue & En-Route Hours of Service (HOS) Safety Stop
-  if (st.active && st.active.length > 0) {
-    st.active.forEach((a: any) => {
-      const truck = (st.fleet || []).find((tr: any) => tr.id === a.truck);
-      if (truck && truck.driverId) {
-        const drv = (st.drivers || []).find((d: any) => d.id === truck.driverId);
-        if (drv) {
-          // Skip fatigue accumulation if currently on mandatory sleeper berth rest
-          if (drv.hosRestUntil && drv.hosRestUntil > now) {
-            a.lastFatigueTick = now;
-            return;
-          }
-
-          if (!a.lastFatigueTick) a.lastFatigueTick = now;
-          const msElapsed = Math.max(0, now - a.lastFatigueTick);
-          const simHoursElapsed = msElapsed / 150000; // 2.5 real minutes = 1 simulation hour
-
-          let fatigueMod = 1.0;
-          if (drv.trait) {
-            const traitDef = (TRAIT_REGISTRY as any)[drv.trait];
-            if (traitDef?.effect?.fatigueMod) {
-              fatigueMod += traitDef.effect.fatigueMod;
-            }
-          }
-
-          const fatigueGain = simHoursElapsed * 9.1 * fatigueMod;
-          drv.fatigue = Math.min(100, Math.round(((drv.fatigue || 0) + fatigueGain) * 100) / 100);
-          a.lastFatigueTick = now;
-
-          // En-route safety stop at 80% fatigue (mandated regulatory sleeper berth rest)
-          if (drv.fatigue >= 80) {
-            drv.fatigue = 0;
-            drv.hosHours = 0;
-            const restDurationMs = 15000; // 15 seconds real-time safety stop
-            drv.hosRestUntil = now + restDurationMs;
-            a.end = (a.end || now) + restDurationMs;
-            pushNote(st, `${drv.name} reached 80% fatigue en-route and pulled over at a travel plaza for mandatory sleeper berth rest.`, {
-              title: 'HOS SAFETY REST',
-              type: 'ops'
-            });
-            toast(`${drv.name} taking mandatory HOS rest (80% fatigue reached)`, 'info');
-          }
-        }
-      }
-    });
-  }
+  // 5. Driver fatigue & HOS rests are simulated inside advanceJourney (step 2.5).
 
   // 6. AI Dispatch Automation (Continuous background matching when subscribed)
   let dispatchedCount = 0;

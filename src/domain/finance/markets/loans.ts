@@ -1,6 +1,7 @@
 import { pushNote } from '../../../systems/notify';
 import { toast } from '../../../core/ui';
 import { getCryptoMarketData, CRYPTO_ASSETS } from './crypto';
+import { recordTransaction } from '../../../core/ledger';
 
 export interface CryptoCollateralLoan {
   id: string;
@@ -50,7 +51,7 @@ export function borrowCryptoCollateral(S: any, assetId: string, collateralQty: n
   }
 
   // Credit cash to user
-  S.money += borrowableUsd;
+  recordTransaction(S, 'revenue_bonus', borrowableUsd, `Crypto Collateralized Loan Drawdown: ${borrowableUsd.toLocaleString()} USD`);
 
   const loan: CryptoCollateralLoan = {
     id: 'LN-' + Math.floor(100000 + Math.random() * 900000),
@@ -90,7 +91,7 @@ export function repayCryptoCollateral(S: any, loanId: string): boolean {
   }
 
   // Deduct repayment money
-  S.money -= loan.repayAmount;
+  recordTransaction(S, 'expense_finance', -loan.repayAmount, `Crypto Loan Repayment & Collateral Release: ${loan.id}`);
 
   // Release locked collateral back to user wallet
   if (loan.assetId === 'flb') {
@@ -140,7 +141,7 @@ export function processCryptoLoansTick(S: any) {
       const surplusUsd = Math.max(0, netProceedsUsd - loan.repayAmount);
 
       if (surplusUsd > 0) {
-        S.money = (S.money || 0) + surplusUsd;
+        recordTransaction(S, 'revenue_crypto', surplusUsd, `Margin Liquidation Surplus: Loan #${loan.id}`);
       }
 
       pushNote(S, `🚨 MARGIN LIQUIDATION: Collateral for Loan #${loan.id} liquidated at 95% LTV threshold!`, {

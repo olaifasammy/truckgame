@@ -23,6 +23,8 @@ import { initJourney } from '../trucks/trucks.journey';
  * Authoritative engine for dispatch lifecycle.
  * Following Engineering Constitution Section 6.4 (Logistics and Dispatch).
  */
+import { recordTransaction } from '../../core/ledger';
+
 export const DispatchExecution = {
   /**
    * Executes the dispatch of a truck for a specific job.
@@ -441,7 +443,7 @@ export const DispatchExecution = {
     // Tolls & Customs Tariff Calculation
     const tollResult = calculateTripToll(a.km, cargo?.weight || 18, a.from, a.to, true);
     if (tollResult.totalTollCost > 0) {
-      S.money -= tollResult.totalTollCost;
+      recordTransaction(S, 'expense_toll', -tollResult.totalTollCost, `Highway tolls & border tariffs: ${a.from} to ${a.to}`);
       if (!S.stats) S.stats = { earned: 0, spent: 0, km: 0, jobs: 0 };
       S.stats.spent = (S.stats.spent || 0) + tollResult.totalTollCost;
       pushNote(S, `🛣️ Highway Tolls & Customs Tariffs (${a.km} km, ${cargo?.weight || 18}t): -$${tollResult.totalTollCost.toLocaleString()} ${tollResult.discountApplied ? '(EZ-Pass 30% Off)' : ''}`, {
@@ -450,7 +452,7 @@ export const DispatchExecution = {
       });
     }
 
-    S.money += finalPay;
+    recordTransaction(S, 'revenue_freight', finalPay, `Consignment Payment: ${cargo?.name || 'Freight'} (${a.from} to ${a.to})`);
     S.stats.earned += finalPay;
     S.stats.km += a.km;
     
@@ -513,7 +515,7 @@ export const DispatchExecution = {
         tnd.loadsRemaining = Math.max(0, (tnd.totalLoads || 10) - tnd.completedLoads);
         if (tnd.completedLoads >= tnd.totalLoads && !tnd.bonusAwarded) {
           tnd.bonusAwarded = true;
-          S.money += tnd.bonusPayout;
+          recordTransaction(S, 'revenue_bonus', tnd.bonusPayout, `30-Day Tender Performance Bonus: ${tnd.client}`);
           if (S.stats) S.stats.earned += tnd.bonusPayout;
           pushNote(S, `🎉 30-Day Tender Completed: ${tnd.client}! SLA threshold of ${tnd.slaTarget}% fulfilled. Awarded +$${tnd.bonusPayout.toLocaleString()} volume bonus to treasury!`, {
             title: 'ENTERPRISE TENDER COMPLETED',

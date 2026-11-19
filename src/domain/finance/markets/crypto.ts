@@ -1,5 +1,6 @@
 import { pushNote } from '../../../systems/notify';
 import { toast } from '../../../core/ui';
+import { recordTransaction } from '../../../core/ledger';
 
 export interface CryptoAsset {
   id: string;
@@ -295,7 +296,7 @@ export function processLimitOrders(S: any) {
       if (mkt.sellPrice >= order.targetPrice) {
         triggered = true;
         const proceeds = order.usdAmount;
-        S.money += proceeds;
+        recordTransaction(S, 'revenue_crypto', proceeds, `Limit SELL Order Executed: ${mkt.symbol}`);
 
         pushNote(S, `Limit SELL filled! Sold ${order.tokenQty.toFixed(4)} ${mkt.symbol} @ $${mkt.sellPrice.toFixed(2)} (+$${Math.round(proceeds).toLocaleString()}).`, {
           title: 'LIMIT ORDER EXECUTED',

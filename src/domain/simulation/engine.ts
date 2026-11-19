@@ -11,6 +11,7 @@ import { completeRepairs } from '../../systems/maintenance';
 import { processLimitOrders } from '../finance/markets/crypto';
 import { processCryptoLoansTick } from '../finance/markets/loans';
 import { advanceJourney } from '../trucks/trucks.journey';
+import { settleExpiredTenders, tenderLoadsDue } from '../contracts/tenders';
 import { onTruckArrival } from '../../systems/fleet';
 import { runAiAutoDispatch, runAiFleetMaintenance } from '../ai/ai.engine';
 import { runAiCryptoTradingTick } from '../ai/ai.quant';
@@ -35,6 +36,36 @@ export interface SimulationTickResult {
 }
 
 let lastFreightReplenishTime = 0;
+let lastTenderReplenishTime = 0;
+let catchingUp = false;
+const OFFLINE_CATCHUP_MAX_MS = 24 * 3600 * 1000;
+
+/**
+ * Offline catch-up: the browser is suspended when the game isn't open, so no ticks run.
+ * On the first tick after a gap we replay the missing time in coarse steps (sim clock + Date.now are
+ * pinned to each step) so journeys, deliveries and - if the Offline Dispatcher add-on is active - AI
+ * dispatching all happen as if the game had been running.
+ */
+function runOfflineCatchUp(st: any, now: number) {
+  const last = st.lastTickAt;
+  if (!last || now - last < 20000) return;
+  const from = Math.max(last, now - OFFLINE_CATCHUP_MAX_MS);
+  const gap = now - from;
+  const step = gap > 2 * 3600 * 1000 ? 120000 : 60000;
+  const realNow = Date.now;
+  catchingUp = true;
+  try {
+    for (let t = from + step; t < now; t += step) {
+      Date.now = () => t;
+      st.__offlineAiAllowed = !!(st.aiState?.offlineDispatchActive && t < (st.aiState?.offlineExpiresTimestamp || 0));
+      try { executeSimulationStep(st, t); } catch (e) { console.error('Simulation: offline step error', e); break; }
+    }
+  } finally {
+    Date.now = realNow;
+    catchingUp = false;
+    delete st.__offlineAiAllowed;
+  }
+}
 
 /**
  * Executes a single authoritative simulation tick step.
@@ -54,6 +85,9 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
       activeDeliveriesRemaining: 0
     };
   }
+
+  if (!catchingUp) runOfflineCatchUp(st, now);
+  st.lastTickAt = now;
 
   // 1. Authoritative Economic Simulation Tick (Passive revenues, warehouse cross-docking, debt service, mining yield)
   try {
@@ -120,7 +154,15 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
   // EMERGENCY CLEANUP: If the board is overwhelmed (e.g. from legacy state or bugs), 
   // truncate it immediately to maintain performance and UI sanity.
   if (st.jobs && st.jobs.length > 20) {
-    st.jobs = st.jobs.slice(0, 17);
+    const secured = st.jobs.filter((j: any) => j.isAuctionWon || j.tenderId);
+    const regular = st.jobs.filter((j: any) => !j.isAuctionWon && !j.tenderId);
+    st.jobs = [...secured, ...regular.slice(0, Math.max(0, 17 - secured.length))];
+  }
+
+  try {
+    settleExpiredTenders(st, now);
+  } catch (e) {
+    console.error('Simulation: Tender expiry error', e);
   }
 
   const prevAuctionCount = (st.auctions || []).length;
@@ -134,7 +176,7 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
     
     if (done.length > 0) {
       // _finalizeJob already handles status=idle and processScheduledRepair
-      toast(`Delivered ${done.length} consignment${done.length > 1 ? 's' : ''}`, 'success');
+      if (!catchingUp) toast(`Delivered ${done.length} consignment${done.length > 1 ? 's' : ''}`, 'success');
     }
   } catch (e) {
     console.error('Simulation: Complete jobs error', e);
@@ -152,7 +194,10 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
 
   // 6. AI Dispatch Automation (Continuous background matching when subscribed)
   let dispatchedCount = 0;
-  let isAiSubscribed = !!(st.aiState?.subscriptionActive && now < (st.aiState?.expiresTimestamp || 0));
+  let isAiSubscribed = !!(
+    (st.aiState?.subscriptionActive && now < (st.aiState?.expiresTimestamp || 0)) ||
+    (st.aiState?.offlineDispatchActive && now < (st.aiState?.offlineExpiresTimestamp || 0))
+  );
 
   // Seamless auto-renewal: If subscription expired but auto-renew is enabled or positive treasury balance exists
   if (!isAiSubscribed && st.aiState?.subscriptionActive && (st.aiState?.autoRenew || st.aiState?.planId === 'auto' || (st.money || 0) >= 5000)) {
@@ -179,6 +224,8 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
     }
   }
 
+  // While replaying offline time, only dispatch if the Offline Dispatcher add-on covers that moment
+  if (catchingUp && !st.__offlineAiAllowed) isAiSubscribed = false;
   if (isAiSubscribed && st.aiState?.filters?.enabled !== false) {
     try {
       const dispatchRes = runAiAutoDispatch(st, now);
@@ -228,7 +275,10 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
   }
 
   // 9. Periodic Freight Market Replenishment (Every 30s or if board drops below 3 contracts)
-  if (now - lastFreightReplenishTime > 30000 || (st.jobs && st.jobs.length < 3)) {
+  // Contract loads are listed as soon as they're due (checked at most every 5 s), not on the 30 s board cycle
+  const tenderDue = now - lastTenderReplenishTime > 5000 && tenderLoadsDue(st, now);
+  if (now - lastFreightReplenishTime > 30000 || (st.jobs && st.jobs.length < 3) || tenderDue) {
+    if (tenderDue) lastTenderReplenishTime = now;
     try {
       replenish(st);
       lastFreightReplenishTime = now;

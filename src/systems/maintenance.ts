@@ -134,7 +134,7 @@ export function startRepair(S: any, truckId: number, selectedParts: string[]): b
   const endsAt = now + durationMs;
 
   // Deduct money
-  S.money -= totalCost;
+  recordTransaction(S, 'expense_maintenance', -totalCost, `Workshop overhaul: Unit #${truckId}`);
   const savedAmount = Math.max(0, retailTotal - totalCost);
 
   // If truck is busy, it's a scheduled repair for when it returns to a hub
@@ -177,6 +177,8 @@ export function startRepair(S: any, truckId: number, selectedParts: string[]): b
 /**
  * Checks if a truck has a scheduled repair and starts it.
  */
+import { recordTransaction } from '../core/ledger';
+
 export function processScheduledRepair(S: any, truckId: number) {
   if (!S.repairs) return;
   const rep = S.repairs.find((r: any) => r.truckId === truckId && r.scheduled);

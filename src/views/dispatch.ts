@@ -104,43 +104,43 @@ action('ai-withdraw-capital', d => {
 });
 
 action('ai-set-plan', d => {
-  selectedPlan = (d as any).plan;
+  selectedPlan = (d as any).plan || '1m';
   refresh();
 });
 
-action('ai-toggle-maint', d => {
-  includeMaintenance = d.checked !== undefined ? d.checked === 'true' : !includeMaintenance;
+action('ai-toggle-maint', () => {
+  includeMaintenance = !includeMaintenance;
   refresh();
 });
 
-action('ai-toggle-offline', d => {
-  includeOfflineDispatch = d.checked !== undefined ? d.checked === 'true' : !includeOfflineDispatch;
+action('ai-toggle-offline', () => {
+  includeOfflineDispatch = !includeOfflineDispatch;
   refresh();
 });
 
-action('ai-modal-toggle-quant', d => {
-  includeQuantTrader = d.checked !== undefined ? d.checked === 'true' : !includeQuantTrader;
+action('ai-modal-toggle-quant', () => {
+  includeQuantTrader = !includeQuantTrader;
   refresh();
 });
 
-action('ai-toggle-autorenew', d => {
-  autoRenew = d.checked !== undefined ? d.checked === 'true' : !autoRenew;
+action('ai-toggle-autorenew', () => {
+  autoRenew = !autoRenew;
   refresh();
 });
 
-action('ai-toggle-extension', d => {
-  allowExtension = d.checked !== undefined ? d.checked === 'true' : !allowExtension;
+action('ai-toggle-extension', () => {
+  allowExtension = !allowExtension;
   refresh();
 });
 
 action('ai-checkout-usd', () => {
-  activateAiSuiteSystem(selectedPlan, false, includeMaintenance, includeOfflineDispatch, includeQuantTrader, autoRenew, allowExtension);
-  refresh();
+  const success = activateAiSuiteSystem(selectedPlan as any, false, includeMaintenance, includeOfflineDispatch, includeQuantTrader, autoRenew, allowExtension);
+  if (success) refresh();
 });
 
 action('ai-checkout-flb', () => {
-  activateAiSuiteSystem(selectedPlan, true, includeMaintenance, includeOfflineDispatch, includeQuantTrader, autoRenew, allowExtension);
-  refresh();
+  const success = activateAiSuiteSystem(selectedPlan as any, true, includeMaintenance, includeOfflineDispatch, includeQuantTrader, autoRenew, allowExtension);
+  if (success) refresh();
 });
 
 action('ai-toggle-engine', () => {
@@ -807,8 +807,8 @@ export default {
         ${activeSubTab === 'plans' ? `
           <div class="ai-card">
             <div class="ai-card-title">
-              <span>Select Plan Duration</span>
-              <span style="font-size:10px; color:var(--gold); font-weight:700;">FLB Balance: ${playerFlb}</span>
+              <span>Select Enterprise License Plan</span>
+              <span style="font-size:10px; color:var(--gold); font-weight:700;">Balance: ${playerFlb}</span>
             </div>
 
             <div class="ai-plan-grid">
@@ -821,9 +821,9 @@ export default {
                       <div style="font-size:11px; font-weight:800; color:var(--tx);">${p.label}</div>
                       <div style="font-size:9px; color:var(--mu);">${p.days} simulation days</div>
                     </div>
-                    <div class="ai-plan-price">
-                      $${p.priceUsd.toLocaleString()} USD <br>
-                      <span style="color:var(--gold); font-size:10px;">or ${p.priceFlb} FLB</span>
+                    <div class="ai-plan-price" style="text-align:right;">
+                      <div style="font-size:11px; font-weight:900;">$${p.priceUsd.toLocaleString()}</div>
+                      <div style="color:var(--gold); font-size:9px;">${p.priceFlb} FLB</div>
                     </div>
                   </div>
                 `;
@@ -833,65 +833,81 @@ export default {
 
           <div class="ai-card">
             <div class="ai-card-title">
-              <span>Enterprise Add-ons</span>
+              <span>Enterprise Add-ons (Pricing scales with plan)</span>
             </div>
 
-            <div style="display:flex; flex-direction:column; gap:10px;">
-              <label class="ai-toggle-row" style="align-items:flex-start;">
-                <input type="checkbox" ${includeMaintenance ? 'checked' : ''} data-act="ai-toggle-maint" style="margin-top:2px;" />
-                <div>
-                  <span style="color:var(--tx); font-weight:800;">Autonomous Fleet Maintenance Add-on</span>
-                  <div style="font-size:10px; color:var(--mu);">Auto-repairs components below 60% health (+$${maintBase.priceUsd.toLocaleString()} USD or ${maintBase.priceFlb} FLB).</div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div class="ai-toggle-row-complex ${includeMaintenance ? 'active' : ''}" data-act="ai-toggle-maint">
+                <input type="checkbox" ${includeMaintenance ? 'checked' : ''} style="pointer-events:none;" />
+                <div style="flex:1;">
+                  <div style="color:var(--tx); font-weight:800; font-size:11px;">Autonomous Fleet Maintenance</div>
+                  <div style="font-size:10px; color:var(--mu);">Servicing at 60% health</div>
                 </div>
-              </label>
+                <div style="text-align:right;">
+                  <div style="font-size:11px; font-weight:800; color:var(--grn);">+$${maintBase.priceUsd.toLocaleString()}</div>
+                  <div style="font-size:9px; color:var(--gold);">${maintBase.priceFlb} FLB</div>
+                </div>
+              </div>
 
-              <label class="ai-toggle-row" style="align-items:flex-start; padding-top:8px; border-top:1px solid var(--line);">
-                <input type="checkbox" ${includeOfflineDispatch ? 'checked' : ''} data-act="ai-toggle-offline" style="margin-top:2px;" />
-                <div>
-                  <span style="color:var(--tx); font-weight:800;">Autonomous Offline AI Dispatcher Add-on</span>
-                  <div style="font-size:10px; color:var(--mu);">Continuously matches real market jobs while offline (+$${offlineBase.priceUsd.toLocaleString()} USD or ${offlineBase.priceFlb} FLB).</div>
+              <div class="ai-toggle-row-complex ${includeOfflineDispatch ? 'active' : ''}" data-act="ai-toggle-offline">
+                <input type="checkbox" ${includeOfflineDispatch ? 'checked' : ''} style="pointer-events:none;" />
+                <div style="flex:1;">
+                  <div style="color:var(--tx); font-weight:800; font-size:11px;">Autonomous Offline AI Dispatcher</div>
+                  <div style="font-size:10px; color:var(--mu);">Background operations while away</div>
                 </div>
-              </label>
+                <div style="text-align:right;">
+                  <div style="font-size:11px; font-weight:800; color:var(--grn);">+$${offlineBase.priceUsd.toLocaleString()}</div>
+                  <div style="font-size:9px; color:var(--gold);">${offlineBase.priceFlb} FLB</div>
+                </div>
+              </div>
 
-              <label class="ai-toggle-row" style="align-items:flex-start; padding-top:8px; border-top:1px solid var(--line);">
-                <input type="checkbox" ${includeQuantTrader ? 'checked' : ''} data-act="ai-modal-toggle-quant" style="margin-top:2px;" />
-                <div>
-                  <span style="color:var(--tx); font-weight:800;">Autonomous AI Quant Trader Bot Add-on</span>
-                  <div style="font-size:10px; color:var(--mu);">Enables high-frequency algorithmic crypto trading engine (+$${quantBase.priceUsd.toLocaleString()} USD or ${quantBase.priceFlb} FLB).</div>
+              <div class="ai-toggle-row-complex ${includeQuantTrader ? 'active' : ''}" data-act="ai-modal-toggle-quant">
+                <input type="checkbox" ${includeQuantTrader ? 'checked' : ''} style="pointer-events:none;" />
+                <div style="flex:1;">
+                  <div style="color:var(--tx); font-weight:800; font-size:11px;">AI Quant Trader Bot</div>
+                  <div style="font-size:10px; color:var(--mu);">HFT Crypto algorithm</div>
                 </div>
-              </label>
+                <div style="text-align:right;">
+                  <div style="font-size:11px; font-weight:800; color:var(--grn);">+$${quantBase.priceUsd.toLocaleString()}</div>
+                  <div style="font-size:9px; color:var(--gold);">${quantBase.priceFlb} FLB</div>
+                </div>
+              </div>
 
-              <label class="ai-toggle-row" style="align-items:flex-start; padding-top:8px; border-top:1px solid var(--line);">
-                <input type="checkbox" ${selectedPlan === 'auto' || autoRenew ? 'checked' : ''} ${selectedPlan === 'auto' ? 'disabled' : ''} data-act="ai-toggle-autorenew" style="margin-top:2px;" />
-                <div>
-                  <span style="color:var(--tx); font-weight:800;">Auto-Renewal</span>
-                  <div style="font-size:10px; color:var(--mu);">Automatically renews company license to prevent downtime.</div>
+              <div class="ai-toggle-row-complex" data-act="ai-toggle-autorenew">
+                <input type="checkbox" ${selectedPlan === 'auto' || autoRenew ? 'checked' : ''} ${selectedPlan === 'auto' ? 'disabled' : ''} style="pointer-events:none;" />
+                <div style="flex:1;">
+                  <div style="color:var(--tx); font-weight:800; font-size:11px;">Auto-Renewal Optimization</div>
+                  <div style="font-size:10px; color:var(--mu);">Continuous licensing</div>
                 </div>
-              </label>
+                <div style="font-size:10px; font-weight:800; color:var(--mu);">INCLUDED</div>
+              </div>
             </div>
           </div>
 
           <!-- CHECKOUT & EXTENSION -->
-          <div class="ai-card" style="border-color:var(--gold);">
-            <div class="ai-card-title">
-              <span>Total Bundled License</span>
-              <span style="color:var(--grn); font-weight:800;">$${totalUsd.toLocaleString()} USD / ${totalFlb} FLB</span>
+          <div class="ai-card" style="border-color:var(--gold); background:rgba(212,175,55,0.05);">
+            <div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:12px; border-bottom:1px dashed var(--gold); padding-bottom:8px;">
+               <div style="font-size:10px; font-weight:800; color:var(--mu); letter-spacing:1px; text-transform:uppercase;">Total Package Price</div>
+               <div style="text-align:right;">
+                 <div style="color:var(--grn); font-weight:900; font-size:18px; line-height:1;">$${totalUsd.toLocaleString()}</div>
+                 <div style="color:var(--gold); font-weight:800; font-size:12px; margin-top:2px;">${totalFlb} FLB</div>
+               </div>
             </div>
 
             ${isSubActive ? `
-              <label class="ai-toggle-row" style="background:rgba(193,154,91,0.1); padding:8px; border-radius:8px;">
-                <input type="checkbox" ${allowExtension ? 'checked' : ''} data-act="ai-toggle-extension" />
-                <span style="color:var(--gold); font-size:11px;">Extend Existing Subscription (+${currentPlan.label})</span>
-              </label>
+              <div class="ai-toggle-row-complex" data-act="ai-toggle-extension" style="background:rgba(193,154,91,0.1); margin-bottom:12px; border:1px solid var(--gold);">
+                <input type="checkbox" ${allowExtension ? 'checked' : ''} style="pointer-events:none;" />
+                <div style="color:var(--gold); font-size:11px; font-weight:800;">Extend Existing Subscription (+${currentPlan.days} Days)</div>
+              </div>
             ` : ''}
 
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-              <button data-act="ai-checkout-usd" class="btn">
-                Pay USD ($${totalUsd.toLocaleString()})
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+              <button data-act="ai-checkout-usd" class="btn" style="height:44px; font-weight:900; background:var(--grn); color:#000;">
+                CHECKOUT USD
               </button>
 
-              <button data-act="ai-checkout-flb" class="btn gold">
-                Pay FLB (${totalFlb} FLB)
+              <button data-act="ai-checkout-flb" class="btn gold" style="height:44px; font-weight:900;">
+                CHECKOUT FLB
               </button>
             </div>
           </div>

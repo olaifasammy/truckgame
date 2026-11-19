@@ -84,6 +84,22 @@ function fix(state: any) {
   if (!state.licenses) state.licenses = ['standard'];
   if (!state.trailers) state.trailers = ['curtain', 'flatbed', 'reefer'];
   if (!state.loans) state.loans = [];
+  if (Array.isArray(state.loans)) {
+    state.loans.forEach((l: any) => {
+      if (l.balance === undefined) {
+        l.balance = l.remainingBalance !== undefined ? l.remainingBalance : (l.principal || l.amount || 50000);
+      }
+      if (l.remainingBalance === undefined) {
+        l.remainingBalance = l.balance;
+      }
+      if (l.principal === undefined) {
+        l.principal = l.balance;
+      }
+      if (l.dailyRate === undefined) {
+        l.dailyRate = Math.ceil(l.balance / Math.max(1, l.daysRemaining || 60));
+      }
+    });
+  }
   if (!state.leases) state.leases = [];
   if (!state.insurance) state.insurance = { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 };
   if (!state.fuelBunker) state.fuelBunker = { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };

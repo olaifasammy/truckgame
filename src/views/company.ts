@@ -1,4 +1,5 @@
 import { ic } from '../core/icons';
+import { recordTransaction } from '../core/ledger';
 import { action, fmt, dur, toast } from '../core/ui';
 import { set, refresh } from '../core/store';
 import { fillPool } from '../systems/drivers';
@@ -44,7 +45,7 @@ action('unlock-region', d => {
     if (S.unlockedRegions.includes(region)) return toast(`${auth.name} already active!`, 'info');
     if (S.money < auth.cost) return toast(`Insufficient capital ($${auth.cost.toLocaleString()}) for ${auth.name}`, 'err');
     
-    S.money -= auth.cost;
+    recordTransaction(S, 'expense_unlock', -auth.cost, `Operating Authority: ${auth.name} Region`);
     S.unlockedRegions.push(region);
 
     const primaryHub = REGIONAL_HUBS.find(h => h.region === region);

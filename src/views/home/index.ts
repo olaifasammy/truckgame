@@ -48,8 +48,15 @@ action('refresh-freight-board', () => {
     const cost = 250;
     if (S.money < cost) return toast(`Insufficient funds to refresh freight board. Need $${cost}`, 'err');
     S.money -= cost;
-    const securedJobs = (S.jobs || []).filter((j: any) => j.isAuctionWon || j.tenderId);
+    const securedJobs = (S.jobs || []).filter((j: any) => j.isAuctionWon);
     S.jobs = [...securedJobs];
+
+    if (S.corporateTenders) {
+      for (const t of S.corporateTenders) {
+        t.nextLoadAt = 0;
+      }
+    }
+
     replenish(S);
     
     // Also refresh special corporate tenders

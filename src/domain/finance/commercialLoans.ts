@@ -4,7 +4,7 @@
  * company rank and tier eligibility, required permits, and bank committee approval.
  */
 
-import { pushNote } from '../../systems/notify';
+import { recordTransaction } from '../../core/ledger';
 import { toast } from '../../core/ui';
 
 export interface LoanOffer {
@@ -56,7 +56,10 @@ export function calculateEnterpriseCreditProfile(S: any): EnterpriseCreditProfil
   }
 
   const activeLoans = S.loans || [];
-  const activeDebtUsd = activeLoans.reduce((sum: number, l: any) => sum + (l.remainingBalance || l.principal), 0);
+  const activeDebtUsd = activeLoans.reduce((sum: number, l: any) => {
+    const bal = l.balance !== undefined ? l.balance : (l.remainingBalance !== undefined ? l.remainingBalance : (l.principal || 0));
+    return sum + bal;
+  }, 0);
 
   const debtToAssetRatio = assets > 0 ? activeDebtUsd / assets : 0;
 
@@ -355,6 +358,7 @@ export function executeTakeLoan(S: any, offerId: string, customAmount?: number):
     name: offer.name,
     lender: offer.lender,
     principal: offer.principal,
+    balance: offer.totalRepayment,
     remainingBalance: offer.totalRepayment,
     dailyRate: offer.dailyRate,
     termDays: offer.termDays,
@@ -364,7 +368,7 @@ export function executeTakeLoan(S: any, offerId: string, customAmount?: number):
   };
 
   S.loans.push(loanRecord);
-  S.money += offer.principal;
+  recordTransaction(S, 'revenue_bonus', offer.principal, `Commercial Loan Disbursal: ${offer.name} (${offer.lender})`);
 
   if (!S.stats) S.stats = { earned: 0, spent: 0, km: 0, jobs: 0 };
   S.stats.borrowed = (S.stats.borrowed || 0) + offer.principal;
@@ -379,7 +383,7 @@ export function executeTakeLoan(S: any, offerId: string, customAmount?: number):
   return true;
 }
 
-export function executePayoffLoan(S: any, loanId: string): boolean {
+export function executePayoffLoan(S: any, loanId: string, customAmount?: number): boolean {
   if (!S.loans) return false;
   const idx = S.loans.findIndex((l: any) => l.id === loanId);
   if (idx === -1) {
@@ -387,18 +391,41 @@ export function executePayoffLoan(S: any, loanId: string): boolean {
     return false;
   }
   const loan = S.loans[idx];
-  const payoffAmount = loan.remainingBalance;
-  if (S.money < payoffAmount) {
-    toast(`Insufficient funds to payoff loan. Needs $${payoffAmount.toLocaleString()}`, 'err');
+  const currentBalance = loan.balance || loan.remainingBalance || 0;
+  const payoffAmount = customAmount !== undefined ? Math.min(customAmount, currentBalance) : currentBalance;
+
+  if (payoffAmount <= 0) {
+    toast('Invalid repayment amount.', 'err');
     return false;
   }
-  S.money -= payoffAmount;
-  S.loans.splice(idx, 1);
-  pushNote(S, `🏦 Commercial Loan Fully Settled: $${payoffAmount.toLocaleString()} paid to ${loan.lender}. Credit rating updated.`, {
-    title: 'LOAN FULLY SETTLED',
-    type: 'finance',
-    priority: 'medium'
-  });
-  toast(`Successfully paid off loan account (${loan.name})!`, 'success');
+
+  if (S.money < payoffAmount) {
+    toast(`Insufficient funds. Needs $${payoffAmount.toLocaleString()}`, 'err');
+    return false;
+  }
+
+  recordTransaction(S, 'expense_finance', -payoffAmount, `Commercial Loan ${payoffAmount >= currentBalance ? 'Full Settlement' : 'Principal Paydown'}: ${loan.name}`);
+  
+  if (payoffAmount >= currentBalance) {
+    S.loans.splice(idx, 1);
+    pushNote(S, `🏦 Commercial Loan Fully Settled: $${payoffAmount.toLocaleString()} paid to ${loan.lender}. Credit rating updated.`, {
+      title: 'LOAN FULLY SETTLED',
+      type: 'finance',
+      priority: 'medium'
+    });
+    toast(`Successfully paid off loan account (${loan.name})!`, 'success');
+  } else {
+    loan.balance = Math.max(0, currentBalance - payoffAmount);
+    loan.remainingBalance = loan.balance;
+    if (loan.daysRemaining && loan.daysRemaining > 0) {
+      loan.dailyRate = Math.round((loan.balance / Math.max(1, loan.daysRemaining)) * (1 + loan.apr / 100 / 365));
+    }
+    pushNote(S, `🏦 Loan Principal Paydown: $${payoffAmount.toLocaleString()} paid towards ${loan.name}. Remaining balance: $${loan.balance.toLocaleString()}.`, {
+      title: 'LOAN PRINCIPAL REDUCED',
+      type: 'finance',
+      priority: 'medium'
+    });
+    toast(`Successfully paid $${payoffAmount.toLocaleString()} towards loan!`, 'success');
+  }
   return true;
 }

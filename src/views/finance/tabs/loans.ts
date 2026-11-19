@@ -41,8 +41,9 @@ action('take-commercial-loan', d => {
 
 action('payoff-commercial-loan', d => {
   const loanId = (d as any).loanId;
+  const amount = (d as any).amount ? parseFloat((d as any).amount) : undefined;
   set(S => {
-    executePayoffLoan(S, loanId);
+    executePayoffLoan(S, loanId, amount);
   });
   refresh();
 });
@@ -77,7 +78,10 @@ export function renderLoansTab(S: any): string {
   const activeLoans = S.loans || [];
 
   const totalDailyDebtService = activeLoans.reduce((sum: number, l: any) => sum + (l.dailyRate || 0), 0);
-  const totalOutstandingBalance = activeLoans.reduce((sum: number, l: any) => sum + (l.balance || 0), 0);
+  const totalOutstandingBalance = activeLoans.reduce((sum: number, l: any) => {
+    const bal = l.balance !== undefined ? l.balance : (l.remainingBalance !== undefined ? l.remainingBalance : (l.principal || 0));
+    return sum + bal;
+  }, 0);
 
   // Filter offers based on user selected category
   const filteredOffers = offers.filter(o => {
@@ -240,8 +244,10 @@ export function renderLoansTab(S: any): string {
 
           <div style="display:flex; flex-direction:column; gap:10px;">
             ${activeLoans.map((l: any) => {
-              const payoffPct = Math.max(0, Math.min(100, Math.round(((l.principal - l.balance) / l.principal) * 100)));
-              const canPayoff = (S.money || 0) >= l.balance;
+              const bal = l.balance !== undefined ? l.balance : (l.remainingBalance !== undefined ? l.remainingBalance : (l.principal || 0));
+              const principal = l.principal || bal || 1;
+              const payoffPct = Math.max(0, Math.min(100, Math.round(((principal - bal) / principal) * 100)));
+              const canPayoff = (S.money || 0) >= bal;
               return `
                 <div style="background:#060a14; border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:12px; display:flex; flex-direction:column; gap:8px;">
                   <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
@@ -253,7 +259,7 @@ export function renderLoansTab(S: any): string {
                     </div>
                     <div style="text-align:right;">
                       <div style="font-size:14px; font-weight:900; color:#ef4444; font-family:monospace;">
-                        ${fmt(l.balance)}
+                        ${fmt(bal)}
                       </div>
                       <div style="font-size:9px; color:var(--mu); font-family:monospace;">
                         -$${(l.dailyRate || 0).toLocaleString()}/day (${Math.ceil(l.daysRemaining || 0)}d left)
@@ -273,12 +279,15 @@ export function renderLoansTab(S: any): string {
                   </div>
 
                   <!-- Action -->
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px;">
-                    <span style="font-size:9px; color:var(--mu); font-family:monospace;">
-                      Early settlement eliminates future daily interest charges
-                    </span>
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-top:2px; flex-wrap:wrap; gap:8px;">
+                    <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                      <span style="font-size:9px; color:var(--mu); font-family:monospace;">Principal Paydown:</span>
+                      ${(S.money || 0) >= 10000 && bal > 10000 ? `<button class="btn" style="padding:4px 8px; font-size:8.5px; background:rgba(255,255,255,0.08);" data-act="payoff-commercial-loan" data-loan-id="${l.id}" data-amount="10000">$10k</button>` : ''}
+                      ${(S.money || 0) >= 25000 && bal > 25000 ? `<button class="btn" style="padding:4px 8px; font-size:8.5px; background:rgba(255,255,255,0.08);" data-act="payoff-commercial-loan" data-loan-id="${l.id}" data-amount="25000">$25k</button>` : ''}
+                      ${(S.money || 0) >= 50000 && bal > 50000 ? `<button class="btn" style="padding:4px 8px; font-size:8.5px; background:rgba(255,255,255,0.08);" data-act="payoff-commercial-loan" data-loan-id="${l.id}" data-amount="50000">$50k</button>` : ''}
+                    </div>
                     <button class="btn gold" style="padding:6px 14px; font-size:9.5px; font-weight:900;" data-act="payoff-commercial-loan" data-loan-id="${l.id}" ${canPayoff ? '' : 'disabled style="opacity:0.4;"'}>
-                      ${canPayoff ? `SETTLE EARLY (${fmt(l.balance)})` : `NEEDS ${fmt(l.balance - S.money)} MORE`}
+                      ${canPayoff ? `SETTLE EARLY (${fmt(bal)})` : `NEEDS ${fmt(bal - S.money)} MORE`}
                     </button>
                   </div>
                 </div>

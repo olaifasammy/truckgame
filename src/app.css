@@ -616,3 +616,30 @@ svg { width: 100%; height: auto; display: block; }
   cursor: pointer;
 }
 
+.ai-toggle-row-complex {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.ai-toggle-row-complex:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.ai-toggle-row-complex.active {
+  border-color: var(--grn);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.ai-toggle-row-complex input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--grn);
+}
+

@@ -4,6 +4,8 @@ import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
 import { TRUCK_MODELS } from '../trucks/trucks.data';
 
+import { recordTransaction } from '../../core/ledger';
+
 export interface HubFacility {
   id: string;               // e.g. 'hub_lagos', 'hub_chicago'
   extraBerths: number;      // player-expanded berths (+2 per expansion)
@@ -146,7 +148,7 @@ export function expandHubBerths(S: any, hubId: string): boolean {
     return false;
   }
 
-  S.money -= cost;
+  recordTransaction(S, 'expense_unlock', -cost, `Terminal Expansion: ${hub.name} (+2 berths)`);
   facility.extraBerths = (facility.extraBerths || 0) + 2;
   const totalBerths = getHubTotalBerths(S, hubId);
 
@@ -183,7 +185,7 @@ export function expandHubFuelTank(S: any, hubId: string): boolean {
     return false;
   }
 
-  S.money -= cost;
+  recordTransaction(S, 'expense_unlock', -cost, `Fuel Infrastructure: ${hub.name} tank upgrade (+10,000L)`);
   facility.fuelCapacity = (facility.fuelCapacity || DEFAULT_FUEL_CAPACITY) + 10000;
 
   pushNote(S, `Fuel Infrastructure: ${hub.name} bulk tank capacity upgraded to ${facility.fuelCapacity.toLocaleString()}L (-$${cost.toLocaleString()}).`, {
@@ -220,7 +222,7 @@ export function buyHubWholesaleFuel(S: any, hubId: string, liters: number): bool
     return false;
   }
 
-  S.money -= cost;
+  recordTransaction(S, 'expense_fuel', -cost, `Wholesale Fuel Purchase: ${toOrder.toLocaleString()}L for ${hub.name}`);
   const prevLiters = facility.fuelLiters || 0;
   const prevCost = facility.fuelAvgCost || WHOLESALE_FUEL_PRICE_PER_LITER;
   facility.fuelLiters = prevLiters + toOrder;

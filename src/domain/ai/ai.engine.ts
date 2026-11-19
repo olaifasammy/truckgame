@@ -217,7 +217,10 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
   if (!S.aiState) return { dispatchedCount: 0, message: 'AI State uninitialized' };
   
   const now = overrideNow || Date.now();
-  let isSubActive = !!(S.aiState.subscriptionActive && now < (S.aiState.expiresTimestamp || 0));
+  let isSubActive = !!(
+    (S.aiState.subscriptionActive && now < (S.aiState.expiresTimestamp || 0)) ||
+    (S.aiState.offlineDispatchActive && now < (S.aiState.offlineExpiresTimestamp || 0))
+  );
 
   // Seamless auto-renewal fallback: If subscription expired but auto-renew or positive balance is available
   if (!isSubActive && S.aiState.subscriptionActive && (S.aiState.autoRenew || S.aiState.planId === 'auto' || (S.money || 0) >= 5000)) {
