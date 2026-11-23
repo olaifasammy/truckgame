@@ -1,6 +1,7 @@
 import { fmt } from '../../../core/ui';
 import { getGoldMarketData } from '../../../domain/finance/banking';
 import { CRYPTO_ASSETS, getCryptoMarketData, getTotalCryptoValue } from '../../../domain/finance/markets/crypto';
+import { getCryptoHoldingMetrics } from '../../../domain/finance/markets/cost-basis';
 import { MINING_RIG_TYPES, MINING_ADDITIONS, MINING_DURATIONS, calculateMiningStats, getSubstationUpgradeCost, getSubscriptionCost, calculateRigDailyCoinYield, getVipLevel, MiningSubscription, formatCryptoQty, MINING_TUNING_PROFILES } from '../../../domain/finance/markets/mining';
 import { renderCandlestickChart, renderOrderBookDepth, renderLimitOrderDesk, renderCollateralLoanDesk } from './exchange-orderbook';
 import { renderNextGenHardwareShop, renderNextGenAestheticBay } from './nextgen-shop';
@@ -348,6 +349,45 @@ export function renderExchangeTab(S: any) {
 
             <!-- Dual Side-by-Side Buy / Sell Order Desk -->
             <div style="padding:12px; background:#060911;">
+              
+              ${(() => {
+                const metrics = getCryptoHoldingMetrics(S, selectedAssetId, assetData.sellPrice);
+                if (metrics.qty <= 0) return '';
+                const isProfitable = metrics.unrealizedPnl >= 0;
+                const pnlColor = isProfitable ? 'var(--grn)' : '#ef4444';
+                const pnlSign = isProfitable ? '+' : '';
+                const pnlText = `${pnlSign}$${Math.round(metrics.unrealizedPnl).toLocaleString()} (${pnlSign}${metrics.unrealizedPnlPct.toFixed(2)}%)`;
+
+                return `
+                  <div style="background:rgba(255,255,255,0.02); border:1px solid ${isProfitable ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}; border-radius:8px; padding:10px 12px; margin-bottom:10px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; flex-wrap:wrap; gap:4px;">
+                      <span style="font-size:9px; font-weight:900; color:var(--tx); text-transform:uppercase;">POSITION & COST BASIS</span>
+                      <span style="font-size:11px; font-weight:900; color:${pnlColor}; font-family:monospace;">
+                        ${isProfitable ? '▲ UNREALIZED PROFIT' : '▼ UNREALIZED LOSS'}: ${pnlText}
+                      </span>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; font-size:9px;">
+                      <div>
+                        <div style="color:var(--mu); font-size:7px; text-transform:uppercase;">Holding</div>
+                        <b style="color:var(--gold); font-family:monospace;">${formatCryptoQty(metrics.qty)} ${assetData.symbol}</b>
+                      </div>
+                      <div>
+                        <div style="color:var(--mu); font-size:7px; text-transform:uppercase;">Avg Buy Price</div>
+                        <b style="color:var(--tx); font-family:monospace;">$${metrics.avgBuyPrice.toLocaleString(undefined, { maximumFractionDigits: 2 })}</b>
+                      </div>
+                      <div>
+                        <div style="color:var(--mu); font-size:7px; text-transform:uppercase;">Cost Basis</div>
+                        <b style="color:var(--tx); font-family:monospace;">$${Math.round(metrics.totalCostBasis).toLocaleString()}</b>
+                      </div>
+                      <div>
+                        <div style="color:var(--mu); font-size:7px; text-transform:uppercase;">Current Value</div>
+                        <b style="color:var(--grn); font-family:monospace;">$${Math.round(metrics.currentMarketVal).toLocaleString()}</b>
+                      </div>
+                    </div>
+                  </div>
+                `;
+              })()}
+
               <div style="display:flex; justify-content:space-between; margin-bottom:8px; font-size:9px;">
                 <div>
                   <span style="color:var(--mu);">Available Cash:</span>
@@ -391,10 +431,23 @@ export function renderExchangeTab(S: any) {
 
                 <!-- SELL PANEL -->
                 <div style="background:#090d16; border:1px solid rgba(239,68,68,0.25); border-radius:8px; padding:10px;">
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <span style="font-size:9px; font-weight:900; color:#ef4444; text-transform:uppercase;">SELL ${assetData.symbol}</span>
-                    <span style="font-size:8px; color:var(--mu); font-family:monospace;">Bid: $${assetData.sellPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
-                  </div>
+                  ${(() => {
+                    const metrics = getCryptoHoldingMetrics(S, selectedAssetId, assetData.sellPrice);
+                    const isProfitable = metrics.unrealizedPnl >= 0;
+                    const pnlSign = isProfitable ? '+' : '';
+                    const pnlStr = metrics.qty > 0 ? `${pnlSign}${metrics.unrealizedPnlPct.toFixed(1)}%` : '';
+                    const pnlColor = isProfitable ? 'var(--grn)' : '#ef4444';
+
+                    return `
+                      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                        <span style="font-size:9px; font-weight:900; color:#ef4444; text-transform:uppercase;">SELL ${assetData.symbol}</span>
+                        <div style="font-size:8px; font-family:monospace; text-align:right;">
+                          <span style="color:var(--mu);">Bid: $${assetData.sellPrice.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+                          ${pnlStr ? `<span style="color:${pnlColor}; font-weight:900; margin-left:4px;">(${pnlStr})</span>` : ''}
+                        </div>
+                      </div>
+                    `;
+                  })()}
 
                   <div style="display:flex; gap:4px; margin-bottom:6px;">
                     <div style="position:relative; flex:1; min-width:0;">
@@ -615,13 +668,13 @@ export function renderExchangeTab(S: any) {
           <!-- Configure Hosting Contract -->
           <div style="background:#090d16; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px;">
             <div style="font-size:9px; font-weight:900; color:var(--gold); text-transform:uppercase; margin-bottom:8px;">
-              Deploy Hosting Contract
+              Establish Hosting Agreement
             </div>
             
             <!-- Step 1 & 2 side-by-side -->
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-bottom:10px;">
               <div>
-                <div style="font-size:8px; color:var(--mu); font-weight:800; text-transform:uppercase; margin-bottom:4px;">1. Target Asset</div>
+                <div style="font-size:8px; color:var(--mu); font-weight:800; text-transform:uppercase; margin-bottom:4px;">1. Target Asset Pool</div>
                 <div style="display:flex; gap:4px; overflow-x:auto; padding-bottom:4px;">
                   ${minableAssets.map(coin => {
                     const isSel = coin.id === miningTargetCoin;
@@ -680,7 +733,7 @@ export function renderExchangeTab(S: any) {
                     </div>
 
                     <button class="btn ${isEligible ? 'gold' : 'alt'}" style="width:100%; padding:5px; font-size:8px; font-weight:900; opacity:${isEligible ? 1 : 0.6}; margin-top:6px;" data-act="subscribe-mining-contract" data-type-id="${rig.id}" data-coin="${miningTargetCoin}" data-duration="${miningSelectedDuration}">
-                      SUBSCRIBE ${miningSelectedDuration}D (${costs.bondsCost > 0 ? `$${costs.cashCost.toLocaleString()} + ${costs.bondsCost} FLB` : `$${costs.cashCost.toLocaleString()}`})
+                      SIGN ${miningSelectedDuration}D CONTRACT (${costs.bondsCost > 0 ? `$${costs.cashCost.toLocaleString()} + ${costs.bondsCost} FLB` : `$${costs.cashCost.toLocaleString()}`})
                     </button>
                   </div>
                 `;
@@ -691,7 +744,7 @@ export function renderExchangeTab(S: any) {
           <!-- Active Multi-Coin Subscriptions Roster -->
           <div style="background:#090d16; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:12px;">
             <div style="font-size:8px; color:var(--mu); font-weight:800; text-transform:uppercase; margin-bottom:8px;">
-              Active Hosting Contracts (${activeSubscriptions.length})
+              Active Hosting Agreements (${activeSubscriptions.length})
             </div>
 
             ${activeSubscriptions.length === 0 ? `

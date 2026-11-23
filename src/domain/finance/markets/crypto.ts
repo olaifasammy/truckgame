@@ -63,37 +63,37 @@ export function getCurrentMarketRegime(): MarketRegimeInfo {
       return {
         regime: 'bull_rally',
         headline: '🚀 Institutional Inflows & Liquidity Surge Driving Sector Rally',
-        biasMultiplier: 1.12,
-        volatilityScale: 1.1
+        biasMultiplier: 1.15,
+        volatilityScale: 1.2
       };
     case 1:
       return {
         regime: 'bear_trend',
         headline: '📉 Macro Regulatory Headwinds & Liquidation Pressure Testing Support',
-        biasMultiplier: 0.91,
-        volatilityScale: 0.9
+        biasMultiplier: 0.88,
+        volatilityScale: 1.1
       };
     case 2:
       return {
         regime: 'high_volatility_chop',
         headline: '⚡ High Volatility Derivatives Expiry Causing Whipsaw Sweeps',
-        biasMultiplier: 1.01,
-        volatilityScale: 1.45
+        biasMultiplier: 1.05,
+        volatilityScale: 2.2
       };
     case 3:
       return {
         regime: 'flash_crash',
         headline: '⚠️ Cascading Leveraged De-risking Triggering Short-Term Flash Dip',
-        biasMultiplier: 0.84,
-        volatilityScale: 1.8
+        biasMultiplier: 0.75,
+        volatilityScale: 3.5
       };
     case 4:
     default:
       return {
         regime: 'halving_hype',
         headline: '💎 Supply Halving & Treasury Accumulation Propelling Parabolic Surge',
-        biasMultiplier: 1.18,
-        volatilityScale: 1.25
+        biasMultiplier: 1.25,
+        volatilityScale: 1.8
       };
   }
 }
@@ -111,53 +111,121 @@ export const CRYPTO_ASSETS: CryptoAsset[] = [
   { id: 'usdc', symbol: 'USDC', name: 'USD Coin', icon: '$', basePrice: 1.00, volatility: 0.001, color: '#2775ca' }
 ];
 
+/** Fast, deterministic PRNG hash for seeded stochastic financial simulation */
+function seededPRNG(seed: number): number {
+  let t = (seed ^ (seed >>> 15)) * 0x85ebca6b;
+  t = (t ^ (t >>> 13)) * 0xc2b2ae35;
+  return ((t ^ (t >>> 16)) >>> 0) / 4294967296;
+}
+
 export function getCryptoMarketData(assetId: string, timeframe: Timeframe = '15m') {
   const asset = CRYPTO_ASSETS.find(a => a.id === assetId) || CRYPTO_ASSETS[0];
+  const regime = getCurrentMarketRegime();
 
   const intervalMinutes = timeframe === '15m' ? 15 : timeframe === '1h' ? 60 : timeframe === '4h' ? 240 : 1440;
   const timeBlock = Math.floor(Date.now() / (1000 * 60 * intervalMinutes));
-  const seed = asset.id.split('').reduce((a, b) => a + b.charCodeAt(0), 0) + timeBlock;
+  const assetSeed = asset.id.split('').reduce((acc, char) => (acc * 31 + char.charCodeAt(0)) | 0, 0);
+
+  // For stablecoins (e.g. USDC), enforce tight $1.00 peg with micro-fluctuations
+  if (asset.id === 'usdc') {
+    const usdcNoise = (seededPRNG(assetSeed + timeBlock) - 0.5) * 0.001;
+    const usdcPrice = Math.max(0.998, Math.min(1.002, 1.00 + usdcNoise));
+    const candles: Candle[] = [];
+    const history: number[] = [];
+    for (let i = 24; i >= 0; i--) {
+      const s = timeBlock - i;
+      const cPrice = 1.00 + (seededPRNG(assetSeed + s) - 0.5) * 0.0012;
+      history.push(cPrice);
+      candles.push({
+        time: Date.now() - i * intervalMinutes * 60 * 1000,
+        open: cPrice,
+        high: cPrice + 0.0005,
+        low: cPrice - 0.0005,
+        close: cPrice,
+        volume: 1500000
+      });
+    }
+    return {
+      ...asset,
+      timeframe,
+      price: usdcPrice,
+      change24h: 0.01,
+      high24h: 1.001,
+      low24h: 0.999,
+      history,
+      candles,
+      spread: 0.0002,
+      buyPrice: usdcPrice * 1.0001,
+      sellPrice: usdcPrice * 0.9999
+    };
+  }
   
   // Historical points for central chart (24 periods)
   const history: number[] = [];
   const candles: Candle[] = [];
 
-  for (let i = 24; i >= 0; i--) {
-    const s = seed - i;
-    const wave = Math.sin(s * 0.35) * asset.volatility + Math.cos(s * 0.18) * (asset.volatility * 0.6);
-    const noise = (Math.sin(s * 1.7) * 0.15) * asset.volatility;
-    const close = Math.max(0.0001, asset.basePrice * (1 + wave + noise));
+  // Cumulative Stochastic Random Walk (Geometric Brownian Motion + Regime Drift)
+  // Calculate a baseline start price 24 periods ago using macro regime shift
+  let currentLogPrice = Math.log(asset.basePrice);
+  const driftRate = (regime.biasMultiplier - 1.0) * 0.01;
+  const volScale = asset.volatility * regime.volatilityScale * 0.03;
+
+  // Pre-roll a deterministic random walk up to the start of our 24-candle window
+  let walkState = currentLogPrice;
+  const historyWindow = 24;
+  
+  for (let i = historyWindow; i >= 0; i--) {
+    const s = timeBlock - i;
     
-    // Previous close becomes current open
-    const prevClose = history.length > 0 ? history[history.length - 1] : close * (1 - (Math.sin(s * 0.9) * 0.02));
+    // Deterministic pseudo-random shocks derived from asset seed & block index
+    const r1 = seededPRNG(assetSeed + s * 7);
+    const r2 = seededPRNG(assetSeed + s * 13 + 101);
+    const r3 = seededPRNG(assetSeed + s * 17 + 503);
+    
+    // Multi-frequency deterministic stochastic noise (combining PRNG shock and non-linear market harmonics)
+    const shock = (r1 - 0.5) * 2.0 + Math.sin(s * 0.17 + assetSeed) * 0.3;
+    const fatTailEvent = r2 > 0.95 ? (r3 - 0.5) * 2.5 : 0;
+    
+    const stepReturn = driftRate + volScale * (shock + fatTailEvent);
+    walkState += stepReturn;
+    
+    const close = Math.max(0.0001, Math.exp(walkState));
+    const prevClose = history.length > 0 ? history[history.length - 1] : close * (1 - (r1 - 0.5) * 0.01);
     const open = prevClose;
-    const high = Math.max(open, close) * (1 + Math.abs(Math.sin(s * 2.3) * 0.015));
-    const low = Math.min(open, close) * (1 - Math.abs(Math.cos(s * 2.1) * 0.015));
-    const volume = Math.round(50000 + Math.abs(Math.sin(s * 1.1)) * 450000);
+    
+    const maxVal = Math.max(open, close);
+    const minVal = Math.min(open, close);
+    const wickHigh = maxVal * (1 + (r2 * 0.015) * regime.volatilityScale);
+    const wickLow = minVal * (1 - (r3 * 0.015) * regime.volatilityScale);
+    const volume = Math.round((75000 + r1 * 425000) * regime.volatilityScale);
 
     history.push(close);
     candles.push({
       time: Date.now() - i * intervalMinutes * 60 * 1000,
       open,
-      high,
-      low,
+      high: wickHigh,
+      low: wickLow,
       close,
       volume
     });
   }
 
-  // Real-time second-by-second micro-volatility (oscillates ±0.4% - 1.2% naturally so spot trading and bots can scalp real price movement)
-  const secTime = Math.floor(Date.now() / 4000);
-  const secNoise = (Math.sin(secTime * 0.45 + seed) * 0.007 + Math.cos(secTime * 0.85) * 0.005) * (asset.volatility || 0.3);
+  // Real-time second-by-second micro-volatility (Deterministic per 4-second tick window)
+  const secBlock = Math.floor(Date.now() / 4000);
+  const secPRNG = seededPRNG(assetSeed + secBlock * 37);
+  const secNoise = (secPRNG - 0.5) * 0.008 * regime.volatilityScale;
 
   const baseLatestPrice = history[history.length - 1];
   const livePrice = Math.max(0.0001, baseLatestPrice * (1 + secNoise));
   history[history.length - 1] = livePrice;
+
   if (candles.length > 0) {
-    candles[candles.length - 1].close = livePrice;
-    candles[candles.length - 1].high = Math.max(candles[candles.length - 1].high, livePrice);
-    candles[candles.length - 1].low = Math.min(candles[candles.length - 1].low, livePrice);
+    const lastCandle = candles[candles.length - 1];
+    lastCandle.close = livePrice;
+    lastCandle.high = Math.max(lastCandle.high, livePrice);
+    lastCandle.low = Math.min(lastCandle.low, livePrice);
   }
+
 
   const price = livePrice;
   const startPrice = history[0];

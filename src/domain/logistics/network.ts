@@ -220,17 +220,17 @@ export const WAREHOUSE_UPGRADES: WarehouseUpgrade[] = [
   {
     id: 'cross_docking',
     name: 'Automated Cross-Docking Sorting Bays',
-    cost: 45000,
-    dailyIncome: 1200,
-    bonusDesc: '+$1,200/day automated logistics throughput revenue',
+    cost: 350000,
+    dailyIncome: 450,
+    bonusDesc: '+$450/day automated logistics throughput revenue',
     desc: 'High-speed automated roller sorters and scan tunnels consolidate freight across regions without storage delays.',
     icon: '📦'
   },
   {
     id: 'cold_vault',
     name: 'Temperature-Controlled Cold Storage Vaults',
-    cost: 55000,
-    dailyIncome: 800,
+    cost: 480000,
+    dailyIncome: 350,
     bonusDesc: '+20% revenue bonus on all Refrigerated Reefer contracts',
     desc: 'Multi-zone cryogenic storage chambers safeguard pharmaceutical vaccines and perishable food chains.',
     icon: '❄️'
@@ -238,8 +238,8 @@ export const WAREHOUSE_UPGRADES: WarehouseUpgrade[] = [
   {
     id: 'gantry_crane',
     name: 'Heavy Gantry Crane & Industrial Forklift Fleet',
-    cost: 48000,
-    dailyIncome: 600,
+    cost: 275000,
+    dailyIncome: 200,
     bonusDesc: '30% faster turnaround time on Lowboys and 40ft Containers',
     desc: 'Heavy-duty 45-tonne overhead gantry cranes load oversized industrial excavators and ISO shipping containers.',
     icon: '🏗️'

@@ -1,14 +1,15 @@
 import { set } from '../core/store';
 import { toast } from '../core/ui';
-import { fillDriverPool, generateDriver } from '../domain/drivers/drivers.engine';
+import { fillDriverPool, generateDriver, forceRefreshDriverPool } from '../domain/drivers/drivers.engine';
 import { Region } from '../domain/drivers/drivers.types';
 import { pushNote } from './notify';
 
 export const hireFee = (d: any) => d.skill * 1500;
 export const transferFee = 5000;
+export const agencyRefreshFee = 2500;
 
 export function fillPool(S: any) {
-  fillDriverPool(S, 8);
+  fillDriverPool(S, 2, 12, Date.now());
 }
 
 export const hire = (id: number) => set(S => {
@@ -22,9 +23,23 @@ export const hire = (id: number) => set(S => {
   S.money -= fee;
   S.pool = S.pool.filter((x: any) => x.id !== id);
   S.drivers.push(d);
-  fillDriverPool(S, 8);
+  fillDriverPool(S, 2, 12, Date.now());
   pushNote(S, `Contracted new driver ${d.name} for regional fleet operations.`, { title: 'RECRUITMENT', type: 'ops' });
   toast('Successfully hired ' + d.name, 'success');
+});
+
+export const refreshRecruitmentPool = () => set(S => {
+  if (S.money < agencyRefreshFee) {
+    toast(`Insufficient treasury for recruitment agency search. Need $${agencyRefreshFee.toLocaleString()}`, 'err');
+    return;
+  }
+  S.money -= agencyRefreshFee;
+  forceRefreshDriverPool(S, Date.now());
+  pushNote(S, `Recruitment agency engaged. Candidate pool refreshed across all operating regions (-$${agencyRefreshFee.toLocaleString()}).`, {
+    title: 'AGENCY RECRUITMENT',
+    type: 'ops'
+  });
+  toast('Recruitment market pool refreshed across all regions!', 'success');
 });
 
 export const fire = (id: number) => set(S => {

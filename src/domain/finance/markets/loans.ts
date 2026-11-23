@@ -16,7 +16,7 @@ export interface CryptoCollateralLoan {
 }
 
 export const MAX_COLLATERAL_LTV = 65; // 65% Loan to Value
-export const ANNUAL_INTEREST_RATE = 0.045; // 4.5% APR
+export const ANNUAL_INTEREST_RATE = 0.245; // 24.5% APR (Industrial Risk Premium)
 
 export function borrowCryptoCollateral(S: any, assetId: string, collateralQty: number): boolean {
   if (collateralQty <= 0) {

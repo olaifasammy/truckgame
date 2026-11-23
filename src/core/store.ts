@@ -60,9 +60,9 @@ const DEF = () => ({
   insurance: { liability: true, collision: true, cargo: false, claimsCount: 0, totalPaidOut: 0 },
   fuelBunker: { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 },
   fuelBunkerLevel: 0,
-  depots: [REGIONAL_HUBS[0].id] as string[],
-  hqCity: REGIONAL_HUBS[0].city,
-  unlockedRegions: [REGIONAL_HUBS[0].region] as ('Africa' | 'Europe' | 'America' | 'Asia')[],
+  depots: [] as string[],
+  hqCity: '',
+  unlockedRegions: [] as ('Africa' | 'Europe' | 'America' | 'Asia')[],
   warehouseUpgrades: { cross_docking: false, cold_vault: false, gantry_crane: false } as Record<string, boolean>,
   corporateTenders: [] as any[],
   tenderListingLimit: {
@@ -72,6 +72,10 @@ const DEF = () => ({
     premiumExpiresAt: 0
   },
   dailyStats: { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 },
+  violations: [] as any[],
+  ezPass: false,
+  ezPassExpiresAt: 0,
+  customsBond: false,
   lastTick: Date.now(),
   lastSimTick: Date.now(),
   lastEconomyTick: Date.now()
@@ -83,6 +87,19 @@ const subs = new Set<(state: any) => void>();
 function fix(state: any) {
   if (!state.licenses) state.licenses = ['standard'];
   if (!state.trailers) state.trailers = ['curtain', 'flatbed', 'reefer'];
+  
+  // Fix initial state if legacy or empty
+  if ((!state.depots || state.depots.length === 0) && state.isAuthenticated) {
+    // If authenticated but no depots, this is likely an old save or newly registered
+    // We try to use hqCity if available to repair
+    const matchingHub = state.hqCity ? REGIONAL_HUBS.find(h => h.city === state.hqCity) : REGIONAL_HUBS[0];
+    state.depots = [matchingHub.id];
+    state.hqCity = matchingHub.city;
+    if (!state.unlockedRegions || state.unlockedRegions.length === 0) {
+      state.unlockedRegions = [matchingHub.region];
+    }
+  }
+
   if (!state.loans) state.loans = [];
   if (Array.isArray(state.loans)) {
     state.loans.forEach((l: any) => {
@@ -165,6 +182,7 @@ function fix(state: any) {
       transmission: 0
     };
   }
+  if (!state.violations) state.violations = [];
   if (!state.drivers) state.drivers = [{ id: 1, name: 'Sam Okafor', region: 'Africa', skill: 3, salary: 250, morale: 95, fatigue: 5, stress: 15, satisfaction: 90, hosHours: 2.5, hosRestUntil: null, trait: 'careful', certifications: ['Cold Chain'], stats: { tripsCompleted: 0, kmDriven: 0, earned: 0 } }];
   if (state.drivers) {
     state.drivers.forEach((d: any) => {
@@ -322,20 +340,23 @@ function fix(state: any) {
   if (!state.lastTick) state.lastTick = Date.now();
   if (!state.lastSimTick) state.lastSimTick = state.lastTick || Date.now();
   
-  // Migration: Fresh start for new physics if old schema found
-  if (state.fleet && state.fleet.length > 0 && (state.fleet[0].model || state.fleet[0].cond !== undefined)) {
-     state.fleet = [createTruck(1, 'scania_s730', 'Flagship S730 #1', 'LAGOS')];
+  // Migration: Fresh start for new physics if old schema found (missing components)
+  if (state.fleet && state.fleet.length > 0 && !state.fleet[0].components) {
+     state.fleet = [createTruck(1, 'scania_s730', 'Flagship S730 #1', state.hqCity || 'LAGOS')];
      state.money = Math.max(state.money, 165000);
   }
 }
 
 export function load() {
   try {
-    S = { ...DEF(), ...JSON.parse(localStorage.getItem(KEY) || '{}') };
+    const raw = localStorage.getItem(KEY);
+    S = { ...DEF(), ...JSON.parse(raw || '{}') };
+    fix(S);
   } catch (e) {
+    console.error('Store: Load/Fix failed, using default state', e);
     S = DEF();
+    fix(S);
   }
-  fix(S);
   return S;
 }
 

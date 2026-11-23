@@ -49,7 +49,7 @@ export function getRealisticAmericanSvg(
   const hasTrailer = !!trailerType && trailerType !== 'none';
   const driveX = axle === '4x2' ? [456] : [428, 484];
   const d0 = driveX[0], dn = driveX[driveX.length - 1];
-  const layout = hasTrailer ? trailerLayout(trailerType!, 372) : null;
+  const layout = hasTrailer ? trailerLayout(trailerType!, 400) : null;
   const vbW = layout ? layout.x1 + 36 : 560;
 
   const H = HOOD[s.hood];
@@ -131,7 +131,7 @@ ${svgHead(vbW, moving)}
   </defs>
 
   <ellipse cx="${vbW / 2}" cy="252" rx="${vbW / 2 - 10}" ry="9" fill="#000" opacity=".45" filter="url(#${u}blur)"/>
-  ${hasTrailer ? renderRealisticTrailer(trailerType!, u, P, 372, moving) : ''}
+  ${hasTrailer ? renderRealisticTrailer(trailerType!, u, P, 400, moving) : ''}
 
   <!-- chassis -->
   <rect x="60" y="196" width="${hasTrailer ? 460 : 470}" height="10" fill="#14171c"/>

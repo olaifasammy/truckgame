@@ -23,6 +23,7 @@ action('toggle-driver-expand', d => {
 
 action('hire-driver', d => DriverService.hireDriver(+(d as any).id));
 action('fire-driver', d => DriverService.fireDriver(+(d as any).id));
+action('refresh-driver-pool', () => DriverService.refreshMarketPool());
 
 action('train-driver-skill', d => {
   DriverService.upgradeSkill(+(d as any).id);

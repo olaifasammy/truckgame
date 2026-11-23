@@ -10,11 +10,12 @@ import { disc } from './perks';
 import { slots } from './offices';
 import { createTruck } from '../domain/trucks/trucks.physics';
 import { LOCATIONS } from '../data/world';
-import { getHubFacilityForCity } from '../domain/hubs/hub-facility';
+import { getHubFacilityForCity, getHubBerthOccupancy, OVERFLOW_HUB_PARKING_DAILY_FEE } from '../domain/hubs/hub-facility';
 
 import { recordTransaction, LedgerCategory } from '../core/ledger';
+import { getRegionalRetailFuelPrice } from '../domain/economy/fuel-market';
+import { VehicleMaintenance } from '../domain/trucks/maintenance';
 
-export const FUEL_PRICE = 2.5;
 export const inspectCost = () => Math.round(500 * disc('scanner'));
 
 export const refuelCost = (t: any, S?: any) => {
@@ -23,17 +24,22 @@ export const refuelCost = (t: any, S?: any) => {
   if (needed <= 0) return 0;
   const hubFacility = S ? getHubFacilityForCity(S, t.loc) : null;
   const hubTankLiters = hubFacility?.fuelLiters || 0;
-  const bunkerLiters = hubTankLiters > 0 ? hubTankLiters : (S?.fuelBunker?.currentLiters || 0);
+  const atHomeCity = Boolean(S?.homeCity && (t.loc || '').toUpperCase() === S.homeCity.toUpperCase());
+  const bunkerLiters = hubTankLiters > 0
+    ? hubTankLiters
+    : (atHomeCity ? (S?.fuelBunker?.currentLiters || 0) : 0);
   const cashNeeded = Math.max(0, needed - bunkerLiters);
-  return Math.round(cashNeeded * FUEL_PRICE * disc('fuelcard'));
+  const retailPrice = getRegionalRetailFuelPrice(t.loc, S);
+  return Math.round(cashNeeded * retailPrice * disc('fuelcard'));
 };
 
-export const repairCost = (t: any) => {
+export const repairCost = (t: any, S?: any) => {
   let total = 0;
   Object.values(t.components).forEach((c: any) => {
     total += (100 - c.health) * 50;
   });
-  return Math.round(total * disc('service'));
+  const locMult = S ? VehicleMaintenance.getRepairFacilityInfo(S, t).costMultiplier : 1.0;
+  return Math.round(total * disc('service') * locMult);
 };
 
 export const upgradeCost = (k: string, l: number) => 5000 * (l + 1);
@@ -67,6 +73,7 @@ export const refuel = (id: number) => set(S => {
   if (needed <= 0) return toast('Fuel tank is already at 100% capacity', 'info');
 
   const hubFacility = getHubFacilityForCity(S, t.loc);
+  const atHomeCity = Boolean(S.homeCity && (t.loc || '').toUpperCase() === S.homeCity.toUpperCase());
   let fromTank = 0;
   let sourceName = 'Commercial Station';
 
@@ -74,7 +81,7 @@ export const refuel = (id: number) => set(S => {
     fromTank = Math.min(hubFacility.fuelLiters, needed);
     hubFacility.fuelLiters -= fromTank;
     sourceName = `${t.loc} Hub Fuel Tank`;
-  } else if (S.fuelBunker && S.fuelBunker.currentLiters > 0) {
+  } else if (atHomeCity && S.fuelBunker && S.fuelBunker.currentLiters > 0) {
     fromTank = Math.min(S.fuelBunker.currentLiters, needed);
     S.fuelBunker.currentLiters -= fromTank;
     sourceName = 'HQ Fuel Bunker';
@@ -83,7 +90,8 @@ export const refuel = (id: number) => set(S => {
   const remaining = needed - fromTank;
   let cashCost = 0;
   if (remaining > 0) {
-    cashCost = Math.round(remaining * FUEL_PRICE * disc('fuelcard'));
+    const retailPrice = getRegionalRetailFuelPrice(t.loc, S);
+    cashCost = Math.round(remaining * retailPrice * disc('fuelcard'));
     if (!pay(S, cashCost, `Commercial Station Refuel Unit #${id} (${t.name})`, 'expense_fuel')) {
       if (hubFacility && fromTank > 0) hubFacility.fuelLiters += fromTank;
       else if (S.fuelBunker && fromTank > 0) S.fuelBunker.currentLiters += fromTank;
@@ -106,7 +114,7 @@ export const refuel = (id: number) => set(S => {
 export const repair = (id: number) => set(S => {
   const t = idle(S, id);
   if (!t) return;
-  const c = repairCost(t);
+  const c = repairCost(t, S);
   if (c <= 0 || !pay(S, c, `Repair Service Unit #${id} (${t.name})`, 'expense_maintenance')) return;
   if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
   S.dailyStats.maintenance += c;
@@ -162,16 +170,34 @@ export function transportInfo(S: any, t: any, city: string) {
 export const transport = (id: number, city: string) => set(S => {
   const t = S.fleet.find((x: any) => x.id === id);
   if (!t) return;
+  if (!city) return toast('Select a destination terminal first', 'err');
+  
   const i = transportInfo(S, t, city);
   if (i.why) {
     if (i.why === 'region') return toast('Cross-continental highway deadhead prohibited (inter-continental transit required)', 'err');
+    if (i.why === 'busy') return toast(`Unit #${id} is currently busy. Recall or complete current job first.`, 'err');
     return toast('Truck cannot make this trip: ' + i.why, 'err');
   }
   const now = Date.now();
   const st = stats(S, t);
-  S.active.push({ id: S.nextId++, kind: 'move', cargo: 'Repositioning', from: t.loc, to: city, km: i.km, dh: 0, pay: 0, truck: id, start: now, end: now + tripMs(i.km, st.topSpeed) });
+  const duration = tripMs(i.km, st.topSpeed);
+  
+  S.active.push({ 
+    id: S.nextId++, 
+    kind: 'move', 
+    cargo: 'Repositioning', 
+    from: t.loc, 
+    to: city, 
+    km: i.km, 
+    dh: 0, 
+    pay: 0, 
+    truck: id, 
+    start: now, 
+    end: now + duration 
+  });
+  
   t.status = 'busy';
-  toast('Moving to ' + city);
+  toast(`Dispatching Unit #${id} deadhead to ${city}...`);
 });
 
 export const onTruckArrival = (S: any, truckId: number) => {
@@ -221,7 +247,12 @@ export const buyTruckBatch = (modelId: string, trailerType: TrailerType | null, 
       priority: tpl.priority,
       body: tpl.body
     });
+    const berthInfo = getHubBerthOccupancy(S, destinationCity);
+    const willOverflow = berthInfo.atOwnedHub && (berthInfo.occupied + quantity > berthInfo.totalBerths);
     toast(`Order Processed: ${quantity} vehicle(s) in transit to ${destinationCity} depot (Est. 15 mins)`, 'success');
+    if (willOverflow) {
+      toast(`Parking Notice: ${destinationCity} berths full (${berthInfo.occupied + quantity}/${berthInfo.totalBerths}). Overflow yard fee ($${OVERFLOW_HUB_PARKING_DAILY_FEE}/day/truck) applies.`, 'info');
+    }
   });
 };
 

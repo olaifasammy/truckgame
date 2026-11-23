@@ -6,6 +6,7 @@ import { getDynamicCorporateTenders, signCorporateTender } from '../domain/contr
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { LOCATIONS } from '../data/world';
 import { ensureHubFacilities } from '../domain/hubs/hub-facility';
+import { getHubCharacteristics } from '../domain/hubs/characteristics';
 
 let hubTab: 'regions' | 'hubs' | 'routes' | 'tenders' = 'regions';
 let hubFilterRegion: string = 'ALL';
@@ -209,36 +210,71 @@ export default {
             }).map(hub => {
               const isOwned = (S.depots || []).includes(hub.id);
               const regionUnlocked = isRegionUnlocked(S, hub.region);
+              const char = getHubCharacteristics(hub.id);
 
               return `
-                <div style="background:#111827; border:1px solid ${isOwned ? 'rgba(16,185,129,0.3)' : regionUnlocked ? '#1f293d' : 'rgba(239,68,68,0.2)'}; border-radius:10px; padding:14px; display:flex; justify-content:space-between; align-items:center; gap:12px;">
-                  <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
-                    <span style="font-size:26px; flex-shrink:0;">${hub.icon}</span>
-                    <div style="min-width:0;">
-                      <div style="display:flex; align-items:center; gap:6px;">
-                        <span style="font-size:13px; font-weight:900; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${hub.name}</span>
-                        <span style="font-size:9px; color:var(--gold); font-family:monospace; background:#0e1320; border:1px solid rgba(193,154,91,0.3); padding:1px 6px; border-radius:3px;">${hub.region}</span>
-                      </div>
-                      <div style="font-size:10px; color:var(--mu); margin-top:2px; line-height:1.3;">${hub.desc}</div>
-                      <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:4px;">
-                        Capacity: <b style="color:var(--tx);">+${hub.berths} Berths</b> · Terminal Hub: <b style="color:var(--gold);">${hub.city}</b>
+                <div style="background:#111827; border:1px solid ${isOwned ? 'rgba(16,185,129,0.3)' : regionUnlocked ? '#1f293d' : 'rgba(239,68,68,0.2)'}; border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+                  <!-- Top Row: Icon, Name, Tier Badge, Action -->
+                  <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+                    <div style="display:flex; align-items:center; gap:12px; min-width:0; flex:1;">
+                      <span style="font-size:28px; flex-shrink:0;">${hub.icon}</span>
+                      <div style="min-width:0;">
+                        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+                          <span style="font-size:14px; font-weight:900; color:var(--tx); white-space:nowrap;">${hub.name}</span>
+                          <span style="font-size:8px; font-weight:900; color:${char.tier === 1 ? 'var(--gold)' : char.tier === 2 ? '#38bdf8' : 'var(--mu)'}; font-family:monospace; background:#0e1320; border:1px solid ${char.tier === 1 ? 'rgba(193,154,91,0.4)' : 'rgba(56,189,248,0.3)'}; padding:2px 6px; border-radius:3px;">
+                            ${char.tierLabel}
+                          </span>
+                        </div>
+                        <div style="font-size:10px; color:var(--mu); margin-top:3px; line-height:1.3;">${hub.desc}</div>
                       </div>
                     </div>
+                    <div style="flex-shrink:0;">
+                      ${isOwned ? `
+                        <span style="font-size:9px; font-weight:900; color:var(--grn); background:rgba(16,185,129,0.12); border:1px solid var(--grn); padding:6px 10px; border-radius:4px; font-family:monospace; white-space:nowrap;">
+                          ✓ OPERATIONAL
+                        </span>
+                      ` : !regionUnlocked ? `
+                        <span style="font-size:9px; font-weight:800; color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); padding:6px 10px; border-radius:4px; font-family:monospace; white-space:nowrap;">
+                          🔒 ${hub.region} LOCKED
+                        </span>
+                      ` : `
+                        <button class="btn gold" style="padding:8px 14px; font-size:10px; font-weight:900; white-space:nowrap;" data-act="buy-regional-hub" data-id="${hub.id}" ${S.money < hub.cost ? 'disabled style="opacity:0.5;"' : ''}>
+                          ACQUIRE ($${(hub.cost/1000).toFixed(0)}k)
+                        </button>
+                      `}
+                    </div>
                   </div>
-                  <div style="flex-shrink:0;">
-                    ${isOwned ? `
-                      <span style="font-size:9px; font-weight:900; color:var(--grn); background:rgba(16,185,129,0.12); border:1px solid var(--grn); padding:6px 10px; border-radius:4px; font-family:monospace; white-space:nowrap;">
-                        ✓ OPERATIONAL
+
+                  <!-- Middle Row: Capabilities & Capacities Grid -->
+                  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:6px; background:#0b0f19; border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:8px; font-size:9px; font-family:monospace;">
+                    <div>
+                      <span style="color:var(--mu);">Daily Job Limit: </span>
+                      <b style="color:#38bdf8;">⚡ ${char.dailyJobLimit} Jobs/Day</b>
+                    </div>
+                    <div>
+                      <span style="color:var(--mu);">Payload Tonnage: </span>
+                      <b style="color:#10b981;">⚖️ ${char.dailyTonnageCapacity} T/Day</b>
+                    </div>
+                    <div>
+                      <span style="color:var(--mu);">Fuel Storage: </span>
+                      <b style="color:var(--gold);">⛽ ${char.baseFuelTankLiters.toLocaleString()} L</b>
+                    </div>
+                    <div>
+                      <span style="color:var(--mu);">Tractor Berths: </span>
+                      <b style="color:var(--tx);">🅿️ ${char.baseBerths} Berths</b>
+                    </div>
+                  </div>
+
+                  <!-- Bottom Row: Specialties & Cargo Bonuses -->
+                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:8px; font-family:monospace;">
+                    <span style="color:var(--mu); font-weight:800; text-transform:uppercase;">Specialties:</span>
+                    ${char.specialties.map(spec => `
+                      <span style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--tx); padding:2px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:3px;">
+                        <span>${spec.icon}</span>
+                        <b>${spec.name}</b>
+                        <span style="color:#10b981;">(+${spec.rateBonusPct}%)</span>
                       </span>
-                    ` : !regionUnlocked ? `
-                      <span style="font-size:9px; font-weight:800; color:#ef4444; background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.3); padding:6px 10px; border-radius:4px; font-family:monospace; white-space:nowrap;">
-                        🔒 ${hub.region} LOCKED
-                      </span>
-                    ` : `
-                      <button class="btn gold" style="padding:8px 14px; font-size:10px; font-weight:900; white-space:nowrap;" data-act="buy-regional-hub" data-id="${hub.id}" ${S.money < hub.cost ? 'disabled style="opacity:0.5;"' : ''}>
-                        ACQUIRE ($${(hub.cost/1000).toFixed(0)}k)
-                      </button>
-                    `}
+                    `).join('')}
                   </div>
                 </div>
               `;

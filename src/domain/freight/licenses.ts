@@ -74,6 +74,16 @@ export const FREIGHT_LICENSES: Record<string, FreightLicense> = {
     requiredFor: 'Quarry granite, bauxite, raw mineral ores, demolition aggregate',
     regulatoryBody: 'Bureau of Mining & Environmental Transit'
   },
+  intermodal_container: {
+    id: 'intermodal_container',
+    name: 'Intermodal ISO Container Chassis Authority',
+    code: 'INT-ISO-CHASSIS',
+    icon: '📦',
+    price: 18000,
+    description: 'Port and terminal permit for hauling 20ft/40ft shipping containers on intermodal skeleton chassis.',
+    requiredFor: 'Port logistics, sea container transit, intermodal freight',
+    regulatoryBody: 'International Maritime & Freight Transport Board'
+  },
   high_value: {
     id: 'high_value',
     name: 'Bonded High-Value & Secured Cargo Transit Bond',

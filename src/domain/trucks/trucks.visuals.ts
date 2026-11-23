@@ -98,7 +98,7 @@ export function getTruckSilhouetteSvg(model: any, accentColor = 'var(--gold)', a
   const isDouble = trailerType === 'double_trailer';
   
   const viewBoxWidth = hasTrailer ? (isDouble ? 460 : 340) : 160;
-  const fifthWheelX = isAmerican ? 128 : 116;
+  const fifthWheelX = isAmerican ? 138 : 124;
 
   // Render tractor front (Cabover or Conventional)
   let tractorSvg = '';

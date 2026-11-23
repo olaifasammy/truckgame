@@ -1,6 +1,21 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { getTruckCode, generateLicensePlate, registerTruckAtCity, getTruckRegistrationStatus, renewVehicleRoadTax, performVehicleInspection } from './registration';
+import {
+  getTruckCode,
+  generateLicensePlate,
+  registerTruckAtCity,
+  getTruckRegistrationStatus,
+  renewVehicleRoadTax,
+  performVehicleInspection,
+  GOV_FEES,
+  recordViolation,
+  payViolation,
+  payAllViolations,
+  getCompanySafetyRating,
+  buyEzPass,
+  buyCustomsBond
+} from './registration';
+import { getDispatchEligibilityError } from '../dispatch/validation';
 import { createTruck } from './trucks.physics';
 
 describe('Vehicle Registration & DMV Bureau', () => {
@@ -62,5 +77,53 @@ describe('Vehicle Registration & DMV Bureau', () => {
 
     const inspectRes = performVehicleInspection(mockState, 11);
     assert.equal(inspectRes.passed, true);
+  });
+
+  it('enforces DOT violations, safety rating, and dispatch holds', () => {
+    const truck = createTruck(12, 'scania_s730', 'Scania 12', 'LAGOS');
+    truck.regNo = 'LA-100-AB';
+    truck.registeredCity = 'LAGOS';
+    truck.taxExpiresAt = Date.now() + 86_400_000;
+    truck.inspectionExpiresAt = Date.now() + 86_400_000;
+    truck.driverId = 1;
+    truck.trailer = 'curtain';
+
+    const state: any = {
+      money: 50000,
+      licenses: [],
+      depots: ['hub_lagos'],
+      trailers: ['curtain'],
+      fleet: [truck],
+      violations: [],
+      notes: [],
+      logs: []
+    };
+    const driver: any = { id: 1, name: 'Sam', region: 'Africa', fatigue: 0, hosHours: 0, certifications: [] };
+    const job: any = { id: 1, from: 'LAGOS', to: 'IBADAN', km: 130, weight: 15, cargoId: 'electronics', trailer: 'curtain' };
+
+    assert.equal(getCompanySafetyRating(state).grade, 'GRADE A');
+    assert.equal(getDispatchEligibilityError(state, truck, job, driver), null);
+
+    // Record 3 unpaid violations -> UNSATISFACTORY + Dispatch Hold
+    recordViolation(state, { type: 'speeding', fine: 350, reason: 'Speeding 1', paid: false });
+    recordViolation(state, { type: 'speeding', fine: 350, reason: 'Speeding 2', paid: false });
+    assert.equal(getCompanySafetyRating(state).grade, 'CONDITIONAL');
+
+    recordViolation(state, { type: 'unregistered', fine: GOV_FEES.UNREGISTERED_FINE, reason: 'Unregistered 3', paid: false });
+    assert.equal(getCompanySafetyRating(state).grade, 'UNSATISFACTORY');
+
+    const holdErr = getDispatchEligibilityError(state, truck, job, driver);
+    assert.ok(holdErr && holdErr.includes('FMCSA Safety Hold'), `Expected hold, got: ${holdErr}`);
+
+    // Settle all fines -> restores GRADE A and clears hold
+    assert.equal(payAllViolations(state), true);
+    assert.equal(getCompanySafetyRating(state).grade, 'GRADE A');
+    assert.equal(getDispatchEligibilityError(state, truck, job, driver), null);
+
+    // EZ-Pass & Customs Bond
+    assert.equal(buyEzPass(state), true);
+    assert.equal(state.ezPass, true);
+    assert.equal(buyCustomsBond(state), true);
+    assert.equal(state.customsBond, true);
   });
 });

@@ -1,10 +1,23 @@
 import { tenderWonTemplate } from '../../notifications/templates';
-import { JobAuction, BidHistoryItem } from './types';
+import { JobAuction, BidHistoryItem, Region } from './types';
 import { COMPETITORS, getRandomCompetitor } from './competitors';
 import { CARGO_TYPES } from '../cargo/registry';
 import { COMPANIES } from '../companies/registry';
 import { pushNote } from '../../../systems/notify';
 import { getCompanyProgression } from '../../company/progression';
+import { LOCATIONS } from '../../../data/world';
+
+const REGION_CODE_MAP: Record<string, Region> = {
+  Europe: 'EU',
+  America: 'NA',
+  Africa: 'AF',
+  Asia: 'AS'
+};
+
+function resolveAuctionRegion(fromCity: string): Region | undefined {
+  const loc = LOCATIONS[fromCity] || LOCATIONS[fromCity?.toUpperCase()];
+  return loc?.region ? REGION_CODE_MAP[loc.region] : undefined;
+}
 
 export class BiddingEngine {
   /**
@@ -97,11 +110,17 @@ export class BiddingEngine {
    * Simulate a competitor placing a bid
    */
   static simulateCompetitorBid(S: any, auc: JobAuction): boolean {
-    const competitor = getRandomCompetitor();
+    const regionCode = resolveAuctionRegion(auc.from);
+    const competitor = getRandomCompetitor(regionCode);
     const timeLeft = auc.expiresAt - Date.now();
-    
-    // Profit floor calculation: rivals will not bid at a loss
-    const profitFloor = auc.startingBid * (0.68 + (Math.random() * 0.10));
+
+    if (!S.competitorStats) S.competitorStats = { playerWins: 0, rivals: {} };
+    const playerWins = S.competitorStats.playerWins || 0;
+    const rivalStats = S.competitorStats.rivals?.[competitor.id] || { wins: 0, bids: 0 };
+
+    // Dynamic competitive profit floor: rivals undercut harder when player dominates auctions
+    const competitivePressure = Math.min(0.08, playerWins * 0.02);
+    const profitFloor = auc.startingBid * (0.68 - competitivePressure + (Math.random() * 0.08));
     if (auc.currentBid <= profitFloor) return false;
 
     const dropPct = 0.01 + (Math.random() * 0.025 * competitor.aggression);
@@ -118,7 +137,12 @@ export class BiddingEngine {
       auc.currentBid = newBid;
       auc.currentWinner = competitor.id;
       auc.currentWinnerName = competitor.name;
-      
+
+      S.competitorStats.rivals[competitor.id] = {
+        ...rivalStats,
+        bids: (rivalStats.bids || 0) + 1
+      };
+
       auc.bidHistory.unshift({
         bidderId: competitor.id,
         bidderName: competitor.name,
@@ -129,7 +153,10 @@ export class BiddingEngine {
       if (auc.bidHistory.length > 12) auc.bidHistory.pop();
 
       if (wasPlayerWinning && S) {
-
+        pushNote(S, `${competitor.name} underbid your tender on ${auc.from} → ${auc.to} at $${newBid.toLocaleString()}.`, {
+          title: 'OUTBID ON TENDER',
+          type: 'ops'
+        });
       }
 
       return true;
@@ -171,31 +198,43 @@ export class BiddingEngine {
    */
   static finalizeAuction(S: any, auc: JobAuction) {
     const cargo = CARGO_TYPES.find(c => c.id === auc.cargoId);
-    const company = COMPANIES.find(c => c.id === auc.companyId);
+    if (!S.competitorStats) S.competitorStats = { playerWins: 0, rivals: {} };
 
     if (auc.currentWinner === 'player') {
+      S.competitorStats.playerWins = (S.competitorStats.playerWins || 0) + 1;
+      const SIM_HOUR_MS = 277_000;
+      const driveHours = auc.km / 65;
       const wonJob = {
         id: auc.id,
         companyId: auc.companyId,
         cargoId: auc.cargoId,
+        cargo: cargo?.name || 'Commercial Contract',
+        trailer: cargo?.requiredTrailer || 'curtain',
         kind: 'Contract' as const,
         weight: auc.weight,
         from: auc.from,
         to: auc.to,
         km: auc.km,
-        pay: auc.currentBid, 
-        deadline: Date.now() + (auc.km * 3600000 / 60) + (24 * 3600000),
+        pay: auc.currentBid,
+        deadline: Date.now() + Math.round((driveHours + 14) * SIM_HOUR_MS),
         requirements: auc.requirements,
         vip: false,
         isAuctionWon: true,
         wonAt: Date.now()
       };
 
-      // Silently add won job to board - No notification sent as per user request
+      // Silently add won job to board
       if (!S.jobs) S.jobs = [];
       if (!S.jobs.some((j: any) => j.id === wonJob.id)) {
         S.jobs.unshift(wonJob);
       }
+    } else if (auc.currentWinner && auc.currentWinner !== 'none') {
+      const prev = S.competitorStats.rivals?.[auc.currentWinner] || { wins: 0, bids: 0 };
+      S.competitorStats.rivals[auc.currentWinner] = {
+        ...prev,
+        wins: (prev.wins || 0) + 1,
+        lastWonAt: Date.now()
+      };
     }
   }
 }

@@ -296,13 +296,15 @@ export function getTruckTelematics(
   const distDone = Math.min(distTotal, (a.dhTravelled || 0) + (a.kmTravelled || 0));
   const pctCompleted = parseFloat(clamp((distDone / distTotal) * 100, 0, 100).toFixed(1));
 
-  const roadSurface = weather === 'snow'
-    ? 'Icy / Deep Snow'
-    : weather === 'rain'
-      ? 'Wet / Slippery'
-      : stage === 'loading' || stage === 'unloading' || stage === 'resting' || stage === 'refueling'
-        ? 'Terminal / Plaza Concrete'
-        : (a.from && a.env?.region === 'Africa') ? 'Unpaved / Rough' : 'Dry Asphalt';
+  const roadSurface = (stage === 'loading' || stage === 'unloading' || stage === 'resting' || stage === 'refueling')
+    ? 'Terminal / Plaza Concrete'
+    : env.roadSurface
+      ? env.roadSurface
+      : weather === 'snow'
+        ? 'Icy / Deep Snow'
+        : weather === 'rain'
+          ? 'Wet / Slippery'
+          : (a.from && a.env?.region === 'Africa') ? 'Unpaved / Rough' : 'Dry Asphalt';
 
   return {
     state,

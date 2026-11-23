@@ -7,9 +7,11 @@
  */
 
 import { completeJobs, processEconomics, replenish } from '../../systems/jobs';
+import { fillDriverPool } from '../drivers/drivers.engine';
 import { completeRepairs } from '../../systems/maintenance';
 import { processLimitOrders } from '../finance/markets/crypto';
 import { processCryptoLoansTick } from '../finance/markets/loans';
+import { processPendingFuelDeliveries } from '../hubs/hub-facility';
 import { advanceJourney } from '../trucks/trucks.journey';
 import { settleExpiredTenders, tenderLoadsDue } from '../contracts/tenders';
 import { onTruckArrival } from '../../systems/fleet';
@@ -18,7 +20,8 @@ import { runAiCryptoTradingTick } from '../ai/ai.quant';
 import { AI_SUBSCRIPTION_PLANS } from '../ai/ai.config';
 import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
-import { calculateIncomeStatement, calculateWeeklyAccounting, calculateMonthlyAccounting } from '../finance/accounting';
+import { calculateIncomeStatement, calculateWeeklyAccounting, calculateMonthlyAccounting, calculateDailyFleetDepreciation, CORPORATE_TAX_RATE } from '../finance/accounting';
+import { recordTransaction } from '../../core/ledger';
 import { getDailyAccountingMessage } from '../notifications/templates/dailyAccounting';
 import { getWeeklyAccountingMessage } from '../notifications/templates/weeklyAccounting';
 import { getMonthlyAccountingMessage } from '../notifications/templates/monthlyAccounting';
@@ -92,6 +95,7 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
   // 1. Authoritative Economic Simulation Tick (Passive revenues, warehouse cross-docking, debt service, mining yield)
   try {
     processEconomics(st, now);
+    fillDriverPool(st, 2, 12, now);
   } catch (e) {
     console.error('Simulation: Economy error', e);
   }
@@ -105,10 +109,26 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
 
   // 2.5 Authoritative Fleet & Active Job Integrity Audit (Self-Healing)
   // Ensures S.active only contains valid jobs for existing trucks, and no duplicates.
+  const validFleetIds = new Set((st.fleet || []).map((t: any) => t.id));
+  const processedTruckIds = new Set<number>();
+  const trucksWithJobs = new Set<number>();
+  
+  if (st.active) {
+    st.active.forEach((a: any) => trucksWithJobs.add(a.truck));
+  }
+
+  // Reset "busy" status for trucks that have no active assignments (Self-healing)
+  if (st.fleet) {
+    st.fleet.forEach((t: any) => {
+      // "delivering" is a transient state for new purchases, don't reset it
+      if (t.status === 'busy' && !trucksWithJobs.has(t.id)) {
+        console.warn(`Simulation: Resetting stuck truck status for Unit #${t.id} (Busy with no active job)`);
+        t.status = 'idle';
+      }
+    });
+  }
+
   if (st.active && st.active.length > 0) {
-    const validFleetIds = new Set((st.fleet || []).map((t: any) => t.id));
-    const processedTruckIds = new Set<number>();
-    
     st.active = st.active.filter((a: any) => {
       // 1. Purge jobs for non-existent trucks
       if (!validFleetIds.has(a.truck)) return false;
@@ -129,13 +149,25 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
 
       // 4. Journey simulation (single authority: stages, speed, fuel, fatigue, HOS rests, ETA)
       if (truck) {
+        a.simDay = st.simulationDay || 1;
         const driver = (st.drivers || []).find((d: any) => d.id === truck.driverId)
           || (st.drivers || []).find((d: any) => d.assignedTruckId === a.truck);
         advanceJourney(a, truck, driver, now, {
-          onRest: (drv: any) => {
-            pushNote(st, `${drv.name} reached 80% fatigue en-route and pulled over at a travel plaza for mandatory sleeper berth rest.`, {
-              title: 'HOS SAFETY REST',
+          onRest: (drv: any, restType?: 'break' | 'full') => {
+            const msg = restType === 'break'
+              ? `${drv.name} pulled over for a 45-minute fatigue break.`
+              : `${drv.name} reached the 11h HOS limit / high fatigue and pulled into a sleeper berth for mandatory rest.`;
+            pushNote(st, msg, {
+              title: restType === 'break' ? 'FATIGUE BREAK' : 'HOS SAFETY REST',
               type: 'ops'
+            });
+          },
+          onIncident: (inc, trk, drv) => {
+            const prefix = inc.category === 'accident' ? '💥' : inc.category === 'regulatory' ? '🚨' : inc.category === 'mechanical' ? '🔧' : '🚧';
+            pushNote(st, `${prefix} ${trk.name}${drv ? ` (${drv.name})` : ''}: ${inc.description}`, {
+              title: inc.title,
+              type: inc.category === 'regulatory' ? 'compliance' : 'ops',
+              priority: inc.severity === 'critical' || inc.severity === 'major' ? 1 : 0
             });
           }
         });
@@ -150,6 +182,11 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
   let done: any[] = [];
   let auctionChanged = false;
   let bidChanged = false;
+
+  // Purge expired spot jobs so stale loads do not accumulate on the freight board
+  if (Array.isArray(st.jobs) && st.jobs.length > 0) {
+    st.jobs = st.jobs.filter((j: any) => !j.deadline || j.deadline > now || j.tenderId || j.isAuctionWon);
+  }
 
   // EMERGENCY CLEANUP: If the board is overwhelmed (e.g. from legacy state or bugs), 
   // truncate it immediately to maintain performance and UI sanity.
@@ -190,6 +227,13 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
     console.error('Simulation: Repairs error', e);
   }
 
+  // Process wholesale fuel tanker deliveries
+  try {
+    processPendingFuelDeliveries(st, now);
+  } catch (e) {
+    console.error('Simulation: Pending fuel deliveries error', e);
+  }
+
   // 5. Driver fatigue & HOS rests are simulated inside advanceJourney (step 2.5).
 
   // 6. AI Dispatch Automation (Continuous background matching when subscribed)
@@ -205,7 +249,7 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
     const plan = AI_SUBSCRIPTION_PLANS[planId] || AI_SUBSCRIPTION_PLANS['auto'];
     const renewCost = plan?.priceUsd || 145000;
     if ((st.money || 0) >= renewCost) {
-      st.money -= renewCost;
+      recordTransaction(st, 'expense_other', -renewCost, `AI Enterprise License Auto-Renewal (${plan?.days || 30}d)`);
       st.aiState.expiresTimestamp = now + (plan?.days || 30) * 86400 * 1000;
       isAiSubscribed = true;
       pushNote(st, `🔄 AI Enterprise License auto-renewed for ${plan?.days || 30} days (-$${renewCost.toLocaleString()}). Neural dispatching uninterrupted.`, {
@@ -214,7 +258,7 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
       });
     } else if ((st.money || 0) >= 5000) {
       const dailyCost = 5000;
-      st.money -= dailyCost;
+      recordTransaction(st, 'expense_other', -dailyCost, 'Tactical 24h AI Dispatch Extension');
       st.aiState.expiresTimestamp = now + 86400 * 1000;
       isAiSubscribed = true;
       pushNote(st, `⚡ Tactical 24h AI Dispatch extension applied (-$${dailyCost.toLocaleString()}). Operations maintained.`, {
@@ -296,9 +340,14 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
     st.simulationDay += 1;
     st.lastAccountingDayTimestamp = now;
     
-    // Daily Accounting
+    // Daily Accounting & Corporate Tax Accrual (Net Taxable Operating Profit after Non-Cash Depreciation)
     const daily = calculateIncomeStatement(st);
-    const dailyMsg = getDailyAccountingMessage({
+    const dailyDepreciation = calculateDailyFleetDepreciation(st);
+    const dailyTaxableIncome = (daily.freightRevenueUsd + daily.warehouseInflowUsd)
+      - (daily.driverPayrollUsd + daily.fuelExpenseUsd + daily.maintenanceExpenseUsd + daily.insuranceExpenseUsd + daily.debtServiceUsd + daily.leaseExpenseUsd + dailyDepreciation);
+    st.taxAccrualUsd = (st.taxAccrualUsd || 0) + dailyTaxableIncome;
+
+    const dailyMsg = getDailyAccountingMessage(st, {
       dayNumber: st.simulationDay,
       grossRevenue: daily.totalGrossRevenueUsd,
       freightInflow: daily.expectedFreightInflowUsd + daily.freightRevenueUsd,
@@ -328,9 +377,22 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
       pushNote(st, weeklyMsg.msg, { title: weeklyMsg.title, type: 'finance', priority: 2, body: weeklyMsg.body });
     }
 
-    // Monthly Accounting (Every 30 days)
+    // Monthly Accounting & Corporate Income Tax Settlement (Every 30 days)
     if (st.simulationDay % 30 === 0) {
       const monthlyNum = Math.floor(st.simulationDay / 30);
+      const accruedTaxable = st.taxAccrualUsd || 0;
+      if (accruedTaxable > 0) {
+        const taxDue = Math.round(accruedTaxable * CORPORATE_TAX_RATE);
+        if (taxDue > 0) {
+          recordTransaction(st, 'expense_finance', -taxDue, `Monthly Corporate Income Tax (21% on $${Math.round(accruedTaxable).toLocaleString()} taxable profit)`);
+          pushNote(st, `🏛️ Monthly Corporate Income Tax assessed: -$${taxDue.toLocaleString()} (21% on $${Math.round(accruedTaxable).toLocaleString()} net profit).`, {
+            title: 'CORPORATE TAX ASSESSED',
+            type: 'finance'
+          });
+        }
+        st.taxAccrualUsd = 0;
+      }
+
       const monthly = calculateMonthlyAccounting(st);
       const monthlyMsg = getMonthlyAccountingMessage({
         monthNumber: monthlyNum,

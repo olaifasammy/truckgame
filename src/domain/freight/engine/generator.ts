@@ -10,6 +10,9 @@ import { getCompanyProgression } from '../../company/progression';
 import { SAMPLE_TENDERS } from '../../logistics/network';
 import { getDynamicCorporateTenders, planTenderLoads, consumeTenderListing } from '../../contracts/tenders';
 import { pushNote } from '../../../systems/notify';
+import { getHubCharacteristics, getHubSectorBonus, getHubNetworkSynergyBonus } from '../../hubs/characteristics';
+import { isCityUnlockedHub, getHubFacilityYieldBonus } from '../../hubs/hub-facility';
+import { SIM_HOUR_MS } from '../../trucks/trucks.journey';
 
 // Internal constants for simulation
 const INSURANCE_POLICIES: any = {
@@ -133,9 +136,10 @@ export class FreightEngine {
       }
     }
 
-    // Absolute fallback to AFRICA if everything else fails (should not happen in production)
+    // Absolute fallback: pick any region from existing LOCATIONS data if state is empty
     if (unlockedRegions.length === 0) {
-      unlockedRegions = ['AFRICA'];
+      const allPossibleRegions = Array.from(new Set(Object.values(LOCATIONS).map(l => l.region)));
+      unlockedRegions = allPossibleRegions.length > 0 ? [allPossibleRegions[0] as RegionName] : ['Africa'];
     }
 
     let targetRegion: RegionName;
@@ -175,68 +179,113 @@ export class FreightEngine {
     const validRegionCities = regionCities.length > 0 ? regionCities : allCityKeys;
 
     // Direct / Backhaul routing ("To & Fro" return freight)
-    // Strict Origin Rules: Jobs must ONLY originate from locations where the player owns a hub/depot OR has trucks located/parked.
+    // Strict Origin Rules: Jobs must ONLY originate from locations where the player owns a hub/depot.
     const ownedHubCities = (S?.depots || []).map((depotId: string) => {
       const hub = REGIONAL_HUBS.find(h => h.id === depotId);
       return hub ? hub.city : null;
     }).filter(Boolean) as string[];
 
-    const truckLocationCities = (S?.fleet || S?.trucks || []).map((t: any) => t.loc || t.registeredCity).filter(Boolean) as string[];
+    // If no hubs are owned yet (e.g. initial game state), use HQ city
+    if (ownedHubCities.length === 0 && S?.hqCity) {
+      ownedHubCities.push(S.hqCity);
+    }
 
-    const availableOrigins = Array.from(new Set([...ownedHubCities, ...truckLocationCities]));
+    // Ensure origins are valid AND within the target operating region if specified
+    const allAvailableOrigins = Array.from(new Set(ownedHubCities));
+    const regionalOrigins = targetRegion 
+      ? allAvailableOrigins.filter(city => LOCATIONS[city]?.region === targetRegion)
+      : allAvailableOrigins;
 
     if (options.forceFrom && LOCATIONS[options.forceFrom]) {
       from = options.forceFrom;
-    } else if (availableOrigins.length > 0) {
-      // Both normal and bid jobs generate from only the hub/truck locations owned
-      from = rnd(availableOrigins);
+    } else if (regionalOrigins.length > 0) {
+      // Both normal and bid jobs generate from only the hub locations owned within the target region
+      from = rnd(regionalOrigins);
     } else {
-      from = S?.hqCity || ownedHubCities[0] || truckLocationCities[0] || Object.keys(LOCATIONS)[0];
+      // Fallback: Use HQ if owned, otherwise use any owned hub city
+      const hqCity = S?.hqCity || (ownedHubCities.length > 0 ? ownedHubCities[0] : null);
+      if (hqCity && isCityUnlockedHub(S, hqCity)) {
+        from = hqCity;
+      } else if (ownedHubCities.length > 0) {
+        from = rnd(ownedHubCities);
+      } else {
+        // Ultimate fallback to first location in world data if no hubs owned yet
+        from = Object.keys(LOCATIONS)[0];
+      }
     }
 
-    const otherRegionCities = validRegionCities.filter(c => c !== from);
-    const fallbackCities = allCityKeys.filter(c => c !== from);
-    const destinationPool = otherRegionCities.length > 0 ? otherRegionCities : fallbackCities;
+    // Strict Region Landmass Boundary: Trucks operate strictly within the same geographical region
+    const fromRegion = LOCATIONS[from]?.region || targetRegion || 'Africa';
+    const sameRegionCities = allCityKeys.filter(c => c !== from && LOCATIONS[c]?.region === fromRegion);
+    const destinationPool = sameRegionCities.length > 0 ? sameRegionCities : validRegionCities.filter(c => c !== from);
 
+    // Realistic Strategy 1 Distance Cap:
+    // Non-hub feeder destinations: 50 km to 1,500 km max
+    // Owned inter-hub trunk destinations: 50 km to 2,800 km max
     const destinationCandidates = destinationPool.map(c => {
       const km = distKm(from, c);
       const countryFrom = LOCATIONS[from]?.country;
       const countryTo = LOCATIONS[c]?.country;
       const isDifferentCountry = !!(countryFrom && countryTo && countryFrom !== countryTo);
-      return { city: c, km, isDifferentCountry };
-    });
+      const isOwnedDestHub = isCityUnlockedHub(S, c);
+      const maxAllowedKm = isOwnedDestHub ? 2800 : 1500;
+      return { city: c, km, isDifferentCountry, isOwnedDestHub, maxAllowedKm };
+    }).filter(d => d.km >= 50 && d.km <= d.maxAllowedKm);
+
+    // Backup pool if all candidates in landmass are under 50km or empty
+    const candidatePoolToUse = destinationCandidates.length > 0 
+      ? destinationCandidates 
+      : destinationPool.map(c => {
+          const isOwnedDestHub = isCityUnlockedHub(S, c);
+          const maxAllowedKm = isOwnedDestHub ? 2800 : 1500;
+          return { 
+            city: c, 
+            km: Math.min(maxAllowedKm, Math.max(50, distKm(from, c))), 
+            isDifferentCountry: false,
+            isOwnedDestHub,
+            maxAllowedKm 
+          };
+        });
 
     if (options.forceTo && LOCATIONS[options.forceTo] && options.forceTo !== from) {
       to = options.forceTo;
     } else if (options.isAuction) {
-      // BID JOBS: Mostly generate long distance jobs (cross-country or km >= 600)
-      const longDistanceCandidates = destinationCandidates.filter(d => d.km >= 600 || d.isDifferentCountry);
-      const poolToUse = longDistanceCandidates.length >= 2 ? longDistanceCandidates : destinationCandidates.sort((a, b) => b.km - a.km);
+      // BID / AUCTION JOBS: Prioritize long-haul corridors (600 km to 2,200 km)
+      const longDistanceCandidates = candidatePoolToUse.filter(d => d.km >= 600);
+      const poolToUse = longDistanceCandidates.length >= 2 ? longDistanceCandidates : candidatePoolToUse;
       poolToUse.sort((a, b) => b.km - a.km);
       const topCount = Math.max(1, Math.floor(poolToUse.length * 0.45));
       to = rnd(poolToUse.slice(0, topCount)).city;
     } else if (tender) {
-      to = rnd(destinationPool.length > 0 ? destinationPool : fallbackCities);
+      to = rnd(candidatePoolToUse).city;
     } else {
-      // NORMAL JOBS: Prioritize shorter distance (sort ascending by km)
-      destinationCandidates.sort((a, b) => a.km - b.km);
-      const shortCandidates = destinationCandidates.filter(d => d.km <= 350);
-      const poolToUse = (shortCandidates.length > 0 && Math.random() < 0.75)
-        ? shortCandidates
-        : destinationCandidates;
-      const topCount = Math.max(1, Math.floor(poolToUse.length * 0.4));
-      to = rnd(poolToUse.slice(0, topCount)).city;
+      // NORMAL FREIGHT BOARD: Real-World Trade Gravity Distribution Model
+      // 60% Short Regional (<= 500km), 30% Medium Intercity (500-1200km), 10% Long Linehaul (1200-2200km)
+      const randVal = Math.random();
+      let gravityPool: typeof candidatePoolToUse = [];
+
+      if (randVal < 0.60) {
+        gravityPool = candidatePoolToUse.filter(d => d.km <= 500);
+      } else if (randVal < 0.90) {
+        gravityPool = candidatePoolToUse.filter(d => d.km > 500 && d.km <= 1200);
+      } else {
+        gravityPool = candidatePoolToUse.filter(d => d.km > 1200);
+      }
+
+      if (gravityPool.length === 0) gravityPool = candidatePoolToUse;
+      to = rnd(gravityPool).city;
     }
 
     if (!to || to === from) {
-      to = fallbackCities.find(c => c !== from) || 'IBADAN';
+      to = candidatePoolToUse[0]?.city || sameRegionCities[0] || 'IBADAN';
     }
 
     const countryFrom = LOCATIONS[from]?.country;
     let countryTo = LOCATIONS[to]?.country;
     let isCrossCountry = !!(countryFrom && countryTo && countryFrom !== countryTo);
     const rawBaseKm = distKm(from, to);
-    let finalBaseKm = rawBaseKm > 10 ? rawBaseKm : Math.max(125, distKm(from, from === 'LAGOS' ? 'IBADAN' : 'LAGOS'));
+    // Strict clamp: Distance is strictly capped at 2,200 km max
+    let finalBaseKm = Math.min(2200, Math.max(50, rawBaseKm));
     let finalTo = to;
 
     // Realistic Cargo Weight (tonnes)
@@ -268,91 +317,149 @@ export class FreightEngine {
 
     const baseKm = finalBaseKm;
     to = finalTo;
-    const routeEnv = getRouteEnv(from, to);
+    const routeEnv = getRouteEnv(from, to, 0, baseKm, Date.now(), S?.simulationDay || 1);
     const isLongDistance = baseKm > 750 || isCrossCountry;
 
-    let rate = 2.0;
+    // NORMAL FREIGHT BOARD: Ultra-realistic commercial freight rates ($1.85 - $2.45/km base)
+    // Pricing based on Cargo Value, Weight, Distance, and Route Environmental Risk (Weather/Terrain)
+    let rate = 1.85 + (cargo.baseValue * 0.020);
+    let surcharge = 0;
 
-    if (tender) {
-      // Tender has a fixed pay per load
-    } else if (options.isAuction) {
-      // PREMIUM SPOT AUCTION RATES: High-paying contracts only
-      rate = 7.50 + (cargo.baseValue * 0.22);
-      const vipMultiplier = 1.05 + Math.min(2.8, (vipLevel * 0.022));
-      rate *= vipMultiplier;
+    // 1. Linehaul Distance Premium (Logistics complexity for longer legs)
+    if (baseKm > 1800) surcharge += 0.12;
+    else if (baseKm > 1200) surcharge += 0.08;
+    else if (baseKm > 750) surcharge += 0.04;
 
-      if (cargo.isHazmat) rate *= 1.35;
-      if (cargo.isFragile) rate *= 1.30;
-      if (cargo.tempControlled) rate *= 1.25;
-      if (weight > 18) rate *= (1 + (weight - 18) * 0.02);
-      if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') rate *= 1.25;
-      if ((routeEnv.roadGrade || 0) > 5.0) rate *= 1.20;
-    } else {
-      // NORMAL JOB GENERATOR: More realistic logistics rates with trans-continental distance scaling
-      rate = 3.40 + (cargo.baseValue * 0.08);
-      if (baseKm > 1500) rate *= 1.15;
-      if (baseKm > 3000) rate *= 1.30; // Trans-continental long-haul premium
+    // 2. High-Value & Hazardous Handling (Special equipment/permits required)
+    if (cargo.isHazmat) surcharge += 0.18;
+    if (cargo.isFragile) surcharge += 0.12;
+    if (cargo.tempControlled) surcharge += 0.14;
+    if (cargo.baseValue > 40) surcharge += 0.10; // Luxury/High-Value cargo premium
 
-      if (options.vip) rate *= 1.30;
-      if (cargo.isHazmat) rate *= 1.45;
-      if (cargo.isFragile) rate *= 1.30;
-      if (cargo.tempControlled) rate *= 1.35;
-      if (weight > 18) rate *= (1 + (weight - 18) * 0.02);
-      if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') rate *= 1.40;
-      if ((routeEnv.roadGrade || 0) > 5.0) rate *= 1.30;
+    // 3. Realistic Payload Tonnage Surcharge (Physical mechanical wear compensation)
+    // Tonnage over 20t significantly increases fuel burn and wear
+    if (weight > 20) {
+      const weightSurcharge = (weight - 20) * 0.012; // +1.2% per tonne over 20t
+      surcharge += Math.min(0.35, weightSurcharge); 
     }
 
-    const minPerKm = cargo.baseValue > 30 ? 5.00 : 3.50;
-    const effectiveRate = Math.max(rate, minPerKm);
-    let trailerMultiplier = 1.0;
-    if (cargo.trailer === 'lowboy') trailerMultiplier = 1.35;
-    else if (cargo.trailer === 'double_trailer') trailerMultiplier = 1.30;
-    else if (cargo.trailer === 'tanker' || cargo.trailer === 'hazmat') trailerMultiplier = 1.25;
-    else if (cargo.trailer === 'tipper') trailerMultiplier = 1.20;
+    // 4. Route Environmental & Road Condition Hazards (Constitution 6.6)
+    // Adverse weather and terrain increase operational risk and transit time
+    if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') {
+      surcharge += 0.15; // Extreme winter risk
+    } else if (routeEnv.weather === 'rain') {
+      surcharge += 0.05; // Wet pavement safety margin
+    } else if (routeEnv.weather === 'heatwave') {
+      surcharge += 0.08; // Cooling system & tire thermal stress
+    }
 
-    const calculatedPayRaw = tender ? Math.round((tender.ratePerDelivery || 15000) * (0.94 + Math.random() * 0.12)) : Math.round(baseKm * effectiveRate);
-    const calculatedPay = Math.round(calculatedPayRaw * trailerMultiplier);
+    // Road Grade Incline (Gravity drag & brake wear)
+    const grade = routeEnv.roadGrade || 0;
+    if (grade > 6.0) surcharge += 0.18;      // Severe alpine grades
+    else if (grade > 4.0) surcharge += 0.10; // Moderate mountain grades
+
+    // Terrain-specific challenges (Constitution 6.1)
+    if (routeEnv.terrain === 'mountain_pass') surcharge += 0.12;
+    if (routeEnv.terrain === 'desert_corridor') surcharge += 0.08;
+    if (routeEnv.terrain === 'rough_road' || routeEnv.terrain === 'unpaved') surcharge += 0.20;
     
-    // DEADHEAD FUEL PRICING: If destination is NOT a hub, calculate return fuel cost and add it to pay
+    // Remote/Difficult Terrain (e.g. Cross-Border, Desert, Jungle legs)
+    if (isCrossCountry) surcharge += 0.10;
+
+    if (options.vip) surcharge += 0.05;
+
+    // Determine Base Rate & Total Multiplier
+    if (options.isAuction) {
+      rate = 2.25 + (cargo.baseValue * 0.035);
+      rate *= (1.0 + Math.min(0.55, surcharge));
+      rate = Math.min(4.80, rate); 
+    } else {
+      rate *= (1.0 + Math.min(0.50, surcharge));
+      const maxRateCap = cargo.trailer === 'lowboy' ? 4.50 : 3.80;
+      rate = Math.min(maxRateCap, rate);
+    }
+
+    // Minimum per km floor: $1.80/km to $2.20/km max
+    // Premium floor for specialized Hazmat or Heavy hauls
+    let minPerKm = cargo.baseValue > 30 ? 2.20 : 1.80;
+    if (cargo.isHazmat || weight > 30) minPerKm = 2.40;
+    const effectiveRate = Math.max(rate, minPerKm);
+    
+    let trailerMultiplier = 1.0;
+    if (cargo.trailer === 'lowboy') trailerMultiplier = 1.22; 
+    else if (cargo.trailer === 'double_trailer') trailerMultiplier = 1.12;
+    else if (cargo.trailer === 'tanker' || cargo.trailer === 'hazmat') trailerMultiplier = 1.18; 
+    else if (cargo.trailer === 'tipper') trailerMultiplier = 1.12; 
+
+    const calculatedPayRaw = tender ? Math.round((tender.ratePerDelivery || 2500) * (0.95 + Math.random() * 0.10)) : Math.round(baseKm * effectiveRate);
+    
+    const hubChar = getHubCharacteristics(from);
+    const sectorBonus = getHubSectorBonus(from, cargo.id);
+    const corridorSynergy = getHubNetworkSynergyBonus(S, from, to);
+    const facilityYield = getHubFacilityYieldBonus(S, from);
+
+    // Terminal Handling & Logistics Processing Fee (Constitution 6.3)
+    // Represents fixed costs of loading, gate fees, and hub administrative overhead.
+    const tier = hubChar ? hubChar.tier : 3;
+    const facilityLvl = S?.hubFacilities?.[hubChar?.hubId]?.level || 1;
+    let terminalHandlingFee = 0;
+    if (tier === 1) terminalHandlingFee = 650 + (facilityLvl * 150);
+    else if (tier === 2) terminalHandlingFee = 400 + (facilityLvl * 100);
+    else terminalHandlingFee = 250 + (facilityLvl * 50);
+
+    const rawHubMult = (hubChar ? hubChar.demandMultiplier : 1.0) * sectorBonus * corridorSynergy.rateMultiplier * facilityYield;
+    const hubMultiplier = Math.min(1.45, rawHubMult);
+
+    const calculatedPay = Math.round((calculatedPayRaw + terminalHandlingFee) * trailerMultiplier * hubMultiplier);
+    
+    // DEADHEAD FUEL PRICING: If destination is NOT a hub, calculate return fuel cost compensation
     let deadheadFuelCompensation = 0;
     const isDestinationHub = ownedHubsInRegion.includes(to);
     if (!isDestinationHub && S && S.fleet && S.fleet.length > 0) {
-      // Find nearest owned hub in region
       const nearestHub = ownedHubsInRegion.sort((a, b) => distKm(to, a) - distKm(to, b))[0];
       if (nearestHub) {
         const dhKm = distKm(to, nearestHub);
-        // Estimate fuel cost for an average truck returning empty
         const avgTruck = S.fleet[0];
         const fuelLiters = fuelCostForTrip(dhKm, avgTruck, 0, routeEnv);
-        deadheadFuelCompensation = Math.round(fuelLiters * 1.35); // Add fuel cost + 35% operational overhead
+        deadheadFuelCompensation = Math.round(fuelLiters * 0.85); 
       }
     }
 
-    const pay = Math.max(450, calculatedPay + deadheadFuelCompensation);
+    // Minimum Logistics Dispatch Floor: No commercial haul should be under ~$1,120 
+    // accounts for driver day-rate, dispatch overhead, and loading dock time.
+    const pay = Math.max(1120, calculatedPay + deadheadFuelCompensation);
 
-    // Long distance jobs should mostly be round-trip jobs (85% probability), while short distance jobs are mostly one-way (15% probability)
-    const isRoundTrip = !options.tenderId && (isLongDistance ? Math.random() < 0.85 : Math.random() < 0.15);
+    // List of active surcharges for UI transparency
+    const activeSurcharges: string[] = [];
+    if (cargo.isHazmat) activeSurcharges.push('Hazmat');
+    if (cargo.isFragile) activeSurcharges.push('Fragile');
+    if (cargo.tempControlled) activeSurcharges.push('Cold Chain');
+    if (weight > 20) activeSurcharges.push('Heavy Payload');
+    if (routeEnv.weather !== 'clear') activeSurcharges.push('Adverse Weather');
+    if ((routeEnv.roadGrade || 0) > 4.0) activeSurcharges.push('Steep Grade');
+    if (routeEnv.terrain && routeEnv.terrain !== 'asphalt') activeSurcharges.push('Challenging Terrain');
+    if (isCrossCountry) activeSurcharges.push('International');
+    if (baseKm > 1200) activeSurcharges.push('Linehaul');
+    if (facilityLvl >= 5) activeSurcharges.push('Priority Terminal');
+
+    // Long distance jobs can be round-trip (70% probability), short distance (15% probability)
+    const isRoundTrip = !options.tenderId && (isLongDistance ? Math.random() < 0.70 : Math.random() < 0.15);
     let finalPay = pay;
     let totalKm = baseKm;
     let returnCargoObj: any = null;
-    let turnaroundBonus = 0;
     let leg1Pay = pay;
     let leg2Pay = 0;
 
     if (isRoundTrip) {
       const compatibleReturnCargos = CARGO_TYPES.filter(c => c.trailer === cargo.trailer && c.id !== cargo.id);
       returnCargoObj = compatibleReturnCargos.length > 0 ? rnd(compatibleReturnCargos) : cargo;
-      let leg2Rate = 3.40 + (returnCargoObj.baseValue * 0.08);
-      if (options.vip) leg2Rate *= 1.30;
-      if (returnCargoObj.isHazmat) leg2Rate *= 1.45;
-      if (returnCargoObj.isFragile) leg2Rate *= 1.30;
-      if (returnCargoObj.tempControlled) leg2Rate *= 1.35;
-      if (weight > 18) leg2Rate *= (1 + (weight - 18) * 0.02);
-      if (routeEnv.weather === 'snow' || routeEnv.terrain === 'icy_road') leg2Rate *= 1.40;
-      if ((routeEnv.roadGrade || 0) > 5.0) leg2Rate *= 1.30;
-      leg2Pay = Math.max(450, Math.round(baseKm * leg2Rate));
-      turnaroundBonus = Math.round((pay + leg2Pay) * 0.15); // +15% Turnaround efficiency bonus
-      finalPay = pay + leg2Pay + turnaroundBonus;
+      let leg2Rate = 1.85 + (returnCargoObj.baseValue * 0.020);
+      if (options.vip) leg2Rate *= 1.05;
+      if (returnCargoObj.isHazmat) leg2Rate *= 1.15;
+      if (returnCargoObj.isFragile) leg2Rate *= 1.10;
+      if (returnCargoObj.tempControlled) leg2Rate *= 1.12;
+      leg2Pay = Math.max(180, Math.round(baseKm * leg2Rate));
+      finalPay = pay + leg2Pay;
       totalKm = baseKm * 2;
     }
 
@@ -385,7 +492,7 @@ export class FreightEngine {
       leg1Pay,
       leg2Pay,
       baseKm, // original one-way distance
-      deadline: Date.now() + (totalKm * 3600000 / 60) + (14 * 3600000),
+      deadline: Date.now() + Math.round(((totalKm / 55) + (kind === 'Emergency' ? 2.0 : options.vip ? 3.5 : 6.0)) * SIM_HOUR_MS),
       env: routeEnv,
       requirements: {
         requiredSkills,
@@ -397,7 +504,10 @@ export class FreightEngine {
       isRoundTrip,
       returnCargoId: returnCargoObj?.id,
       returnCargoName: returnCargoObj?.name,
-      turnaroundBonus
+      activeSurcharges,
+      turnaroundBonus: 0,
+      isNetworkCorridor: corridorSynergy.isNetworkCorridor,
+      weightTonnes: Math.round(weight)
     };
 
     if (options.isAuction) {
@@ -541,15 +651,17 @@ export class FreightEngine {
       S.corporateTenders = S.corporateTenders.filter((tender: any) => {
         if ((tender.completedLoads >= tender.totalLoads || tender.loadsRemaining <= 0) && !tender.bonusAwarded) {
           tender.bonusAwarded = true;
-          S.money += tender.bonusPayout;
-          if (S.stats) S.stats.earned += tender.bonusPayout;
-          pushNote(S, `${tender.client} contract completed! Awarded $${tender.bonusPayout.toLocaleString()} SLA performance bonus!`, {
+          // Drastically reduced bonus to 35% of original windfall
+          const adjustedBonus = Math.round(tender.bonusPayout * 0.35);
+          S.money += adjustedBonus;
+          if (S.stats) S.stats.earned += adjustedBonus;
+          pushNote(S, `${tender.client} contract completed! Awarded $${adjustedBonus.toLocaleString()} SLA performance bonus!`, {
             title: 'CORPORATE TENDER COMPLETED',
             type: 'tender',
             priority: 1,
-            body: `Corporate Tender ID: ${tender.id}\nClient: ${tender.client}\nPerformance Bonus: $${tender.bonusPayout.toLocaleString()}\nSLA Met: 100%`
+            body: `Corporate Tender ID: ${tender.id}\nClient: ${tender.client}\nPerformance Bonus: $${adjustedBonus.toLocaleString()}\nSLA Met: 100%`
           });
-          toast(`Tender Completed: ${tender.client}! +$${tender.bonusPayout.toLocaleString()} Bonus 🪙`, 'success');
+          toast(`Tender Completed: ${tender.client}! +$${adjustedBonus.toLocaleString()} Bonus 🪙`, 'success');
           return false;
         }
         return true;
@@ -559,19 +671,25 @@ export class FreightEngine {
     let dailyInflow = 0;
     let dailyOutflow = 0;
 
-    if (S.warehouseUpgrades?.cross_docking) dailyInflow += 1200;
-    if (S.warehouseUpgrades?.cold_vault) dailyInflow += 800;
-    if (S.warehouseUpgrades?.gantry_crane) dailyInflow += 600;
+    // Use current upgrade definitions for income
+    if (S.warehouseUpgrades?.cross_docking) dailyInflow += 450;
+    if (S.warehouseUpgrades?.cold_vault) dailyInflow += 350;
+    if (S.warehouseUpgrades?.gantry_crane) dailyInflow += 200;
 
-
-
-    const totalSalaries = (S.drivers || []).reduce((acc: number, d: any) => acc + (d.salary || 250), 0);
+    // Corrected labor costs: Elite drivers cost more
+    const totalSalaries = (S.drivers || []).reduce((acc: number, d: any) => {
+      const baseWage = 480; // Hardcore base wage
+      const skillBonus = (d.experience || 0) * 1.5;
+      return acc + (baseWage + skillBonus);
+    }, 0);
     dailyOutflow += totalSalaries;
 
+    // Per-unit insurance premiums (Hardcore scaling)
+    const activeTruckCount = (S.fleet || []).length;
     if (S.insurance) {
-      if (S.insurance.liability) dailyOutflow += 85;
-      if (S.insurance.collision) dailyOutflow += 220;
-      if (S.insurance.cargo) dailyOutflow += 310;
+      if (S.insurance.liability) dailyOutflow += (65 * activeTruckCount);
+      if (S.insurance.collision) dailyOutflow += (140 * activeTruckCount);
+      if (S.insurance.cargo) dailyOutflow += (110 * activeTruckCount);
     }
 
     if (S.loans) S.loans.forEach((l: any) => dailyOutflow += (l.dailyRate || 0));

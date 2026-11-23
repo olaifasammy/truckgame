@@ -11,6 +11,43 @@ export interface PhysicsContext {
   cargoWeightKg: number;
   gradientPct: number; // 0 is flat, 5 is steep hill
   weatherCoeff: number; // 1.0 is perfect, 0.5 is blizzard
+  trailerType?: string; // e.g. 'curtain', 'reefer', 'double_trailer', or undefined for bobtail
+}
+
+const TRAILER_TARE_KG: Record<string, number> = {
+  curtain: 6500,
+  reefer: 7500,
+  tanker: 7200,
+  hazmat: 7200,
+  lowboy: 9800,
+  flatbed: 6000,
+  double_trailer: 13500,
+  tipper: 8000,
+  carrier: 7600,
+  container: 6800
+};
+
+const TRAILER_CDA_MOD: Record<string, number> = {
+  curtain: 1.0,
+  reefer: 1.06,
+  tanker: 0.92,
+  hazmat: 0.92,
+  lowboy: 0.95,
+  flatbed: 0.88,
+  double_trailer: 1.24,
+  tipper: 0.98,
+  carrier: 1.12,
+  container: 1.02
+};
+
+function getComponentHealth(truck: any, part: string, legacyField?: string): number {
+  const comp = truck?.components || {};
+  const val = comp[part]?.health ?? (legacyField ? truck?.[legacyField] : undefined) ?? 100;
+  return Math.max(0, Math.min(100, val));
+}
+
+export function getTrailerTareKg(trailerType?: string): number {
+  return trailerType ? (TRAILER_TARE_KG[trailerType] ?? 6500) : 0;
 }
 
 export interface PerformanceResult {
@@ -28,12 +65,26 @@ export interface PerformanceResult {
  */
 export function fuelPer100km(truck: any, context: PhysicsContext, speedKmh: number): number {
   const model = TRUCK_MODELS[truck?.modelId] as any;
-  const totalMassKg = (model?.weight || 8000) + context.cargoWeightKg;
+  const trailerType = context.trailerType ?? truck?.trailer;
+  const trailerTareKg = getTrailerTareKg(trailerType);
+  const totalMassKg = (model?.weight || 8000) + trailerTareKg + context.cargoWeightKg;
   const base = model?.stats?.fuelConsumption || 32;
   const loadFactor = (totalMassKg / 10000) * 1.5;
   const gradeFactor = context.gradientPct > 0 ? context.gradientPct * 4 : 0;
+
+  const tireHealth = getComponentHealth(truck, 'tires', 'tireHealth') / 100;
+  const airFilterHealth = getComponentHealth(truck, 'airFilter') / 100;
+  const fuelFilterHealth = getComponentHealth(truck, 'fuelFilter') / 100;
+  const engineHealth = getComponentHealth(truck, 'engine', 'engineHealth') / 100;
+
+  const weatherCoeff = Math.max(0.4, Math.min(1.0, context.weatherCoeff ?? 1.0));
+  const weatherRollPenalty = 1 + (1 - weatherCoeff) * 0.45;
+  const tireRollPenalty = 1 + (1 - tireHealth) * 0.25;
+  const cdaMod = trailerType ? (TRAILER_CDA_MOD[trailerType] ?? 1.0) : 0.72;
+  const efficiencyPenalty = 1 + (1 - airFilterHealth) * 0.08 + (1 - fuelFilterHealth) * 0.08 + (1 - engineHealth) * 0.12;
+
   const speedFactor = Math.max(0.6, (speedKmh / 80) ** 2);
-  return (base + loadFactor + gradeFactor) * speedFactor;
+  return (base + loadFactor + gradeFactor) * speedFactor * cdaMod * weatherRollPenalty * tireRollPenalty * efficiencyPenalty;
 }
 
 // Phase 2: Driver Trait Configurations
@@ -76,9 +127,11 @@ export function calculateMechanicalLimits(
     return { maxAttainableSpeed: 80, accelerationCoeff: 0.5, isLimpMode: false, powerReservePct: 100 };
   }
 
-  // 1. Mass Calculation (Tractor + Cargo)
+  // 1. Mass Calculation (Tractor + Trailer Tare + Cargo)
   const tractorMassKg = model.weight || 8000;
-  const totalMassKg = tractorMassKg + context.cargoWeightKg;
+  const trailerType = context.trailerType ?? (truck as any).trailer;
+  const trailerTareKg = getTrailerTareKg(trailerType);
+  const totalMassKg = tractorMassKg + trailerTareKg + context.cargoWeightKg;
 
   // 2. Power-to-Weight Ratio
   // Typical: 400hp for 40,000kg (0.01 hp/kg)
@@ -87,15 +140,17 @@ export function calculateMechanicalLimits(
   
   // 3. Health Impacts (Surgical Mechanical Degradation)
   // Fleet code stores health under truck.components.<part>.health; flat fields are legacy fallbacks.
-  const comp = (truck as any).components || {};
-  const engineHealth = comp.engine?.health ?? (truck as any).engineHealth ?? 100;
-  const transmissionHealth = comp.transmission?.health ?? (truck as any).transmissionHealth ?? 100;
-  const tireHealth = comp.tires?.health ?? (truck as any).tireHealth ?? 100;
+  const engineHealth = getComponentHealth(truck, 'engine', 'engineHealth');
+  const transmissionHealth = getComponentHealth(truck, 'transmission', 'transmissionHealth');
+  const tireHealth = getComponentHealth(truck, 'tires', 'tireHealth');
+  const brakeHealth = getComponentHealth(truck, 'brakes');
+  const airFilterHealth = getComponentHealth(truck, 'airFilter');
+  const fuelFilterHealth = getComponentHealth(truck, 'fuelFilter');
 
   let isLimpMode = false;
   let mechanicalMod = 1.0;
 
-  // Engine: Critical failure below 20%
+  // Engine: Critical failure below 25%
   if (engineHealth < 25) {
     isLimpMode = true;
     mechanicalMod *= 0.4; // 40% power max
@@ -108,15 +163,29 @@ export function calculateMechanicalLimits(
     mechanicalMod *= 0.9;
   }
 
-  // 4. Terrain & Load Physics
+  // Dirty air/fuel filters starve engine at high load
+  if (airFilterHealth < 50 || fuelFilterHealth < 50) {
+    mechanicalMod *= 0.94;
+  }
+
+  // Tires & Brakes: Safety speed cap when severely worn
+  if (tireHealth < 35) {
+    mechanicalMod *= 0.88;
+  }
+  if (brakeHealth < 35) {
+    mechanicalMod *= 0.85;
+  }
+
+  // 4. Terrain, Weather & Load Physics
   // Speed is reduced by 10km/h for every 1% of positive gradient at max load
   const gradientPenalty = Math.max(0, context.gradientPct * (totalMassKg / 10000) * 2);
+  const weatherCoeff = Math.max(0.4, Math.min(1.0, context.weatherCoeff ?? 1.0));
   
   // 5. Final Result Construction
   const baseTopSpeed = model.topSpeed || 120;
   
-  // Max speed is capped by power-to-weight, mechanical health, and uphill drag
-  let maxAttainableSpeed = (baseTopSpeed * mechanicalMod) - gradientPenalty;
+  // Max speed is capped by power-to-weight, mechanical health, weather traction, and uphill drag
+  let maxAttainableSpeed = (baseTopSpeed * mechanicalMod * (0.7 + 0.3 * weatherCoeff)) - gradientPenalty;
 
   // Safety floor: even a struggling truck crawls at 15km/h unless engine is 0%
   if (engineHealth > 0) {
@@ -125,16 +194,7 @@ export function calculateMechanicalLimits(
     maxAttainableSpeed = 0;
   }
 
-  // Base fuel consumption in L/100km (unloaded, flat ground, 80 km/h)
-  const baseL100km = model.stats?.fuelConsumption || 32;
-  
-  // Phase 3: Dynamic Physics-Based Fuel Burn
-  // We use maxAttainableSpeed as the baseline for drag calculation at this mechanical state
-  const loadFactor = (totalMassKg / 10000) * 1.5; // +1.5L per 10t
-  const speedFactor = (maxAttainableSpeed / 80) ** 2; // Aero drag is square of speed
-  const gradeFactor = context.gradientPct > 0 ? (context.gradientPct * 4) : 0; // +4L per 1% grade
-  
-  const instantL100km = (baseL100km + loadFactor + gradeFactor) * speedFactor;
+  const instantL100km = fuelPer100km(truck, context, maxAttainableSpeed);
 
   // Acceleration capability (lower for heavier loads)
   const accelerationCoeff = Math.max(0.1, (hpPerKg / 0.05) * mechanicalMod);

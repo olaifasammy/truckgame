@@ -1,6 +1,9 @@
 import { Truck, TrailerType } from './trucks.types';
 import { GameState } from '../../types/state';
 import { TRUCK_MODELS, TRAILER_PRICES } from './trucks.data';
+import { LOCATIONS } from '../../data/world';
+import { DRIVER_RELOCATION_FEE } from '../drivers/drivers.engine';
+import { Region } from '../drivers/drivers.types';
 import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
 
@@ -18,6 +21,14 @@ export const FleetManagement = {
     if (truck.status !== 'idle') return 'Truck is currently busy';
 
     if (driverId) {
+      const driver = state.drivers.find(d => d.id === driverId) as any;
+      if (!driver) return 'Driver not found';
+
+      const truckRegion = LOCATIONS[truck.loc]?.region;
+      if (truckRegion && driver.region && driver.region !== truckRegion && !driver.workPermits?.includes(truckRegion)) {
+        return `Driver ${driver.name} is licensed for ${driver.region} (Truck is in ${truckRegion}). Relocate driver ($${DRIVER_RELOCATION_FEE.toLocaleString()}) first.`;
+      }
+
       // Check if driver is assigned to another truck
       const otherTruck = state.fleet.find(t => t.driverId === driverId && t.id !== truckId);
       if (otherTruck) {
@@ -66,6 +77,37 @@ export const FleetManagement = {
 
     (state as any).trailers.splice(yardIndex, 1);
     truck.trailer = trailerType;
+
+    return null;
+  },
+
+  /**
+   * Relocates a driver to a new operating region (visa, compliance & travel fee).
+   */
+  relocateDriver(state: GameState, driverId: number, targetRegion: Region): string | null {
+    const driver = state.drivers.find(d => d.id === driverId) as any;
+    if (!driver) return 'Driver not found';
+    if (driver.region === targetRegion) return `Driver is already based in ${targetRegion}`;
+
+    const assignedTruck = state.fleet.find(t => t.driverId === driverId);
+    if (assignedTruck && assignedTruck.status !== 'idle') {
+      return 'Cannot relocate a driver while their assigned truck is on a job';
+    }
+
+    if (state.money < DRIVER_RELOCATION_FEE) {
+      return `Insufficient funds for regional relocation ($${DRIVER_RELOCATION_FEE.toLocaleString()})`;
+    }
+
+    state.money -= DRIVER_RELOCATION_FEE;
+    driver.region = targetRegion;
+    if (!driver.workPermits) driver.workPermits = [];
+    if (!driver.workPermits.includes(targetRegion)) driver.workPermits.push(targetRegion);
+
+    // Unassign if currently paired with a truck in a different region
+    if (assignedTruck && LOCATIONS[assignedTruck.loc]?.region !== targetRegion) {
+      assignedTruck.driverId = null;
+      driver.assignedTruckId = null;
+    }
 
     return null;
   },

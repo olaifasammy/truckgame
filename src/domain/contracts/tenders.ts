@@ -14,6 +14,7 @@ import { CARGO_TYPES } from '../freight/cargo/registry';
 import { distKm } from '../../systems/calc';
 import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
+import { recordTransaction } from '../../core/ledger';
 
 // ---------------------------------------------------------------------------
 // Tunables
@@ -273,8 +274,9 @@ export function getDynamicCorporateTenders(S: any): CorporateTender[] {
     if ((cargo as any)?.tempControlled) certs.add('Cold Chain');
 
     const totalLoads = 8 + Math.floor(r() * 13); // 8–20
-    const ratePerDelivery = Math.max(5500, Math.round(laneKm * 14.5 * tpl.baseRateMultiplier));
-    const bonusPayout = Math.round((ratePerDelivery * totalLoads * 0.30) / 5000) * 5000;
+    const perKmRate = 1.95 + (tpl.baseRateMultiplier * 0.35);
+    const ratePerDelivery = Math.max(450, Math.round(laneKm * perKmRate));
+    const bonusPayout = Math.round((ratePerDelivery * totalLoads * 0.06) / 500) * 500; // 6% SLA Completion Bonus
 
     offers.push({
       id: `tender_${(cargo as any).id}_${cycleSeed}_${idx}`,
@@ -429,7 +431,7 @@ export function settleExpiredTenders(S: any, now: number = Date.now()): Corporat
 
     if (pct >= t.slaTarget) {
       t.bonusAwarded = true;
-      S.money = (S.money || 0) + t.bonusPayout;
+      recordTransaction(S, 'revenue_bonus', t.bonusPayout, `Corporate Tender SLA Bonus: ${t.client}`);
       if (S.stats) S.stats.earned = (S.stats.earned || 0) + t.bonusPayout;
       pushNote(S, `${t.client} contract ended: ${done}/${t.totalLoads} loads (${Math.round(pct)}%) met the ${t.slaTarget}% SLA. Bonus +$${t.bonusPayout.toLocaleString()}.`, {
         title: 'TENDER COMPLETED', type: 'tender', priority: 1

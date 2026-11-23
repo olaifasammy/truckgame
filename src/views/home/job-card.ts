@@ -40,6 +40,7 @@ export function renderJobDetails(j: any, why: string | null) {
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; font-family:monospace; font-size:10px;">
           <div><span style="color:var(--mu);">CONDITIONS:</span> <b style="color:var(--tx);">${weatherLabel}</b></div>
           <div><span style="color:var(--mu);">ROAD INCLINE:</span> <b style="color:${env.roadGrade > 4 ? 'var(--gold)' : 'var(--tx)'};">${env.roadGrade}% Grade</b></div>
+          <div><span style="color:var(--mu);">TERRAIN:</span> <b style="color:var(--tx);">${(env.terrain || 'Asphalt').replace('_', ' ').toUpperCase()}</b></div>
           <div><span style="color:var(--mu);">DEST ELEVATION:</span> <b style="color:var(--tx);">${locTo?.elevation || 200}m ASL</b></div>
           <div><span style="color:var(--mu);">TEMPERATURE:</span> <b style="color:var(--tx);">${env.temp}°C</b></div>
         </div>
@@ -81,9 +82,23 @@ export function renderJobDetails(j: any, why: string | null) {
         </div>
       </div>
 
+      ${j.activeSurcharges?.length ? `
+        <!-- ACTIVE RATE SURCHARGES & PREMIUMS -->
+        <div style="margin-bottom:10px;">
+          <div style="font-size:8px; font-weight:800; color:var(--mu); text-transform:uppercase; margin-bottom:4px;">Logistics Risk & Difficulty Premiums</div>
+          <div style="display:flex; gap:4px; flex-wrap:wrap;">
+            ${j.activeSurcharges.map((s: string) => `
+              <span style="font-size:8.5px; background:rgba(16,185,129,0.1); border:1px solid rgba(16,185,129,0.3); padding:2px 6px; border-radius:4px; color:var(--grn); font-weight:800; font-family:monospace;">
+                ✓ ${s.toUpperCase()}
+              </span>
+            `).join('')}
+          </div>
+        </div>
+      ` : ''}
+
       <div style="display:flex; justify-content:space-between; align-items:center; font-size:10px; color:var(--mu); margin-bottom:8px;">
         <div><span>Client Shipper:</span> <b style="color:var(--tx);">${clientName}</b></div>
-        <div><span>Coupling:</span> <b style="color:var(--gold);">${TRAILERS[(cargo?.trailer as keyof typeof TRAILERS) || 'curtain']}</b></div>
+        <div><span>Required Cargo Trailer:</span> <b style="color:var(--gold);">${TRAILERS[(cargo?.trailer as keyof typeof TRAILERS) || 'curtain']}</b> <small style="color:var(--grn); font-size:8px;">(Auto-Hitched at Loading Dock)</small></div>
       </div>
 
       ${reqs.length ? `

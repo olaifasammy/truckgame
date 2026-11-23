@@ -87,29 +87,58 @@ export interface IncomeStatementMetrics {
 /**
  * Calculate dynamic market valuation of all tractors in company fleet
  */
+export const DAILY_DEPRECIATION_RATE = 0.0004; // ~14.6% annual straight-line commercial tractor depreciation
+export const CORPORATE_TAX_RATE = 0.21; // 21% federal corporate income tax
+
+/**
+ * Calculates realistic book valuation of a single truck, factoring in
+ * MSRP, upgrades, component condition, and odometer depreciation.
+ */
+export function calculateTruckValuation(t: any): number {
+  const model = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'] || { price: 145000 };
+  const basePrice = (model as any).price || (model as any).priceUsd || 145000;
+
+  // Upgrades value
+  const upgrades = t.upgrades || {};
+  const ecoVal = (upgrades.ecoTuning || 0) * 8500;
+  const chipVal = (upgrades.performanceChip || 0) * 12000;
+  const suspVal = upgrades.heavyDutySuspension ? 15000 : 0;
+  const upgradesTotal = ecoVal + chipVal + suspVal;
+
+  // Odometer depreciation: depreciates up to 65% over 1,250,000 km
+  const odometerKm = Math.max(0, t.odometer || 0);
+  const odometerFactor = Math.max(0.35, 1 - (odometerKm / 1_250_000) * 0.65);
+
+  // Component health factor
+  const comp = t.components || {};
+  const healthValues = Object.values(comp).map((c: any) => typeof c === 'number' ? c : c?.health ?? 100);
+  const avgHealth = healthValues.length > 0 ? (healthValues.reduce((a, b) => a + b, 0) / healthValues.length) : 100;
+  const healthFactor = Math.max(0.35, 0.40 + 0.60 * (avgHealth / 100));
+
+  return Math.round((basePrice + upgradesTotal) * odometerFactor * healthFactor);
+}
+
+/**
+ * Calculates net dealer resale liquidation value (15% dealer spread below book value).
+ */
+export function getTruckResaleValue(t: any): number {
+  return Math.round(calculateTruckValuation(t) * 0.85);
+}
+
+/**
+ * Calculates daily non-cash fleet depreciation (straight-line book depreciation).
+ */
+export function calculateDailyFleetDepreciation(S: any): number {
+  const { totalVal } = calculateFleetValuation(S);
+  return Math.round(totalVal * DAILY_DEPRECIATION_RATE);
+}
+
 export function calculateFleetValuation(S: any): { totalVal: number; count: number } {
   const fleet = S.fleet || [];
   let totalVal = 0;
 
   for (const t of fleet) {
-    const model = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'] || { priceUsd: 145000 };
-    const basePrice = model.priceUsd || 145000;
-
-    // Upgrades value
-    const upgrades = t.upgrades || {};
-    const ecoVal = (upgrades.ecoTuning || 0) * 8500;
-    const chipVal = (upgrades.performanceChip || 0) * 12000;
-    const suspVal = upgrades.heavyDutySuspension ? 15000 : 0;
-    const upgradesTotal = ecoVal + chipVal + suspVal;
-
-    // Health depreciation factor
-    const comp = t.components || {};
-    const healthValues = Object.values(comp).map((c: any) => typeof c === 'number' ? c : c?.health ?? 100);
-    const avgHealth = healthValues.length > 0 ? (healthValues.reduce((a, b) => a + b, 0) / healthValues.length) : 100;
-    const healthFactor = Math.max(0.35, avgHealth / 100);
-
-    const truckVal = Math.round((basePrice + upgradesTotal) * healthFactor);
-    totalVal += truckVal;
+    totalVal += calculateTruckValuation(t);
   }
 
   return { totalVal, count: fleet.length };
@@ -294,7 +323,7 @@ export function calculateIncomeStatement(S: any): IncomeStatementMetrics {
   // Daily recurring outflows & expenses
   const driverPayrollUsd = (S.drivers || []).reduce((acc: number, d: any) => acc + (d.salary || 250), 0);
   const fuelExpenseUsd = S.dailyStats?.fuel || 0;
-  const maintenanceExpenseUsd = S.dailyStats?.maintenance || 0;
+  const maintenanceExpenseUsd = (S.dailyStats?.maintenance || 0) + (S.dailyStats?.parking || 0);
 
   let insuranceExpenseUsd = 0;
   if (S.insurance) {
@@ -303,7 +332,7 @@ export function calculateIncomeStatement(S: any): IncomeStatementMetrics {
     if (S.insurance.cargo) insuranceExpenseUsd += INSURANCE_POLICIES.cargo?.dailyCost || 310;
   }
 
-  const debtServiceUsd = (S.loans || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0);
+  const debtServiceUsd = (S.loans || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0) + (S.dailyStats?.overdraftInterest || 0);
   const leaseExpenseUsd = (S.leases || []).reduce((acc: number, l: any) => acc + (l.dailyRate || 0), 0);
 
   const totalOpexUsd = driverPayrollUsd + fuelExpenseUsd + maintenanceExpenseUsd + insuranceExpenseUsd + debtServiceUsd + leaseExpenseUsd;
@@ -377,16 +406,16 @@ export function calculateWeeklyAccounting(S: any): WeeklyAccountingMetrics {
   const factor = 7;
   const freightInflowUsd = Math.round(daily.expectedFreightInflowUsd * factor + daily.freightRevenueUsd);
   const warehouseInflowUsd = Math.round(daily.warehouseInflowUsd * factor);
-  const tollAndTariffUsd = Math.round((S.dailyStats?.tolls || 450) * factor);
+  const tollAndTariffUsd = Math.round((S.dailyStats?.tolls || 0) * factor);
   const grossRevenueUsd = freightInflowUsd + warehouseInflowUsd;
 
   const driverWagesUsd = Math.round(daily.driverPayrollUsd * factor);
-  const fuelExpenseUsd = Math.round((daily.fuelExpenseUsd || 1200) * factor);
-  const maintenanceExpenseUsd = Math.round((daily.maintenanceExpenseUsd || 800) * factor);
+  const fuelExpenseUsd = Math.round(daily.fuelExpenseUsd * factor);
+  const maintenanceExpenseUsd = Math.round(daily.maintenanceExpenseUsd * factor);
   const insuranceUsd = Math.round(daily.insuranceExpenseUsd * factor);
   const debtInterestUsd = Math.round(daily.debtServiceUsd * factor);
   const leaseExpenseUsd = Math.round(daily.leaseExpenseUsd * factor);
-  const depreciationUsd = 3500;
+  const depreciationUsd = calculateDailyFleetDepreciation(S) * factor;
 
   const totalOpexUsd = driverWagesUsd + fuelExpenseUsd + maintenanceExpenseUsd + insuranceUsd + debtInterestUsd + leaseExpenseUsd + tollAndTariffUsd + depreciationUsd;
   const ebitdaUsd = grossRevenueUsd - (totalOpexUsd - depreciationUsd - debtInterestUsd);
@@ -428,8 +457,8 @@ export function calculateMonthlyAccounting(S: any): MonthlyAccountingMetrics {
   const leaseExpenseUsd = Math.round(weekly.leaseExpenseUsd * factor);
   const depreciationUsd = Math.round(weekly.depreciationUsd * factor);
   
-  const ebitdaBeforeTax = grossRevenueUsd - (driverWagesUsd + fuelExpenseUsd + maintenanceExpenseUsd + insuranceUsd + leaseExpenseUsd + tollAndTariffUsd);
-  const corporateTaxUsd = ebitdaBeforeTax > 0 ? Math.round(ebitdaBeforeTax * 0.21) : 0;
+  const taxableProfitUsd = grossRevenueUsd - (driverWagesUsd + fuelExpenseUsd + maintenanceExpenseUsd + insuranceUsd + leaseExpenseUsd + tollAndTariffUsd + depreciationUsd + debtInterestUsd);
+  const corporateTaxUsd = taxableProfitUsd > 0 ? Math.round(taxableProfitUsd * CORPORATE_TAX_RATE) : 0;
 
   const totalOpexUsd = driverWagesUsd + fuelExpenseUsd + maintenanceExpenseUsd + insuranceUsd + debtInterestUsd + leaseExpenseUsd + tollAndTariffUsd + depreciationUsd + corporateTaxUsd;
   const ebitdaUsd = Math.round(weekly.ebitdaUsd * factor);

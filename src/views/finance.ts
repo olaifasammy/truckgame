@@ -2,8 +2,11 @@ import { ic } from '../core/icons';
 import { fmt, action, toast } from '../core/ui';
 import { refresh, set } from '../core/store';
 import { pushNote } from '../systems/notify';
-import { AVAILABLE_LOANS, calculateCreditRating, INSURANCE_POLICIES, REGIONAL_FUEL_SPOT, getGoldMarketData } from '../domain/finance/banking';
+import { AVAILABLE_LOANS, calculateCreditRating, INSURANCE_POLICIES } from '../domain/finance/banking';
 import { executeTakeLoan, executePayoffLoan } from '../domain/finance/commercialLoans';
+import { getCompanySafetyRating } from '../domain/trucks/registration';
+import { recordTransaction } from '../core/ledger';
+import { slots } from '../systems/offices';
 import { createTruck } from '../domain/trucks/trucks.physics';
 
 // Modular Tab Imports
@@ -46,46 +49,22 @@ action('lease-tractor', d => {
   const modelId = (d as any).modelId || 'scania_s730';
   set(S => {
     const downPayment = 18000;
+    if (getCompanySafetyRating(S).grade === 'UNSATISFACTORY') {
+      return toast('Credit Freeze: Resolve FMCSA Unsatisfactory safety rating before leasing.', 'err');
+    }
+    if ((S.fleet || []).length >= slots(S)) {
+      return toast(`Fleet berth capacity full (${S.fleet.length}/${slots(S)}). Expand depot/garage slots first.`, 'err');
+    }
     if (S.money < downPayment) return toast('Insufficient funds', 'err');
-    S.money -= downPayment;
+    recordTransaction(S, 'expense_finance', -downPayment, `Tractor Lease Down Payment (${modelId})`);
     const newId = (S.fleet.reduce((m: any, t: any) => Math.max(m, t.id), 0) || 0) + 1;
-    S.fleet.push(createTruck(newId, modelId, `Leased ${modelId}`, 'LAGOS'));
+    const homeLoc = (S.homeCity || 'LAGOS').toUpperCase();
+    const leasedTruck: any = createTruck(newId, modelId, `Leased ${modelId}`, homeLoc);
+    leasedTruck.leased = true;
+    S.fleet.push(leasedTruck);
     if (!S.leases) S.leases = [];
     S.leases.push({ id: `L${Date.now()}`, modelId, downPayment, dailyRate: 480, termDays: 45, daysRemaining: 45, truckId: newId });
-    toast('Lease Activated', 'success');
-  });
-});
-
-action('upgrade-fuel-bunker', () => {
-  set(S => {
-    const nextLevel = (S.fuelBunkerLevel || 0) + 1;
-    const cost = 25000 * Math.pow(2, nextLevel - 1);
-    if (S.money < cost) return toast('Insufficient funds', 'err');
-    S.money -= cost;
-    S.fuelBunkerLevel = nextLevel;
-    S.fuelBunker.maxCapacity += 12000;
-    toast('Bunker Expanded', 'success');
-  });
-});
-
-action('buy-wholesale-fuel', d => {
-  const liters = +(d as any).liters;
-  const spotPrice = +(d as any).price || 0.82;
-  set(S => {
-    const bunker = S.fuelBunker;
-    const toBuy = Math.min(bunker.maxCapacity - bunker.currentLiters, liters);
-    const cost = Math.round(toBuy * spotPrice);
-    if (toBuy <= 0 || S.money < cost) return toast('Cannot purchase', 'err');
-    S.money -= cost;
-    const prevL = bunker.currentLiters;
-    const prevC = bunker.avgCostPerLiter || spotPrice;
-    bunker.currentLiters += toBuy;
-    bunker.avgCostPerLiter = parseFloat(((prevL * prevC + cost) / bunker.currentLiters).toFixed(2));
-    pushNote(S, `Wholesale Fuel Receipt: ${toBuy.toLocaleString()}L of diesel delivered to HQ Bunker at $${spotPrice}/L.`, {
-      title: 'WHOLESALE FUEL',
-      type: 'ops'
-    });
-    toast(`Refilled ${toBuy}L`, 'success');
+    toast('Lease Activated ($480/day for 45 days)', 'success');
   });
 });
 
@@ -102,9 +81,12 @@ export default {
   icon: 'cash',
   label: 'Finance',
   render: (S: any) => {
-    const financeTab = (window as any).financeTab || 'treasury';
+    let financeTab = (window as any).financeTab || 'treasury';
+    if (financeTab === 'fuel') {
+      financeTab = 'treasury';
+      (window as any).financeTab = 'treasury';
+    }
     const { rating, score, maxCredit } = calculateCreditRating(S);
-    const bunker = S.fuelBunker || { currentLiters: 4500, maxCapacity: 12000, avgCostPerLiter: 0.95 };
     const ins = S.insurance || { liability: true, collision: true, cargo: false };
 
     return `
@@ -125,45 +107,6 @@ export default {
         ${financeTab === 'treasury' ? renderTreasuryTab(S) : ''}
         ${financeTab === 'exchange' ? renderExchangeTab(S) : ''}
         ${(financeTab === 'banking' || financeTab === 'loans') ? renderLoansTab(S) : ''}
-
-        ${financeTab === 'fuel' ? `
-          <div style="background:#0f172a; border:1px solid #1e293b; border-radius:12px; padding:18px; margin-bottom:16px;">
-            <div style="font-size:10px; color:var(--gold); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">HQ Enterprise Fuel Bunker</div>
-            <div style="display:flex; justify-content:space-between; align-items:baseline; margin-top:6px;">
-              <div style="font-size:24px; font-weight:900; color:var(--tx); font-family:monospace;">${bunker.currentLiters.toLocaleString()}<span style="font-size:12px; color:var(--mu); font-weight:700;"> / ${bunker.maxCapacity.toLocaleString()} L</span></div>
-              <div style="font-size:10px; color:var(--mu); font-weight:700;">AVG COST: <span style="color:var(--tx);">$${bunker.avgCostPerLiter || '0.00'}/L</span></div>
-            </div>
-            <div style="height:8px; background:rgba(255,255,255,0.06); border-radius:4px; overflow:hidden; margin-top:14px; border:1px solid rgba(255,255,255,0.05);">
-              <div style="width:${Math.min(100, (bunker.currentLiters/bunker.maxCapacity)*100)}%; height:100%; background:linear-gradient(90deg, var(--gold-dim), var(--gold));"></div>
-            </div>
-            <div style="display:flex; gap:10px; margin-top:18px;">
-              <button class="btn gold" style="flex:1; padding:10px; font-size:10px;" data-act="buy-wholesale-fuel" data-liters="5000">REFILL 5,000L</button>
-              <button class="btn alt" style="flex:1; padding:10px; font-size:10px;" data-act="upgrade-fuel-bunker">EXPAND BUNKER</button>
-            </div>
-          </div>
-
-          <div class="card" style="padding:16px; margin:0; width:100%;">
-            <div style="font-size:10px; color:var(--mu); font-weight:800; text-transform:uppercase; margin-bottom:12px; letter-spacing:0.5px;">Regional Diesel Spot Markets</div>
-            <table style="width:100%; border-collapse:collapse;">
-              <thead>
-                <tr style="border-bottom:1px solid var(--line);">
-                  <th style="text-align:left; padding:8px 0; font-size:9px; color:var(--mu); text-transform:uppercase;">Hub Location</th>
-                  <th style="text-align:right; padding:8px 0; font-size:9px; color:var(--mu); text-transform:uppercase;">Diesel Spot</th>
-                  <th style="text-align:right; padding:8px 0; font-size:9px; color:var(--mu); text-transform:uppercase;">Change</th>
-                </tr>
-              </thead>
-              <tbody style="font-size:12px;">
-                ${Object.entries(REGIONAL_FUEL_SPOT).map(([city, p]) => `
-                  <tr style="border-bottom:1px solid rgba(255,255,255,0.03);">
-                    <td style="padding:10px 0; font-weight:700; color:var(--tx);">${city}</td>
-                    <td style="padding:10px 0; text-align:right; font-weight:900; color:var(--gold); font-family:monospace;">$${p.diesel.toFixed(2)}/L</td>
-                    <td style="padding:10px 0; text-align:right; color:var(--grn); font-size:10px; font-weight:700;">+0.02</td>
-                  </tr>
-                `).join('')}
-              </tbody>
-            </table>
-          </div>
-        ` : ''}
 
         ${financeTab === 'insurance' ? `
           <div style="display:flex; flex-direction:column; gap:10px;">

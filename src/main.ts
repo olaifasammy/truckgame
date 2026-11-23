@@ -38,9 +38,13 @@ try {
   S = load();
   console.log('Main: Store loaded', S);
 } catch (e: any) {
-  console.error('Main: Store load failed, resetting...', e);
-  reset();
-  S = load();
+  console.error('Main: Store load failed!', e);
+  if (e instanceof SyntaxError) {
+    console.warn('Main: Corrupted state, resetting...');
+    reset();
+  }
+  // Fallback to fresh state
+  S = DEF();
 }
 
 (window as any).__getStore = get;

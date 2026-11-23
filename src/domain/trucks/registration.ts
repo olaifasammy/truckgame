@@ -13,6 +13,29 @@ export interface VehicleRegistrationRecord {
   registrationStatus: 'unregistered' | 'active' | 'tax_expired' | 'inspection_expired' | 'suspended';
 }
 
+export interface DotViolationRecord {
+  id: number;
+  type: 'unregistered' | 'tax_expired' | 'inspection_expired' | 'speeding' | 'hos' | 'overweight';
+  truckId?: number;
+  truckCode?: string;
+  driverName?: string;
+  fine: number;
+  reason: string;
+  at: number;
+  paid: boolean;
+}
+
+export const GOV_FEES = {
+  REGISTRATION: 4500,
+  REGISTRATION_VANITY: 8500,
+  ROAD_TAX: 5800,
+  INSPECTION: 1850,
+  EZ_PASS_ANNUAL: 3600,
+  CUSTOMS_BOND: 12000,
+  UNREGISTERED_FINE: 3500,
+  EXPIRED_DOC_FINE: 2500
+} as const;
+
 const BRAND_PREFIX_MAP: Record<string, string> = {
   scania: 'SC',
   man: 'MN',
@@ -164,7 +187,7 @@ export function registerTruckAtCity(S: any, truckId: number, city: string, custo
   }
 
   const isVanity = !!(customPlate && customPlate.trim().length > 0);
-  const regFee = isVanity ? 3500 : 1800;
+  const regFee = isVanity ? GOV_FEES.REGISTRATION_VANITY : GOV_FEES.REGISTRATION;
 
   if (S.money < regFee) {
     toast(`Insufficient funds! Registration fee is $${regFee.toLocaleString()}`, 'err');
@@ -209,7 +232,7 @@ export function renewVehicleRoadTax(S: any, truckId: number): boolean {
     return false;
   }
 
-  const taxFee = 2400;
+  const taxFee = GOV_FEES.ROAD_TAX;
   if (S.money < taxFee) {
     toast(`Insufficient funds for Road Tax ($${taxFee.toLocaleString()})`, 'err');
     return false;
@@ -244,7 +267,7 @@ export function bulkRenewFleetRoadTax(S: any): { renewedCount: number; totalCost
     return { renewedCount: 0, totalCost: 0 };
   }
 
-  const taxFee = 2400;
+  const taxFee = GOV_FEES.ROAD_TAX;
   const now = Date.now();
   const eligibleTrucks = S.fleet.filter((t: any) => t.regNo && (!t.taxExpiresAt || t.taxExpiresAt - now < 30 * 24 * 60 * 60 * 1000));
 
@@ -288,7 +311,7 @@ export function performVehicleInspection(S: any, truckId: number): { passed: boo
     return { passed: false, avgHealth: 0 };
   }
 
-  const inspectionFee = 600;
+  const inspectionFee = GOV_FEES.INSPECTION;
   if (S.money < inspectionFee) {
     toast(`Insufficient funds for Inspection Test ($${inspectionFee.toLocaleString()})`, 'err');
     return { passed: false, avgHealth: 0 };
@@ -328,4 +351,183 @@ export function performVehicleInspection(S: any, truckId: number): { passed: boo
   }
 
   return { passed, avgHealth };
+}
+
+/**
+ * Records a DOT / Ministry of Transport regulatory violation.
+ */
+export function recordViolation(
+  S: any,
+  opts: {
+    type: DotViolationRecord['type'];
+    truckId?: number;
+    truckCode?: string;
+    driverName?: string;
+    fine: number;
+    reason: string;
+    paid?: boolean;
+  }
+): DotViolationRecord {
+  if (!Array.isArray(S.violations)) S.violations = [];
+  const rec: DotViolationRecord = {
+    id: S.nextId ? S.nextId++ : Date.now() + Math.floor(Math.random() * 1000),
+    type: opts.type,
+    truckId: opts.truckId,
+    truckCode: opts.truckCode,
+    driverName: opts.driverName,
+    fine: Math.max(0, Math.round(opts.fine)),
+    reason: opts.reason,
+    at: Date.now(),
+    paid: Boolean(opts.paid)
+  };
+  S.violations.unshift(rec);
+  if (S.violations.length > 100) S.violations.length = 100;
+  return rec;
+}
+
+/**
+ * Settles a single unpaid DOT violation fine.
+ */
+export function payViolation(S: any, violationId: number): boolean {
+  const v = (S.violations || []).find((x: DotViolationRecord) => x.id === violationId);
+  if (!v || v.paid) return false;
+  if ((S.money || 0) < v.fine) {
+    toast(`Insufficient funds to pay $${v.fine.toLocaleString()} DOT fine`, 'err');
+    return false;
+  }
+  S.money -= v.fine;
+  v.paid = true;
+  pushNote(S, `⚖️ DOT CITATION SETTLED: Paid $${v.fine.toLocaleString()} for ${v.reason}.`, {
+    title: 'DOT FINE PAID',
+    type: 'compliance'
+  });
+  toast(`Paid DOT fine ($${v.fine.toLocaleString()})`, 'success');
+  return true;
+}
+
+/**
+ * Settles all unpaid DOT violation fines.
+ */
+export function payAllViolations(S: any): boolean {
+  const unpaid = (S.violations || []).filter((x: DotViolationRecord) => !x.paid);
+  if (unpaid.length === 0) {
+    toast('No outstanding DOT fines to settle', 'info');
+    return false;
+  }
+  const total = unpaid.reduce((acc: number, x: DotViolationRecord) => acc + x.fine, 0);
+  if ((S.money || 0) < total) {
+    toast(`Insufficient funds! Total unpaid fines: $${total.toLocaleString()}`, 'err');
+    return false;
+  }
+  S.money -= total;
+  unpaid.forEach((x: DotViolationRecord) => { x.paid = true; });
+  pushNote(S, `⚖️ ALL DOT VIOLATIONS SETTLED: Paid ${unpaid.length} citations (-$${total.toLocaleString()}). Safety standing restored.`, {
+    title: 'DOT COMPLIANCE RESTORED',
+    type: 'compliance',
+    priority: 1
+  });
+  toast(`Settled ${unpaid.length} DOT fines (-$${total.toLocaleString()})`, 'success');
+  return true;
+}
+
+/**
+ * Computes real operator safety rating and unpaid violation metrics.
+ */
+export function getCompanySafetyRating(S: any): {
+  grade: 'GRADE A' | 'CONDITIONAL' | 'UNSATISFACTORY';
+  label: string;
+  color: string;
+  unpaidCount: number;
+  unpaidTotal: number;
+  totalViolations: number;
+} {
+  const violations: DotViolationRecord[] = S.violations || [];
+  const unpaid = violations.filter(v => !v.paid);
+  const unpaidCount = unpaid.length;
+  const unpaidTotal = unpaid.reduce((acc, v) => acc + v.fine, 0);
+
+  const fleet = S.fleet || [];
+  const now = Date.now();
+  let nonCompliantUnits = 0;
+  for (const t of fleet) {
+    const st = getTruckRegistrationStatus(t).status;
+    if (st !== 'active' && (!t.taxExpiresAt || now > t.taxExpiresAt || !t.regNo)) {
+      nonCompliantUnits++;
+    }
+  }
+
+  if (unpaidCount >= 3 || unpaidTotal >= 10000) {
+    return {
+      grade: 'UNSATISFACTORY',
+      label: 'UNSATISFACTORY (DISPATCH HOLD)',
+      color: '#ef4444',
+      unpaidCount,
+      unpaidTotal,
+      totalViolations: violations.length
+    };
+  }
+  if (unpaidCount > 0 || nonCompliantUnits > 0) {
+    return {
+      grade: 'CONDITIONAL',
+      label: 'CONDITIONAL (AUDIT WARNING)',
+      color: 'var(--gold)',
+      unpaidCount,
+      unpaidTotal,
+      totalViolations: violations.length
+    };
+  }
+  return {
+    grade: 'GRADE A',
+    label: 'SATISFACTORY (GRADE A)',
+    color: 'var(--grn)',
+    unpaidCount,
+    unpaidTotal,
+    totalViolations: violations.length
+  };
+}
+
+/**
+ * Purchases or renews annual Global EZ-Pass Toll Subscription.
+ */
+export function buyEzPass(S: any): boolean {
+  const now = Date.now();
+  if (S.ezPass && S.ezPassExpiresAt && S.ezPassExpiresAt > now + 30 * 24 * 60 * 60 * 1000) {
+    toast('EZ-Pass subscription is already active', 'info');
+    return false;
+  }
+  if ((S.money || 0) < GOV_FEES.EZ_PASS_ANNUAL) {
+    toast(`Insufficient funds for EZ-Pass ($${GOV_FEES.EZ_PASS_ANNUAL.toLocaleString()})`, 'err');
+    return false;
+  }
+  S.money -= GOV_FEES.EZ_PASS_ANNUAL;
+  S.ezPass = true;
+  S.ezPassExpiresAt = now + 365 * 24 * 60 * 60 * 1000;
+  pushNote(S, `🛣️ GLOBAL EZ-PASS ACTIVATED: 30% toll discount active across all corridors for 1 year (-$${GOV_FEES.EZ_PASS_ANNUAL.toLocaleString()}).`, {
+    title: 'EZ-PASS SUBSCRIPTION',
+    type: 'finance'
+  });
+  toast('Global EZ-Pass Toll Subscription Activated!', 'success');
+  return true;
+}
+
+/**
+ * Purchases Cross-Border Customs Clearance Bond.
+ */
+export function buyCustomsBond(S: any): boolean {
+  if (S.customsBond) {
+    toast('Cross-Border Customs Bond is already active', 'info');
+    return false;
+  }
+  if ((S.money || 0) < GOV_FEES.CUSTOMS_BOND) {
+    toast(`Insufficient funds for Customs Bond ($${GOV_FEES.CUSTOMS_BOND.toLocaleString()})`, 'err');
+    return false;
+  }
+  S.money -= GOV_FEES.CUSTOMS_BOND;
+  S.customsBond = true;
+  pushNote(S, `🛂 CROSS-BORDER CUSTOMS BOND ISSUED: Pre-cleared for international freight corridors (-$${GOV_FEES.CUSTOMS_BOND.toLocaleString()}).`, {
+    title: 'CUSTOMS CLEARANCE BOND',
+    type: 'compliance'
+  });
+  toast('Cross-Border Customs Bond Issued!', 'success');
+  return true;
 }

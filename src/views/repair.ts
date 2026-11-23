@@ -199,7 +199,8 @@ export default {
         totalSavings += Math.max(0, eff.retailCost - eff.cost);
       });
     }
-    const durationMs = truck ? calculateRepairDurationMs(truck, selectedPartsList) : 0;
+    const durationMs = truck ? calculateRepairDurationMs(truck, selectedPartsList, S) : 0;
+    const facilityInfo = truck ? VehicleMaintenance.getRepairFacilityInfo(S, truck) : null;
 
     return `
       <div class="view" style="padding-bottom:100px;">
@@ -318,6 +319,11 @@ export default {
                   <div style="font-size:11px; color:var(--gold); font-weight:700; margin-top:2px;">
                     ${model?.brand} ${model?.name} · Odometer: <span data-truck-odo="${truck.id}">${Math.round(truck.odometer).toLocaleString()} km</span> · Base: ${truck.loc}
                   </div>
+                  ${facilityInfo ? `
+                    <div style="display:inline-flex; align-items:center; gap:6px; margin-top:6px; padding:3px 8px; border-radius:6px; font-size:10px; font-weight:800; background:${facilityInfo.atOwnedHub ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)'}; color:${facilityInfo.atOwnedHub ? 'var(--grn)' : '#f59e0b'}; border:1px solid ${facilityInfo.atOwnedHub ? 'rgba(16,185,129,0.35)' : 'rgba(245,158,11,0.35)'};">
+                      ${facilityInfo.atOwnedHub ? '🏭' : '⚠️'} ${facilityInfo.label}${!facilityInfo.atOwnedHub ? ' · HQ Stock Unavailable' : ''}
+                    </div>
+                  ` : ''}
                 </div>
                 <div style="text-align:right;">
                   <div style="font-size:11px; font-weight:900; color:${truck.status === 'repair' ? '#ef4444' : 'var(--grn)'}; text-transform:uppercase;">

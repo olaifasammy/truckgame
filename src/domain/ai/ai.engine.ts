@@ -21,9 +21,15 @@ import { getCompanyProgression } from '../company/progression';
 import { isRegionUnlocked } from '../logistics/network';
 import { LOCATIONS } from '../../data/world';
 import { TRUCK_MODELS } from '../trucks/trucks.data';
-import { getHubFacilityForCity } from '../hubs/hub-facility';
+import { getHubFacilityForCity, isCityUnlockedHub } from '../hubs/hub-facility';
+import { getDispatchEligibilityError } from '../dispatch/validation';
+import { getCompanySafetyRating } from '../trucks/registration';
+import { getRegionalRetailFuelPrice } from '../economy/fuel-market';
+import { recordTransaction } from '../../core/ledger';
 import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
+
+const HOS_REST_MS = 2_770_000; // 10 simulation hours mandatory off-duty rest
 
 /**
  * Case-insensitive helper for geographic location lookups.
@@ -101,9 +107,13 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
   // Cross-continental dispatch forbidden: Tractor in America cannot service Europe/Africa/Asia
   if (truckLoc && locFrom && truckLoc.region !== locFrom.region) return -Infinity;
 
-  // 3. Domain legality check
+  // 3. Domain legality & full compliance gate (FMCSA holds, road tax, inspection, certs, permits)
   const truckWhyMsg = why(S, truck, job);
   if (truckWhyMsg) return -Infinity;
+
+  const assignedDriver = (S.drivers || []).find((d: any) => d.id === truck.driverId);
+  const eligibilityErr = getDispatchEligibilityError(S, truck, job, assignedDriver);
+  if (eligibilityErr) return -Infinity;
 
   // 4. Deadhead and Total Km Economics Check (Prevent dispatching money-losing contracts)
   const deadheadKm = distKm(truck.loc, job.from);
@@ -248,25 +258,33 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
     return { dispatchedCount: 0, message: 'Continuous Auto-Dispatch Engine is currently paused' };
   }
 
-  // 1. Self-healing: Clear expired driver HOS rest periods & handle auto-resting fatigued drivers
+  // 0. Global FMCSA Safety Hold check
+  const safety = getCompanySafetyRating(S);
+  if (safety.grade === 'UNSATISFACTORY') {
+    return { dispatchedCount: 0, message: 'FMCSA Safety Hold active — settle DOT citations in Government Compliance.' };
+  }
+
+  // 1. Clear expired driver HOS rest periods; initiate real 10h HOS rest for exhausted drivers
   for (const drv of (S.drivers || [])) {
     if (drv.hosRestUntil && drv.hosRestUntil <= now) {
       delete drv.hosRestUntil;
       drv.hosHours = 0;
-      drv.fatigue = Math.max(0, (drv.fatigue || 0) - 50);
-    } else if (!drv.hosRestUntil && (drv.fatigue > 75 || (drv.hosHours || 0) >= 11)) {
-      // Initiate 15-second simulation rest break so driver recovers without stalling dispatcher indefinitely
-      drv.fatigue = 0;
-      drv.hosHours = 0;
-      drv.hosRestUntil = now + 15000;
+      drv.fatigue = Math.max(0, (drv.fatigue || 0) - 70);
+    } else if (!drv.hosRestUntil && ((drv.fatigue || 0) >= 85 || (drv.hosHours || 0) >= 11)) {
+      drv.hosRestUntil = now + HOS_REST_MS;
     }
   }
 
-  // 2. Self-healing: Auto-pair unassigned idle drivers to unassigned idle trucks
+  // 2. Self-healing: Auto-pair unassigned idle drivers (respecting regional work permits)
   const assignedDriverIds = new Set((S.fleet || []).map((t: any) => t.driverId).filter(Boolean));
   for (const truck of (S.fleet || [])) {
     if (truck.status === 'idle' && !truck.driverId) {
-      const availableDriver = (S.drivers || []).find((d: any) => !assignedDriverIds.has(d.id) && (!d.hosRestUntil || d.hosRestUntil <= now));
+      const truckRegion = getLocationRecord(truck.loc)?.region;
+      const availableDriver = (S.drivers || []).find((d: any) =>
+        !assignedDriverIds.has(d.id) &&
+        (!d.hosRestUntil || d.hosRestUntil <= now) &&
+        (!truckRegion || !d.region || d.region === truckRegion || d.workPermits?.includes(truckRegion))
+      );
       if (availableDriver) {
         truck.driverId = availableDriver.id;
         assignedDriverIds.add(availableDriver.id);
@@ -303,9 +321,15 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
         } else if (S.fuelBunker && S.fuelBunker.currentLiters >= needed) {
           S.fuelBunker.currentLiters -= needed;
           truck.fluids.fuel = tankCapacity;
-        } else if ((S.money || 0) >= needed * 1.45) {
-          S.money -= Math.round(needed * 1.45);
-          truck.fluids.fuel = tankCapacity;
+        } else {
+          const retailPrice = getRegionalRetailFuelPrice(truck.loc, S);
+          const fuelCost = Math.round(needed * retailPrice);
+          if ((S.money || 0) >= fuelCost) {
+            recordTransaction(S, 'expense_fuel', -fuelCost, `AI Auto-Refuel: ${truck.name} (${needed}L @ $${retailPrice.toFixed(2)}/L)`);
+            if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
+            S.dailyStats.fuel += fuelCost;
+            truck.fluids.fuel = tankCapacity;
+          }
         }
       }
     }
@@ -344,9 +368,10 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
 
     // Fallback contract procurement: If no compatible jobs exist on the board for this truck's current location,
     // generate an immediate matchable outbound consignment from truck.loc so fleet units never stall
+    // ONLY generate fallback jobs if truck is at an OWNED hub terminal
     if (candidateJobs.length === 0 && (S.jobs || []).length < 17) {
       const truckLoc = getLocationRecord(truck.loc);
-      if (truckLoc && isRegionUnlocked(S as any, truckLoc.region)) {
+      if (truckLoc && isRegionUnlocked(S as any, truckLoc.region) && isCityUnlockedHub(S, truck.loc)) {
         try {
           const compatibleJob = FreightEngine.generate(S, {
             forceRegion: truckLoc.region,

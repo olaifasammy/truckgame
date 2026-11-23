@@ -6,6 +6,10 @@
 
 import { recordTransaction } from '../../core/ledger';
 import { toast } from '../../core/ui';
+import { pushNote } from '../../systems/notify';
+import { REGIONAL_HUBS } from '../logistics/network';
+import { TRUCK_MODELS } from '../trucks/trucks.data';
+import { getCompanySafetyRating } from '../trucks/registration';
 
 export interface LoanOffer {
   id: string;
@@ -109,279 +113,257 @@ export function calculateEnterpriseCreditProfile(S: any): EnterpriseCreditProfil
 }
 
 /**
- * Calculates exact daily loan amortization rate and total cost.
+ * Checks if the enterprise is eligible for a specific loan principal and term.
+ * Max term is strictly 30 days. Max debt-to-asset ratio is 12%.
  */
-export function calculateLoanAmortization(principal: number, aprPct: number, termDays: number) {
-  const totalInterest = Math.round(principal * (aprPct / 100) * (termDays / 365));
-  const totalRepayment = principal + totalInterest;
-  const dailyRate = Math.ceil(totalRepayment / termDays);
-  return { totalInterest, totalRepayment, dailyRate };
-}
-
-/**
- * Generates dynamic, realistic loan offers requiring specific company ranks, permits, and committee approval.
- */
-export function getAvailableLoanOffers(S: any): LoanOffer[] {
-  const profile = calculateEnterpriseCreditProfile(S);
-  const assets = profile.totalAssetsUsd;
-  const offers: LoanOffer[] = [];
-
-  // ==========================================
-  // 1. Startup Micro-Credit (Tier 0 - Newbie) - Lower introductory interest rate (9.5% APR)
-  // ==========================================
-  const seedPrincipal = 15000;
-  const seedAmort = calculateLoanAmortization(seedPrincipal, 9.5, 21);
-  offers.push({
-    id: 'startup_seed',
-    name: 'Founder Startup Micro-Credit',
-    category: 'startup',
-    lender: 'First Commercial Small Business Trust',
-    principal: seedPrincipal,
-    apr: 9.5,
-    termDays: 21,
-    dailyRate: seedAmort.dailyRate,
-    totalRepayment: seedAmort.totalRepayment,
-    totalInterest: seedAmort.totalInterest,
-    requiredRating: 'B',
-    requiredTier: 0,
-    minAssetsRequired: 0,
-    badge: 'STARTUP BOOSTER (9.5% APR)',
-    description: 'Low-interest introductory startup capital designed for new carriers to acquire fuel, licenses, and basic shop supplies.',
-    benefits: ['Low introductory 9.5% APR', 'Zero collateral requirement', 'Available at Newbie rank']
-  });
-
-  // ==========================================
-  // 2. Working Capital Line (Tier 1 - Professional)
-  // ==========================================
-  const payrollPrincipal = 40000;
-  const payrollAmort = calculateLoanAmortization(payrollPrincipal, 18.5, 30);
-  offers.push({
-    id: 'working_capital',
-    name: 'Operating Cashflow & Payroll Facility',
-    category: 'startup',
-    lender: 'Apex Logistics Capital',
-    principal: payrollPrincipal,
-    apr: 18.5,
-    termDays: 30,
-    dailyRate: payrollAmort.dailyRate,
-    totalRepayment: payrollAmort.totalRepayment,
-    totalInterest: payrollAmort.totalInterest,
-    requiredRating: 'BB',
-    requiredTier: 1,
-    requiredPermit: 'Logistics License Tier 1',
-    minAssetsRequired: 30000,
-    badge: 'EXPEDITION CASH',
-    description: 'Short-term liquidity facility to float driver wages, insurance deductibles, and unexpected breakdown repairs.',
-    benefits: ['Requires Professional Rank (Tier 1)', 'Requires Logistics License', '30-day term']
-  });
-
-  // ==========================================
-  // 3. Equipment Financing (Tier 2 - Expert)
-  // ==========================================
-  const tractorPrincipal = 120000;
-  const tractorAmort = calculateLoanAmortization(tractorPrincipal, 24.0, 60);
-  offers.push({
-    id: 'single_tractor_facility',
-    name: 'Heavy Commercial Tractor Equipment Facility',
-    category: 'fleet',
-    lender: 'Volvo-Scania Financial Services',
-    principal: tractorPrincipal,
-    apr: 24.0,
-    termDays: 60,
-    dailyRate: tractorAmort.dailyRate,
-    totalRepayment: tractorAmort.totalRepayment,
-    totalInterest: tractorAmort.totalInterest,
-    requiredRating: 'BBB',
-    requiredTier: 2,
-    requiredPermit: 'Commercial Transport Permit',
-    minAssetsRequired: 100000,
-    badge: 'EQUIPMENT FINANCING',
-    description: 'Asset-backed commercial equipment facility calibrated to purchase heavy tractor units. Requires Expert rank and Transport Permit.',
-    benefits: ['Requires Expert Rank (Tier 2)', 'Requires Commercial Permit', '60-day repayment runway']
-  });
-
-  // ==========================================
-  // 4. Multi-Truck Fleet Credit Line (Tier 3 - VIP 1+)
-  // ==========================================
-  const multiFleetPrincipal = Math.min(250000, Math.max(100000, Math.round(assets * 0.10 / 25000) * 25000));
-  const multiAmort = calculateLoanAmortization(multiFleetPrincipal, 26.5, 90);
-  offers.push({
-    id: 'fleet_expansion',
-    name: 'Commercial Fleet Multi-Tractor Credit Line',
-    category: 'fleet',
-    lender: 'National Freight Equipment Credit',
-    principal: multiFleetPrincipal,
-    apr: 26.5,
-    termDays: 90,
-    dailyRate: multiAmort.dailyRate,
-    totalRepayment: multiAmort.totalRepayment,
-    totalInterest: multiAmort.totalInterest,
-    requiredRating: 'A',
-    requiredTier: 3,
-    requiredPermit: 'Interstate Commerce Permit',
-    minAssetsRequired: 250000,
-    badge: 'MULTI-TRUCK LINE',
-    description: `Scalable multi-truck facility. Requires VIP Rank (Tier 3+) and Interstate Commerce Permit.`,
-    benefits: ['Requires VIP Tier 3+', 'Requires Interstate Permit', '90-day facility']
-  });
-
-  // ==========================================
-  // 5. Syndicated Corporate Expansion (Tier 4 - VIP 3+)
-  // ==========================================
-  if (assets >= 400000 && (S.companyTier || 0) >= 4) {
-    const corpPrincipal = Math.min(500000, Math.max(200000, Math.round(assets * 0.12 / 50000) * 50000));
-    const corpAmort = calculateLoanAmortization(corpPrincipal, 28.0, 120);
-    offers.push({
-      id: 'syndicated_enterprise',
-      name: 'Syndicated Corporate Expansion Facility',
-      category: 'enterprise',
-      lender: 'Continental Infrastructure Consortium',
-      principal: corpPrincipal,
-      apr: 28.0,
-      termDays: 120,
-      dailyRate: corpAmort.dailyRate,
-      totalRepayment: corpAmort.totalRepayment,
-      totalInterest: corpAmort.totalInterest,
-      requiredRating: 'AA',
-      requiredTier: 4,
-      requiredPermit: 'International Transport Certificate',
-      minAssetsRequired: 400000,
-      badge: 'SYNDICATED FACILITY',
-      description: `Institutional credit facility for Tier 4+ conglomerates with International Transport Certificates.`,
-      benefits: ['Requires Tier 4+ (VIP 3)', 'Requires International Certificate', '120-day term']
-    });
+export function checkLoanEligibility(S: any, principal: number, termDays: number): {
+  eligible: boolean;
+  error?: string;
+  apr?: number;
+  dailyRate?: number;
+  totalRepayment?: number;
+  totalInterest?: number;
+} {
+  if (principal <= 0) return { eligible: false, error: 'Invalid principal amount.' };
+  if (termDays <= 0 || termDays > 30) return { eligible: false, error: 'Maximum loan term is strictly 30 days.' };
+  if ((S.money || 0) < -25000) {
+    return { eligible: false, error: 'Credit Freeze: Treasury overdraft exceeds -$25,000 limit.' };
   }
-
-  // ==========================================
-  // 6. Sovereign Infrastructure Bond (Tier 5 - VIP 5+)
-  // ==========================================
-  if (assets >= 1000000 && (S.companyTier || 0) >= 5) {
-    const bondPrincipal = 1000000;
-    const bondAmort = calculateLoanAmortization(bondPrincipal, 31.0, 180);
-    offers.push({
-      id: 'infrastructure_bond',
-      name: 'Corporate Intermodal Infrastructure Bond',
-      category: 'enterprise',
-      lender: 'Global Logistics Sovereign Investment Board',
-      principal: bondPrincipal,
-      apr: 31.0,
-      termDays: 180,
-      dailyRate: bondAmort.dailyRate,
-      totalRepayment: bondAmort.totalRepayment,
-      totalInterest: bondAmort.totalInterest,
-      requiredRating: 'AAA',
-      requiredTier: 5,
-      requiredPermit: 'Sovereign Trade License',
-      minAssetsRequired: 1000000,
-      badge: 'SOVEREIGN BOND',
-      description: `Top-tier corporate bond issuance for premier conglomerates with AAA standing and Sovereign Trade License.`,
-      benefits: ['Requires Tier 5+ (VIP 5)', 'Requires Sovereign License', '180-day institutional term']
-    });
-  }
-
-  const companyTier = S.companyTier || 0;
-  return offers.filter(o => companyTier >= o.requiredTier);
-}
-
-/**
- * Executes a loan application with strict guardrails, rank checks, permit verifications, and committee approval.
- */
-export function executeTakeLoan(S: any, offerId: string, customAmount?: number): boolean {
-  let offer: LoanOffer | undefined;
-  if (offerId === 'custom_drawdown') {
-    const amt = customAmount || 25000;
-    const profile = calculateEnterpriseCreditProfile(S);
-    const customApr = profile.rating === 'AAA' ? 3.4 : profile.rating === 'AA' ? 4.2 : profile.rating === 'A' ? 5.2 : 6.5;
-    const customAmort = calculateLoanAmortization(amt, customApr, 60);
-    offer = {
-      id: 'custom_drawdown',
-      name: `Custom Revolving Line of Credit ($${amt.toLocaleString()})`,
-      category: 'startup',
-      lender: 'Nexus Fleet Syndicate Commercial Bank',
-      principal: amt,
-      apr: customApr,
-      termDays: 60,
-      dailyRate: customAmort.dailyRate,
-      totalRepayment: customAmort.totalRepayment,
-      totalInterest: customAmort.totalInterest,
-      requiredRating: profile.rating,
-      requiredTier: 1,
-      minAssetsRequired: 0,
-      badge: 'CUSTOM DRAWDOWN',
-      description: `Custom revolving credit facility drawn against enterprise asset valuation.`,
-      benefits: ['60-day institutional term', `${customApr}% APR interest rate`]
-    };
-  } else {
-    const offers = getAvailableLoanOffers(S);
-    offer = offers.find(o => o.id === offerId);
-  }
-
-  if (!offer) {
-    toast('Loan offer not found or expired.', 'err');
-    return false;
+  if (getCompanySafetyRating(S).grade === 'UNSATISFACTORY') {
+    return { eligible: false, error: 'Credit Freeze: Resolve FMCSA Unsatisfactory safety rating before taking new credit.' };
   }
 
   const profile = calculateEnterpriseCreditProfile(S);
   const companyTier = S.companyTier || 0;
-  const certs = S.certifications || [];
 
-  // Guardrail 1: Company Rank Tier Check
-  if (companyTier < offer.requiredTier) {
-    toast(`Loan Committee Rejected: Requires Company Rank Tier ${offer.requiredTier} (Current: Tier ${companyTier})`, 'err');
-    return false;
-  }
-
-  // Guardrail 2: Operating Permit Check
-  if (offer.requiredPermit && !certs.includes(offer.requiredPermit) && companyTier < offer.requiredTier + 1) {
-    toast(`Loan Committee Rejected: Missing required operating permit (${offer.requiredPermit})`, 'err');
-    return false;
-  }
-
-  // Guardrail 3: Strict Debt Ceiling (Max 12% Debt-to-Asset)
-  const projectedDebt = profile.activeDebtUsd + offer.principal;
+  // Guardrail 1: Strict Debt Ceiling (Max 12% Debt-to-Asset)
+  const projectedDebt = profile.activeDebtUsd + principal;
   const projectedRatio = profile.totalAssetsUsd > 0 ? projectedDebt / profile.totalAssetsUsd : 0;
   if (projectedRatio > 0.12) {
-    toast(`Bank Committee Denied: Exceeds maximum 12% debt-to-asset leverage guardrail ($${Math.round(profile.totalAssetsUsd * 0.12).toLocaleString()} max allowed)`, 'err');
+    const maxAllowed = Math.round(profile.totalAssetsUsd * 0.12) - profile.activeDebtUsd;
+    return {
+      eligible: false,
+      error: `Bank Committee Denied: Exceeds maximum 12% debt-to-asset leverage guardrail. Max additional borrowing capacity: $${Math.max(0, maxAllowed).toLocaleString()}.`
+    };
+  }
+
+  // Guardrail 2: Credit Rating vs Amount
+  if (principal > 50000 && profile.creditRating === 'B') {
+    return { eligible: false, error: 'Loan Committee Denied: High-capital facility requires credit rating of BB or higher.' };
+  }
+  if (principal > 200000 && companyTier < 3) {
+    return { eligible: false, error: 'Loan Committee Denied: Enterprise-scale financing requires VIP Rank (Tier 3+).' };
+  }
+
+  const apr = getCustomLoanApr(profile.rating);
+  const amort = calculateLoanAmortization(principal, apr, termDays);
+
+  return {
+    eligible: true,
+    apr,
+    dailyRate: amort.dailyRate,
+    totalRepayment: amort.totalRepayment,
+    totalInterest: amort.totalInterest
+  };
+}
+
+/**
+ * Returns the effective APR based on commercial credit rating.
+ */
+export function getCustomLoanApr(rating: string): number {
+  switch (rating) {
+    case 'AAA': return 24.5;
+    case 'AA': return 26.5;
+    case 'A': return 28.5;
+    case 'BBB': return 32.0;
+    case 'BB': return 35.0;
+    case 'B': return 42.0;
+    default: return 45.0;
+  }
+}
+
+/**
+ * Calculates daily payments and total interest for a fixed-term loan.
+ */
+export function calculateLoanAmortization(principal: number, apr: number, termDays: number) {
+  const dailyRateDecimal = (apr / 100) / 365;
+  // Total cost = P * (1 + r*t) - Simple interest approximation for short terms
+  const totalInterest = Math.round(principal * dailyRateDecimal * termDays);
+  const totalRepayment = principal + totalInterest;
+  const dailyRate = Math.round(totalRepayment / termDays);
+
+  return {
+    dailyRate,
+    totalRepayment,
+    totalInterest
+  };
+}
+
+/**
+ * Executes a loan application with strict guardrails, rank checks, and committee approval.
+ */
+export function executeTakeLoan(S: any, principal: number, termDays: number): boolean {
+  const check = checkLoanEligibility(S, principal, termDays);
+
+  if (!check.eligible) {
+    toast(check.error || 'Loan application rejected.', 'err');
     return false;
   }
 
-  // Guardrail 4: Minimum Asset Threshold
-  if (profile.totalAssetsUsd < offer.minAssetsRequired) {
-    toast(`Loan Committee Denied: Insufficient enterprise asset valuation ($${offer.minAssetsRequired.toLocaleString()} required)`, 'err');
-    return false;
-  }
-
-  // All checks passed -> Committee Approval & Disbursement
+  // All checks passed -> Disbursement
   if (!S.loans) S.loans = [];
   const loanRecord = {
     id: `loan_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-    name: offer.name,
-    lender: offer.lender,
-    principal: offer.principal,
-    balance: offer.totalRepayment,
-    remainingBalance: offer.totalRepayment,
-    dailyRate: offer.dailyRate,
-    termDays: offer.termDays,
-    daysRemaining: offer.termDays,
-    apr: offer.apr,
-    status: 'active'
+    name: 'Enterprise Commercial Credit',
+    lender: 'First National Logistics Credit',
+    principal: principal,
+    balance: check.totalRepayment,
+    remainingBalance: check.totalRepayment,
+    dailyRate: check.dailyRate,
+    termDays: termDays,
+    daysRemaining: termDays,
+    apr: check.apr,
+    issuedAt: Date.now(),
+    status: 'active',
+    missedPayments: 0
   };
 
   S.loans.push(loanRecord);
-  recordTransaction(S, 'revenue_bonus', offer.principal, `Commercial Loan Disbursal: ${offer.name} (${offer.lender})`);
+  recordTransaction(S, 'revenue_bonus', principal, `Commercial Loan Disbursal: $${principal.toLocaleString()}`);
 
   if (!S.stats) S.stats = { earned: 0, spent: 0, km: 0, jobs: 0 };
-  S.stats.borrowed = (S.stats.borrowed || 0) + offer.principal;
+  S.stats.borrowed = (S.stats.borrowed || 0) + principal;
 
-  pushNote(S, `🏦 Loan Committee Approved: $${offer.principal.toLocaleString()} facility secured from ${offer.lender} at ${offer.apr}% APR (${offer.termDays}-day term).`, {
-    title: 'COMMERCIAL LOAN APPROVED',
+  pushNote(S, `🏦 Loan Disbursement: $${principal.toLocaleString()} facility secured at ${check.apr}% APR (${termDays}-day term). Daily repayment: $${check.dailyRate.toLocaleString()}.`, {
+    title: 'COMMERCIAL LOAN DISBURSED',
     type: 'finance',
     priority: 'high'
   });
 
-  toast(`Successfully secured $${offer.principal.toLocaleString()} commercial loan (${offer.apr}% APR)!`, 'success');
+  toast(`Successfully secured $${principal.toLocaleString()} commercial loan (${check.apr}% APR)!`, 'success');
   return true;
 }
+
+/**
+ * Processes loan ticks: handles daily deductions, delinquency interest hikes, and asset seizure.
+ */
+export function processLoanTick(S: any, elapsedDays: number, now: number): void {
+  if (!S.loans || S.loans.length === 0) return;
+
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+  for (let i = S.loans.length - 1; i >= 0; i--) {
+    const loan = S.loans[i];
+    if (loan.status === 'settled') continue;
+
+    const paymentDue = Math.round(loan.dailyRate * elapsedDays);
+    if (paymentDue <= 0) continue;
+
+    if (S.money >= paymentDue) {
+      // Normal payment (recordTransaction updates S.money once)
+      loan.balance = Math.max(0, (loan.balance || loan.remainingBalance) - paymentDue);
+      loan.remainingBalance = loan.balance;
+      loan.daysRemaining = Math.max(0, loan.daysRemaining - elapsedDays);
+      recordTransaction(S, 'expense_finance', -paymentDue, `Auto-Payment: ${loan.lender}`);
+      if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
+      S.dailyStats.loans = (S.dailyStats.loans || 0) + paymentDue;
+    } else {
+      // DELINQUENCY: Insufficient funds
+      loan.missedPayments = (loan.missedPayments || 0) + elapsedDays;
+      // Penalty: APR increases by 5% per missed day (up to double)
+      const penaltyApr = 5.0 * elapsedDays;
+      const prevApr = loan.apr || 35;
+      loan.apr = Math.min(prevApr * 2, prevApr + penaltyApr);
+      
+      // Capitalize missed interest
+      const missedInterest = Math.round(loan.balance * (penaltyApr / 100 / 365));
+      loan.balance += missedInterest;
+      loan.remainingBalance = loan.balance;
+
+      pushNote(S, `⚠️ DELINQUENT LOAN: Insufficient funds to service $${paymentDue.toLocaleString()} payment for ${loan.lender}. APR hiked to ${loan.apr.toFixed(1)}%.`, {
+        title: 'LOAN PAYMENT MISSED',
+        type: 'finance',
+        priority: 'high'
+      });
+      toast(`⚠️ Loan Payment Missed! Interest rate hiked for ${loan.lender}.`, 'err');
+    }
+
+    // SEIZURE GUARDRAIL: Max term is 30 days. If expired or heavily delinquent, seize assets.
+    const ageDays = (now - loan.issuedAt) / MS_PER_DAY;
+    if (ageDays > 30 || loan.missedPayments > 7) {
+      seizePropertyForDebt(S, i);
+    } else if (loan.balance <= 0) {
+      S.loans.splice(i, 1);
+    }
+  }
+}
+
+
+/**
+ * Seizes enterprise property (Trucks or Hubs) to settle outstanding debt.
+ */
+function seizePropertyForDebt(S: any, loanIdx: number): void {
+  const loan = S.loans[loanIdx];
+  const debt = Math.round(loan.balance || loan.remainingBalance);
+  if (debt <= 0) {
+    S.loans.splice(loanIdx, 1);
+    return;
+  }
+
+  // Priority 1: Seize Trucks
+  if (S.fleet && S.fleet.length > 0) {
+    const truckIdx = S.fleet.length - 1; 
+    const truck = S.fleet[truckIdx];
+    const model = TRUCK_MODELS[truck.modelId];
+    const value = truck.resaleValue || Math.round((model?.price || 150000) * 0.65);
+    
+    S.fleet.splice(truckIdx, 1);
+    S.loans.splice(loanIdx, 1); 
+
+    const excess = value - debt;
+    if (excess > 0) {
+      recordTransaction(S, 'revenue_bonus', excess, `Asset Seizure Balance Return: ${truck.modelId}`);
+    } else if (excess < 0) {
+       // If truck value didn't cover debt, remaining debt is "forgiven" but rating trashed
+       const profile = calculateEnterpriseCreditProfile(S);
+       // Internal penalty logic could go here
+    }
+
+    pushNote(S, `🏛️ ASSET SEIZURE: Collections agents have seized Tractor [${truck.id}] to settle $${debt.toLocaleString()} debt. ${excess > 0 ? `Excess value of $${excess.toLocaleString()} returned to accounts.` : ''}`, {
+      title: 'COLLECTIONS SEIZURE',
+      type: 'finance',
+      priority: 'high'
+    });
+    toast(`🏛️ ASSET SEIZURE: Truck ${truck.id} seized by ${loan.lender}!`, 'err');
+    return;
+  }
+
+  // Priority 2: Seize Hubs
+  if (S.depots && S.depots.length > 1) { // Never seize the last hub (HQ)
+    const hubId = S.depots.pop();
+    const value = 250000; // Average hub resale valuation
+
+    S.loans.splice(loanIdx, 1); // Debt settled
+    const excess = value - debt;
+    if (excess > 0) {
+      recordTransaction(S, 'revenue_bonus', excess, `Asset Seizure Balance Return: Hub ${hubId}`);
+    }
+
+    pushNote(S, `🏛️ HUB SEIZURE: ${loan.lender} has seized Terminal [${hubId}] to settle $${debt.toLocaleString()} debt.`, {
+      title: 'TERMINAL SEIZURE',
+      type: 'finance',
+      priority: 'high'
+    });
+    toast(`🏛️ HUB SEIZURE: Terminal ${hubId} seized by ${loan.lender}!`, 'err');
+    return;
+  }
+
+  // Final fallback: Bankrupt / Locked account
+  S.money = Math.round(S.money * 0.1); // Massive hair cut
+  S.loans.splice(loanIdx, 1);
+  toast('Total Default: Bank has cleared liquid accounts.', 'err');
+}
+
 
 export function executePayoffLoan(S: any, loanId: string, customAmount?: number): boolean {
   if (!S.loans) return false;

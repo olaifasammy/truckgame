@@ -28,6 +28,11 @@ export default {
     const regions: (Region | 'All')[] = ['All', 'America', 'Europe', 'Africa', 'Asia'];
     const transferDriverObj = employed.find((d: any) => d.id === transferModalDriverId);
 
+    const now = Date.now();
+    const refreshTarget = (S as any).driverPoolNextRefreshAt || (now + 10 * 60 * 1000);
+    const diffSec = Math.max(0, Math.floor((refreshTarget - now) / 1000));
+    const countdownStr = `${Math.floor(diffSec / 60).toString().padStart(2, '0')}:${(diffSec % 60).toString().padStart(2, '0')}`;
+
     return `
       <div class="view" style="padding-bottom:100px;">
         <div class="header-banner" style="background:linear-gradient(135deg, var(--s1), var(--bg)); border:1px solid var(--line); border-radius:12px; padding:16px; margin-bottom:16px;">
@@ -50,6 +55,18 @@ export default {
           </button>
         </div>
 
+        ${activeTab === 'pool' ? `
+          <div style="display:flex; justify-content:space-between; align-items:center; background:var(--s1); border:1px solid var(--line); border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:11px;">
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="color:var(--gold); font-weight:800;">🔄 Candidate Market Refresh:</span>
+              <span style="color:var(--tx); font-family:monospace; font-weight:800;">${countdownStr}</span>
+            </div>
+            <button class="btn gold" style="padding:4px 10px; font-size:10px; font-weight:800;" data-act="refresh-driver-pool">
+              Agency Search ($2,500)
+            </button>
+          </div>
+        ` : ''}
+
         <!-- Region Filter Pills -->
         <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:8px; margin-bottom:12px;">
           ${regions.map(r => `
@@ -61,7 +78,17 @@ export default {
 
         <!-- Driver List -->
         <div style="display:flex; flex-direction:column; gap:10px;">
-          ${paginatedList.length === 0 ? `<div class="card" style="padding:30px; text-align:center; color:var(--mu);">${activeTab === 'employed' ? 'No drivers found in this region.' : 'No candidates available in this region. Check back later.'}</div>` : 
+          ${paginatedList.length === 0 ? `
+            <div class="card" style="padding:24px; text-align:center; color:var(--mu);">
+              ${activeTab === 'employed' ? `No drivers employed in ${selectedRegion === 'All' ? 'any region' : selectedRegion}.` : `
+                <div style="font-size:13px; font-weight:800; color:var(--tx); margin-bottom:6px;">No candidate drivers currently available in ${selectedRegion.toUpperCase()}</div>
+                <div style="font-size:11px; margin-bottom:12px;">Next candidate market batch arrives in <b style="color:var(--gold); font-family:monospace;">${countdownStr}</b></div>
+                <button class="btn gold" style="padding:8px 16px; font-size:11px; font-weight:800;" data-act="refresh-driver-pool">
+                  Pay Agency Search Fee ($2,500) to Refresh Instantly
+                </button>
+              `}
+            </div>
+          ` : 
             paginatedList.map((d: any) => {
               if (activeTab === 'employed') {
                 const isExpanded = expandedDriverId === d.id;

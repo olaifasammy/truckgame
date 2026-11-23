@@ -133,7 +133,7 @@ function getRealisticEuroSvg(s: EuroStyle, axle: string, trailerType: string | n
   const moving = !!opts.isMoving;
   const hasTrailer = !!trailerType && trailerType !== 'none';
   const driveX = axle === '4x2' ? [290] : [262, 316];
-  const layout = hasTrailer ? trailerLayout(trailerType!, 192) : null;
+  const layout = hasTrailer ? trailerLayout(trailerType!, 220) : null;
   const vbW = layout ? layout.x1 + 36 : 400;
   const d0 = driveX[0], dn = driveX[driveX.length - 1];
   const { roofY: y, rake: rk, rearX: R, roofRound: rr } = s;
@@ -183,7 +183,7 @@ ${svgHead(vbW, moving)}
   </defs>
 
   <ellipse cx="${vbW / 2}" cy="252" rx="${vbW / 2 - 10}" ry="9" fill="#000" opacity=".45" filter="url(#${u}blur)"/>
-  ${hasTrailer ? renderRealisticTrailer(trailerType!, u, P, 192, moving) : ''}
+  ${hasTrailer ? renderRealisticTrailer(trailerType!, u, P, 220, moving) : ''}
 
   <!-- TRACTOR -->
   <rect x="60" y="192" width="300" height="11" fill="#14171c"/>

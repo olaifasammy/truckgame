@@ -3,7 +3,7 @@ import { toast } from '../../core/ui';
 import { pushNote } from '../../systems/notify';
 import { DriverManagement } from '../../domain/drivers/management';
 import { DriverCertifications } from '../../domain/drivers/certifications';
-import { fillDriverPool } from '../../domain/drivers/drivers.engine';
+import { fillDriverPool, forceRefreshDriverPool } from '../../domain/drivers/drivers.engine';
 import { GameState } from '../../types/state';
 import { Region } from '../../domain/drivers/drivers.types';
 
@@ -22,7 +22,7 @@ export const DriverService = {
       S.money -= fee;
       (S as any).pool = (S as any).pool.filter((x: any) => x.id !== driverId);
       S.drivers.push(d);
-      fillDriverPool(S as any, 8);
+      fillDriverPool(S as any, 2, 12, Date.now());
       
       pushNote(S as any, `Contracted new driver ${d.name} for regional fleet operations.`, { title: 'RECRUITMENT', type: 'ops' });
       toast('Successfully hired ' + d.name, 'success');
@@ -47,6 +47,20 @@ export const DriverService = {
       const err = DriverManagement.transferRegion(S, driverId, newRegion);
       if (err) return toast(err, 'err');
       toast(`Successfully transferred driver to ${newRegion}`, 'success');
+    });
+  },
+
+  refreshMarketPool() {
+    set((S: GameState) => {
+      const agencyFee = 2500;
+      if (S.money < agencyFee) return toast(`Insufficient funds for agency search ($${agencyFee.toLocaleString()})`, 'err');
+      S.money -= agencyFee;
+      forceRefreshDriverPool(S, Date.now());
+      pushNote(S as any, `Engaged recruitment agency. Fresh candidate pool populated across all regions (-$${agencyFee.toLocaleString()}).`, {
+        title: 'RECRUITMENT AGENCY',
+        type: 'ops'
+      });
+      toast('Recruitment market refreshed across all operating regions!', 'success');
     });
   },
 

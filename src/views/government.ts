@@ -1,6 +1,20 @@
 import { fmt, action, toast, $ } from '../core/ui';
 import { set, refresh } from '../core/store';
-import { getTruckCode, getTruckRegistrationStatus, registerTruckAtCity, renewVehicleRoadTax, bulkRenewFleetRoadTax, performVehicleInspection, generateLicensePlate } from '../domain/trucks/registration';
+import {
+  getTruckCode,
+  getTruckRegistrationStatus,
+  registerTruckAtCity,
+  renewVehicleRoadTax,
+  bulkRenewFleetRoadTax,
+  performVehicleInspection,
+  generateLicensePlate,
+  GOV_FEES,
+  payViolation,
+  payAllViolations,
+  getCompanySafetyRating,
+  buyEzPass,
+  buyCustomsBond
+} from '../domain/trucks/registration';
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { getOwnedHubs, REGIONAL_HUBS } from '../domain/logistics/network';
 
@@ -82,6 +96,31 @@ action('inspect-truck-safety', d => {
   refresh();
 });
 
+action('buy-ez-pass', () => {
+  const S = (window as any).__getStore?.();
+  if (!S) return;
+  if (buyEzPass(S)) refresh();
+});
+
+action('buy-customs-bond', () => {
+  const S = (window as any).__getStore?.();
+  if (!S) return;
+  if (buyCustomsBond(S)) refresh();
+});
+
+action('pay-dot-violation', d => {
+  const S = (window as any).__getStore?.();
+  if (!S) return;
+  const id = parseInt((d as any).id, 10);
+  if (payViolation(S, id)) refresh();
+});
+
+action('pay-all-dot-violations', () => {
+  const S = (window as any).__getStore?.();
+  if (!S) return;
+  if (payAllViolations(S)) refresh();
+});
+
 export default {
   id: 'government',
   label: 'Ministry of Transport',
@@ -149,7 +188,7 @@ export default {
             </div>
 
             <button class="btn gold" style="padding:8px 16px; font-size:10px; font-weight:900;" data-act="bulk-renew-fleet-tax">
-              ⚡ BULK RENEW ALL ROAD TAXES ($2.4k/veh)
+              ⚡ BULK RENEW ALL ROAD TAXES ($${(GOV_FEES.ROAD_TAX / 1000).toFixed(1)}k/veh)
             </button>
           </div>
 
@@ -294,14 +333,14 @@ export default {
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:6px; margin-top:2px;">
                       ${!truck.regNo ? `
                         <button class="btn gold" style="grid-column:1/-1; padding:6px; font-size:8px; font-weight:900;" data-act="open-reg-modal" data-id="${truck.id}">
-                          📝 REGISTER VEHICLE & ISSUE OFFICIAL PLATE ($1.8k)
+                          📝 REGISTER VEHICLE & ISSUE OFFICIAL PLATE ($${(GOV_FEES.REGISTRATION / 1000).toFixed(1)}k)
                         </button>
                       ` : `
                         <button class="btn ${truck.taxExpiresAt && now > truck.taxExpiresAt ? 'gold' : 'alt'}" style="padding:6px; font-size:8px; font-weight:800;" data-act="renew-truck-tax" data-id="${truck.id}">
-                          💳 RENEW TAX ($2.4k)
+                          💳 RENEW TAX ($${(GOV_FEES.ROAD_TAX / 1000).toFixed(1)}k)
                         </button>
                         <button class="btn ${truck.inspectionExpiresAt && now > truck.inspectionExpiresAt ? 'gold' : 'alt'}" style="padding:6px; font-size:8px; font-weight:800;" data-act="inspect-truck-safety" data-id="${truck.id}">
-                          🔍 SAFETY TEST ($600)
+                          🔍 SAFETY TEST ($${GOV_FEES.INSPECTION.toLocaleString()})
                         </button>
                       `}
                     </div>
@@ -344,58 +383,111 @@ export default {
                     </div>
 
                     <button class="btn ${passed ? 'alt' : 'gold'}" style="width:100%; padding:6px; font-size:8px; font-weight:800; margin-top:4px;" data-act="inspect-truck-safety" data-id="${t.id}">
-                      🔍 RUN ANNUAL SAFETY INSPECTION ($600)
+                      🔍 RUN ANNUAL SAFETY INSPECTION ($${GOV_FEES.INSPECTION.toLocaleString()})
                     </button>
                   </div>
                 `;
               }).join('')}
             </div>
           </div>
-        ` : activeDept === 'customs' ? `
+        ` : activeDept === 'customs' ? (() => {
+          const hasEzPass = Boolean(S.ezPass && (!S.ezPassExpiresAt || now <= S.ezPassExpiresAt));
+          const hasBond = Boolean(S.customsBond);
+          return `
           <!-- 3. TOLLS & CUSTOMS AGENCY -->
           <div style="background:#090d16; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px;">
             <h3 style="font-size:14px; font-weight:900; color:var(--tx); margin:0 0 4px 0;">📜 HIGHWAY TOLLS & CROSS-BORDER CUSTOMS AGENCY</h3>
             <p style="font-size:10px; color:var(--mu); margin:0 0 12px 0;">Automated Interstate Toll Passes & Regional Border Tariff Clearances</p>
 
             <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(240px, 1fr)); gap:12px;">
-              <div style="background:#05080f; border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:12px;">
-                <div style="font-size:12px; font-weight:900; color:var(--gold);">🛣️ GLOBAL EZ-PASS TOLL SUBSCRIPTION</div>
-                <div style="font-size:9px; color:var(--mu); margin-top:4px;">Grants 30% discount on all automated highway toll gates across regional trade corridors.</div>
-                <div style="font-size:11px; font-weight:900; color:var(--grn); margin-top:8px;">ACTIVE (AUTO-DEDUCTED)</div>
+              <div style="background:#05080f; border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:12px; display:flex; flex-direction:column; justify-content:space-between; gap:10px;">
+                <div>
+                  <div style="font-size:12px; font-weight:900; color:var(--gold);">🛣️ GLOBAL EZ-PASS TOLL SUBSCRIPTION</div>
+                  <div style="font-size:9px; color:var(--mu); margin-top:4px;">Grants 30% discount on all automated highway toll gates across regional trade corridors (1 Year).</div>
+                </div>
+                ${hasEzPass ? `
+                  <div style="font-size:10px; font-weight:900; color:var(--grn);">ACTIVE ${S.ezPassExpiresAt ? `(EXPIRES ${new Date(S.ezPassExpiresAt).toLocaleDateString()})` : ''}</div>
+                ` : `
+                  <button class="btn gold" style="padding:8px; font-size:9px; font-weight:900;" data-act="buy-ez-pass">
+                    PURCHASE ANNUAL EZ-PASS ($${GOV_FEES.EZ_PASS_ANNUAL.toLocaleString()})
+                  </button>
+                `}
               </div>
 
-              <div style="background:#05080f; border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:12px;">
-                <div style="font-size:12px; font-weight:900; color:var(--gold);">🛂 CROSS-BORDER FREIGHT TARRIFF PERMIT</div>
-                <div style="font-size:9px; color:var(--mu); margin-top:4px;">Pre-approved customs clearance for international freight transits between Europe, Africa, and North America.</div>
-                <div style="font-size:11px; font-weight:900; color:var(--grn); margin-top:8px;">ACTIVE PERMIT</div>
+              <div style="background:#05080f; border:1px solid rgba(255,255,255,0.06); border-radius:8px; padding:12px; display:flex; flex-direction:column; justify-content:space-between; gap:10px;">
+                <div>
+                  <div style="font-size:12px; font-weight:900; color:var(--gold);">🛂 CROSS-BORDER FREIGHT TARIFF BOND</div>
+                  <div style="font-size:9px; color:var(--mu); margin-top:4px;">Pre-approved customs clearance bond for international freight transits between regions.</div>
+                </div>
+                ${hasBond ? `
+                  <div style="font-size:10px; font-weight:900; color:var(--grn);">ACTIVE BOND</div>
+                ` : `
+                  <button class="btn gold" style="padding:8px; font-size:9px; font-weight:900;" data-act="buy-customs-bond">
+                    POST CUSTOMS CLEARANCE BOND ($${GOV_FEES.CUSTOMS_BOND.toLocaleString()})
+                  </button>
+                `}
               </div>
             </div>
           </div>
-        ` : `
+          `;
+        })() : (() => {
+          const safety = getCompanySafetyRating(S);
+          const violations = (S.violations || []) as any[];
+          return `
           <!-- 4. AUDIT & COMPLIANCE BOARD -->
           <div style="background:#090d16; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px;">
-            <h3 style="font-size:14px; font-weight:900; color:var(--tx); margin:0 0 4px 0;">⚖️ COMMERCIAL TRANSPORT COMPLIANCE & AUDIT BOARD</h3>
-            <p style="font-size:10px; color:var(--mu); margin:0 0 12px 0;">Official DOT Safety Ratings, Logbook Audits & Regulatory Infringement Records</p>
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+              <div>
+                <h3 style="font-size:14px; font-weight:900; color:var(--tx); margin:0 0 4px 0;">⚖️ COMMERCIAL TRANSPORT COMPLIANCE & AUDIT BOARD</h3>
+                <p style="font-size:10px; color:var(--mu); margin:0;">Official DOT Safety Ratings, Logbook Audits & Regulatory Infringement Records</p>
+              </div>
+              ${safety.unpaidCount > 0 ? `
+                <button class="btn gold" style="padding:7px 14px; font-size:9px; font-weight:900;" data-act="pay-all-dot-violations">
+                  💳 SETTLE ALL FINES ($${safety.unpaidTotal.toLocaleString()})
+                </button>
+              ` : ''}
+            </div>
 
             <div style="display:flex; flex-direction:column; gap:8px;">
               <div style="background:#05080f; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); display:flex; justify-content:space-between; align-items:center;">
                 <div>
                   <span style="font-size:10px; font-weight:900; color:var(--tx);">OPERATOR SAFETY RATING</span>
-                  <div style="font-size:8px; color:var(--mu);">Federal Motor Carrier Safety Audit Score</div>
+                  <div style="font-size:8px; color:var(--mu);">Federal Motor Carrier Safety Audit Score (3+ unpaid citations triggers dispatch hold)</div>
                 </div>
-                <span style="font-size:14px; font-weight:900; color:var(--grn); font-family:monospace;">SATISFACTORY (GRADE A)</span>
+                <span style="font-size:13px; font-weight:900; color:${safety.color}; font-family:monospace;">${safety.label}</span>
               </div>
 
               <div style="background:#05080f; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.05); display:flex; justify-content:space-between; align-items:center;">
                 <div>
-                  <span style="font-size:10px; font-weight:900; color:var(--tx);">ACTIVE DOT VIOLATIONS</span>
-                  <div style="font-size:8px; color:var(--mu);">Overweight, speeding or untaxed unit penalties</div>
+                  <span style="font-size:10px; font-weight:900; color:var(--tx);">OUTSTANDING DOT VIOLATIONS</span>
+                  <div style="font-size:8px; color:var(--mu);">Unregistered operation, expired permits, speeding & HOS citations</div>
                 </div>
-                <span style="font-size:14px; font-weight:900; color:var(--grn); font-family:monospace;">0 FINES RECORDED</span>
+                <span style="font-size:13px; font-weight:900; color:${safety.unpaidCount > 0 ? '#ef4444' : 'var(--grn)'}; font-family:monospace;">
+                  ${safety.unpaidCount} UNPAID ($${safety.unpaidTotal.toLocaleString()}) · ${safety.totalViolations} TOTAL
+                </span>
               </div>
+
+              ${violations.slice(0, 10).map((v: any) => `
+                <div style="background:#05080f; padding:10px; border-radius:6px; border:1px solid ${v.paid ? 'rgba(255,255,255,0.04)' : 'rgba(239,68,68,0.35)'}; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                  <div>
+                    <div style="font-size:10px; font-weight:800; color:var(--tx);">${v.reason}</div>
+                    <div style="font-size:8px; color:var(--mu); font-family:monospace;">
+                      ${v.truckCode ? `Unit ${v.truckCode} · ` : ''}${v.driverName ? `${v.driverName} · ` : ''}${new Date(v.at).toLocaleString()}
+                    </div>
+                  </div>
+                  ${v.paid ? `
+                    <span style="font-size:9px; font-weight:900; color:var(--grn); font-family:monospace;">SETTLED ($${v.fine.toLocaleString()})</span>
+                  ` : `
+                    <button class="btn gold" style="padding:5px 10px; font-size:8px; font-weight:900;" data-act="pay-dot-violation" data-id="${v.id}">
+                      PAY $${v.fine.toLocaleString()}
+                    </button>
+                  `}
+                </div>
+              `).join('')}
             </div>
           </div>
-        `}
+          `;
+        })()}
 
         <!-- VEHICLE REGISTRATION MODAL OVERLAY -->
         ${activeRegTruck ? `
@@ -440,7 +532,7 @@ export default {
                 <div style="background:#05080f; border:1px solid rgba(255,255,255,0.08); border-radius:6px; padding:8px 10px; display:flex; align-items:center; justify-content:space-between; cursor:pointer;" data-act="toggle-vanity-option">
                   <div>
                     <div style="font-size:9px; font-weight:900; color:var(--tx);">Request Special / Vanity Custom Number</div>
-                    <div style="font-size:7px; color:var(--mu);">Custom vanity plate fee: +$1,700 (Total $3,500)</div>
+                    <div style="font-size:7px; color:var(--mu);">Custom vanity plate fee: +$${(GOV_FEES.REGISTRATION_VANITY - GOV_FEES.REGISTRATION).toLocaleString()} (Total $${GOV_FEES.REGISTRATION_VANITY.toLocaleString()})</div>
                   </div>
                   <input type="checkbox" ${useSpecialVanityPlate ? 'checked' : ''} style="cursor:pointer;" />
                 </div>
@@ -456,7 +548,7 @@ export default {
                 <div style="background:#030509; border:1px solid rgba(255,255,255,0.06); border-radius:6px; padding:10px; font-size:9px; color:var(--mu); font-family:monospace; display:flex; flex-direction:column; gap:4px;">
                   <div style="display:flex; justify-content:space-between;">
                     <span>Registration & License Plate Fee:</span>
-                    <b style="color:var(--tx);">$${useSpecialVanityPlate ? '3,500' : '1,800'}</b>
+                    <b style="color:var(--tx);">$${(useSpecialVanityPlate ? GOV_FEES.REGISTRATION_VANITY : GOV_FEES.REGISTRATION).toLocaleString()}</b>
                   </div>
                   <div style="display:flex; justify-content:space-between;">
                     <span>Includes 1-Year HVUT Road Permit:</span>
@@ -476,7 +568,7 @@ export default {
                   CANCEL
                 </button>
                 <button class="btn gold" style="flex:2; padding:8px; font-size:10px; font-weight:900;" data-act="submit-vehicle-registration">
-                  🏛️ ISSUE REGISTRATION PAPERS ($${useSpecialVanityPlate ? '3.5k' : '1.8k'})
+                  🏛️ ISSUE REGISTRATION PAPERS ($${((useSpecialVanityPlate ? GOV_FEES.REGISTRATION_VANITY : GOV_FEES.REGISTRATION) / 1000).toFixed(1)}k)
                 </button>
               </div>
 

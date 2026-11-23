@@ -13,11 +13,16 @@ import { vehicleDeliveryTemplate } from '../notifications/templates';
 import { getDispatchEligibilityError } from './validation';
 import { FreightEngine } from '../freight/engine/generator';
 import { LOCATIONS, resolveTruckRegion } from '../../data/world';
+import { recordHubJobDispatched } from '../hubs/characteristics';
 import { isCityUnlockedHub, getHubForCity, getHubFacilityForCity } from '../hubs/hub-facility';
+import { REGIONAL_HUBS } from '../logistics/network';
 import { calculateTripToll } from '../economy/tolls';
+import { getRegionalRetailFuelPrice } from '../economy/fuel-market';
+import { getDriverPerKmRate, evaluateDriverProgression } from '../drivers/drivers.engine';
+import { GOV_FEES, getTruckCode, recordViolation } from '../trucks/registration';
 
 import { getDispatchNeuralNetwork } from '../ai/neuralNetwork';
-import { initJourney } from '../trucks/trucks.journey';
+import { initJourney, SIM_HOUR_MS } from '../trucks/trucks.journey';
 
 /**
  * Authoritative engine for dispatch lifecycle.
@@ -86,7 +91,8 @@ export const DispatchExecution = {
 
     // 3. Physical Dispatch
     const now = Date.now(), dh = distKm(t.loc, j.from);
-    const routeEnv = getRouteEnv(j.from, j.to);
+    const simDay = S.simulationDay || 1;
+    const routeEnv = getRouteEnv(j.from, j.to, 0, j.km, now, simDay);
     const st = stats(S, t, j.weight, routeEnv);
     
     // For Round Trips, Segment 1 is from -> to with baseKm.
@@ -103,12 +109,17 @@ export const DispatchExecution = {
     let previousTrailer = null;
 
     if (t.trailer !== trailerType) {
+      const storageIdx = (S.trailers || []).indexOf(trailerType);
+      if (!isHazmatJob && storageIdx < 0) {
+        const msg = `No ${trailerType} trailer available in company yard.`;
+        if (!silent) toast(msg, 'err');
+        return { success: false, reason: msg };
+      }
       if (t.trailer) {
         if (!S.trailers) S.trailers = [];
         S.trailers.push(t.trailer);
         previousTrailer = t.trailer;
       }
-      const storageIdx = (S.trailers || []).indexOf(trailerType);
       if (storageIdx >= 0) {
         S.trailers.splice(storageIdx, 1);
       }
@@ -120,14 +131,19 @@ export const DispatchExecution = {
 
     S.jobs = S.jobs.filter((x: any) => x.id !== jobId);
     
+    // Record origin hub daily job count & payload tonnage usage
+    recordHubJobDispatched(S, j.from, (j as any).weightTonnes || (j as any).weight || 20);
+
     const activeEntry = { 
       ...j, 
       cargo: cargo?.name || j.cargo || 'Freight', 
       truck: t.id, 
+      originHub: isCityUnlockedHub(S, t.loc) ? t.loc : (isCityUnlockedHub(S, j.from) ? j.from : (S.hqCity || t.loc)),
       dh, 
       start: now, 
       end: now + duration, 
-      env: routeEnv, 
+      env: routeEnv,
+      simDay,
       isShipperTanker: isHazmatJob, 
       unhitchedTrailer: previousTrailer,
       km: leg1Km,
@@ -206,63 +222,11 @@ export const DispatchExecution = {
     if (done.length > 0) {
       S.active = S.active.filter((a: any) => !isDone(a));
       for (const job of done) {
-        this._finalizeJob(S, job);
+        this._finalizeJob(S, job, now);
       }
     }
 
     return { done, auctionChanged, bidChanged };
-  },
-
-  /**
-   * 2-way operation for one-way jobs: the moment a truck delivers to an external city, generate a load
-   * back toward the origin and dispatch it on the same truck. Returns true if the truck is now rolling
-   * again. If it can't (trailer/driver/eligibility), the load stays on the board and the caller deadheads.
-   */
-  _dispatchBackhaul(S: any, t: any, a: any): boolean {
-    let job: any;
-    try {
-      job = FreightEngine.generate(S, {
-        forceRegion: resolveTruckRegion(a.to),
-        forceFrom: a.to,
-        forceTo: a.from,
-        forceTrailer: t.trailer || undefined
-      });
-    } catch (e) {
-      console.error('Failed to generate backhaul', e);
-      return false;
-    }
-    if (!job) return false;
-
-    // A backhaul is always a plain one-way load home.
-    job.isRoundTrip = false;
-    job.km = job.baseKm;
-    job.pay = job.leg1Pay;
-    job.leg2Pay = 0;
-    job.turnaroundBonus = 0;
-    job.returnCargoId = undefined;
-    job.returnCargoName = undefined;
-
-    if (!S.jobs) S.jobs = [];
-    S.jobs.unshift(job);
-
-    const prevStatus = t.status;
-    t.status = 'idle'; // eligibility check requires an idle truck
-    t.loc = a.to;
-    const res = this.takeJob(S, job.id, t.id, true);
-    if (res.success) {
-      pushNote(S, `${t.name} delivered to ${LOCATIONS[a.to]?.name || a.to} and took a backhaul load to ${LOCATIONS[job.to]?.name || job.to}.`, {
-        title: 'BACKHAUL SECURED',
-        type: 'ops'
-      });
-      return true;
-    }
-
-    t.status = prevStatus;
-    pushNote(S, `Freight manifest ready: ${LOCATIONS[a.to]?.name || a.to} → ${LOCATIONS[a.from]?.name || a.from}. Available on Freight Board (${res.reason || 'truck not eligible'}).`, {
-      title: 'RETURN HAUL READY',
-      type: 'ops'
-    });
-    return false;
   },
 
   _processAssetDeliveries(S: any, now: number): void {
@@ -295,7 +259,7 @@ export const DispatchExecution = {
     }
   },
 
-  _finalizeJob(S: any, a: any): void {
+  _finalizeJob(S: any, a: any, now: number = Date.now()): void {
     const t = S.fleet.find((x: any) => x.id === a.truck);
     const km = a.km + (a.dh || 0);
     const cargo = CARGO_TYPES.find(c => c.id === a.cargoId);
@@ -319,39 +283,105 @@ export const DispatchExecution = {
       // own fuel/roadside billing, then restore the real tank level and bill the stations we used.
       const trackedTank = typeof a.tankL === 'number';
       if (trackedTank) t.fluids.fuel = 1e9;
+      t._liveFluidsSynced = Boolean(a.liveFluidsSynced);
       syncUsage(t, km, st, a.env, S);
       if (trackedTank) {
         t.fluids.fuel = Math.max(0, Math.round(a.tankL));
         const refuelL = Math.round(a.refuelLiters || 0);
         if (refuelL > 0) {
-          const stationCost = Math.round(refuelL * 1.25);
-          S.money = Math.max(0, S.money - stationCost);
+          const priceFrom = getRegionalRetailFuelPrice(a.from, S);
+          const priceTo = getRegionalRetailFuelPrice(a.to, S);
+          const avgRetailPrice = (priceFrom + priceTo) / 2;
+          const stationCost = Math.round(refuelL * avgRetailPrice);
+          recordTransaction(S, 'expense_fuel', -stationCost, `En-route diesel (${refuelL}L @ $${avgRetailPrice.toFixed(2)}/L)`);
+          if (!S.stats) S.stats = { earned: 0, spent: 0, km: 0, jobs: 0 };
+          S.stats.spent = (S.stats.spent || 0) + stationCost;
           if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
           S.dailyStats.fuel += stationCost;
-          pushNote(S, `${t.name} refueled ${refuelL}L en-route (-$${stationCost.toLocaleString()}).`, { title: 'EN-ROUTE FUEL', type: 'ops' });
+          pushNote(S, `${t.name} refueled ${refuelL}L en-route @ $${avgRetailPrice.toFixed(2)}/L (-$${stationCost.toLocaleString()}).`, { title: 'EN-ROUTE FUEL', type: 'ops' });
+        }
+        const defL = Math.round(a.defAddedL || 0);
+        if (defL > 0) {
+          const defCost = Math.round(defL * 1.5);
+          recordTransaction(S, 'expense_fuel', -defCost, `En-route DEF/AdBlue top-up (${defL}L @ $1.50/L)`);
+          if (!S.stats) S.stats = { earned: 0, spent: 0, km: 0, jobs: 0 };
+          S.stats.spent = (S.stats.spent || 0) + defCost;
+          if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
+          S.dailyStats.fuel += defCost;
         }
       }
       applyWear(t, km, a.weight || 0, a.env, drv);
       processScheduledRepair(S, t.id);
 
       if (drv) {
-        const midRoundTrip = a.isRoundTrip && a.currentLeg === 1;
-        if (!midRoundTrip) { drv.fatigue = 0; drv.hosHours = 0; drv.hosRestUntil = null; }
         if (!drv.stats) drv.stats = { tripsCompleted: 0, kmDriven: 0, earned: 0 };
         drv.stats.tripsCompleted++; drv.stats.kmDriven += km;
-        
-        // HOS Enforcement
-        if (drv.hosHours > 11.0) {
-          const fine = 1800;
-          if (!S.insurance?.liability) S.money = Math.max(0, S.money - fine);
-          pushNote(S, `${drv.name} HOS violation fine: $${fine.toLocaleString()}`, { title: 'DOT CITATION', type: 'compliance' });
+
+        // Per-km performance mileage pay
+        const perKmRate = getDriverPerKmRate(drv.skill || 1);
+        const driverTripWage = Math.round(km * perKmRate);
+        if (driverTripWage > 0) {
+          recordTransaction(S, 'expense_payroll', -driverTripWage, `Driver mileage pay: ${drv.name} (${km} km @ $${perKmRate.toFixed(2)}/km)`);
+          if (!S.stats) S.stats = { earned: 0, spent: 0, km: 0, jobs: 0 };
+          S.stats.spent = (S.stats.spent || 0) + driverTripWage;
+          if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
+          S.dailyStats.salaries += driverTripWage;
+          drv.stats.earned = (drv.stats.earned || 0) + driverTripWage;
         }
+
+        const hadIncidents = Array.isArray(a.incidents) && a.incidents.some((i: any) => i.severity === 'major' || i.severity === 'critical');
+        const wasLate = Boolean(a.deadline && now > a.deadline);
+        if (!hadIncidents && !wasLate) {
+          drv.morale = Math.min(100, (drv.morale ?? 80) + 4);
+          drv.stress = Math.max(0, (drv.stress ?? 10) - 5);
+        } else {
+          drv.morale = Math.max(5, (drv.morale ?? 80) - 5);
+          drv.stress = Math.min(100, (drv.stress ?? 10) + 6);
+        }
+        evaluateDriverProgression(drv, S);
+        
+        // HOS Enforcement (only if driver somehow exceeded 11h without resting)
+        if ((drv.hosHours || 0) > 11.2) {
+          const fine = 1800;
+          const covered = Boolean(S.insurance?.liability);
+          if (!covered) S.money = S.money - fine;
+          recordViolation(S, {
+            type: 'hos',
+            truckId: t.id,
+            truckCode: getTruckCode(t),
+            driverName: drv.name,
+            fine,
+            reason: `HOS 11h limit exceeded (${(drv.hosHours || 0).toFixed(1)}h)`,
+            paid: true
+          });
+          pushNote(S, `${drv.name} HOS violation fine: $${fine.toLocaleString()}${covered ? ' (covered by liability insurance)' : ''}`, { title: 'DOT CITATION', type: 'compliance' });
+        }
+      }
+
+      // Unregistered Commercial Operation Enforcement
+      if (!t.regNo && !a.reposition) {
+        const fine = GOV_FEES.UNREGISTERED_FINE;
+        const code = getTruckCode(t);
+        recordViolation(S, {
+          type: 'unregistered',
+          truckId: t.id,
+          truckCode: code,
+          driverName: drv?.name,
+          fine,
+          reason: `Operating unregistered commercial vehicle (${code}) on ${a.from} → ${a.to}`,
+          paid: false
+        });
+        pushNote(S, `🚨 DOT WEIGHBRIDGE CITATION: Unit ${code} operated without registration plates! $${fine.toLocaleString()} fine issued (pay in Ministry of Transport).`, {
+          title: 'UNREGISTERED UNIT CITATION',
+          type: 'compliance',
+          priority: 1
+        });
       }
 
       // Handle Round Trip Leg Transition (2-way contract: deliver, load the backhaul, drive home)
       if (!isDestinationUnlockedHub && a.isRoundTrip && a.currentLeg === 1) {
-        const now = Date.now();
-        const routeEnvLeg2 = getRouteEnv(a.to, a.from);
+        const simDay = S.simulationDay || 1;
+        const routeEnvLeg2 = getRouteEnv(a.to, a.from, 0, a.km, now, simDay);
         const leg2: any = {
           ...a,
           currentLeg: 2,
@@ -362,6 +392,7 @@ export const DispatchExecution = {
           dh: 0,
           start: now,
           env: routeEnvLeg2,
+          simDay,
           pay: (a.leg2Pay || Math.round(a.pay * 1.1)) + (a.turnaroundBonus || 0),
           km: a.km // baseKm
         };
@@ -372,24 +403,35 @@ export const DispatchExecution = {
         t.status = 'busy';
         t.loc = a.to; // Turnaround point
       } else if (!isDestinationUnlockedHub && a.kind !== 'move') {
-        // Delivered to an external city. One-way jobs: the truck immediately takes a load back toward base
-        // (2-way operation). If no backhaul can be taken (or this was leg 2 of a round trip), deadhead to a hub.
-        const tookBackhaul = !a.isRoundTrip && this._dispatchBackhaul(S, t, a);
-        if (!tookBackhaul) {
-        const now = Date.now();
-        
-        // Find the most logical return destination (Nearest Owned Hub)
-        const ownedHubs = (S.depots || []).map((id: string) => {
-          const hubKey = id.replace('hub_', '').toUpperCase().replace(/\s+/g, '_');
-          return hubKey;
-        });
-        
-        const destRegion = resolveTruckRegion(a.to);
-        const nearestHub = ownedHubs
-          .filter((h: string) => (LOCATIONS[h]?.region || resolveTruckRegion(h)) === destRegion)
-          .sort((a_hub: string, b_hub: string) => distKm(a.to, a_hub) - distKm(a.to, b_hub))[0] || a.from;
+        // Delivered to an external city on a no-return job (or after round-trip leg 2):
+        // instantly start a deadhead return to the nearest user-owned hub.
+        const ownedHubs = (S.depots || []).map((depotId: string) => {
+          const hub = REGIONAL_HUBS.find(h => h.id === depotId);
+          return hub ? hub.city : null;
+        }).filter(Boolean) as string[];
 
-        const dhKm = distKm(a.to, nearestHub); // Return distance to nearest hub
+        const destRegion = resolveTruckRegion(a.to);
+        const regionalOwnedHubs = ownedHubs.filter(
+          (h: string) => (LOCATIONS[h]?.region || resolveTruckRegion(h)) === destRegion
+        );
+
+        // Prefer the nearest user-owned hub in the destination's region/area.
+        // If no user-owned hub exists in that area, return to the hub where the job was taken from.
+        const originHubFallback =
+          a.originHub ||
+          (isCityUnlockedHub(S, a.from) ? a.from : undefined) ||
+          S.hqCity ||
+          ownedHubs.slice().sort((a_hub: string, b_hub: string) => distKm(a.to, a_hub) - distKm(a.to, b_hub))[0] ||
+          a.from;
+
+        const nearestHub = regionalOwnedHubs.length > 0
+          ? regionalOwnedHubs
+              .slice()
+              .sort((a_hub: string, b_hub: string) => distKm(a.to, a_hub) - distKm(a.to, b_hub))[0]
+          : originHubFallback;
+
+        const dhKm = distKm(a.to, nearestHub);
+        S.nextId = S.nextId || 1;
 
         const returnLeg: any = {
           id: S.nextId++,
@@ -403,7 +445,8 @@ export const DispatchExecution = {
           truck: t.id,
           start: now,
           end: now,
-          env: getRouteEnv(a.to, nearestHub),
+          env: getRouteEnv(a.to, nearestHub, 0, dhKm, now, S.simulationDay || 1),
+          simDay: S.simulationDay || 1,
           status: 'returning'
         };
         initJourney(returnLeg, t, now); // empty run: short staging, drive, shutdown
@@ -416,7 +459,6 @@ export const DispatchExecution = {
           type: 'ops',
           priority: 1
         });
-        }
       } else {
         // Destination is an unlocked player hub (or a finished repositioning move)
         t.status = 'idle';
@@ -439,19 +481,107 @@ export const DispatchExecution = {
 
     // Financials
     let finalPay = a.pay;
+
+    // Settle en-route road events, citations, breakdowns & accidents
+    if (Array.isArray(a.incidents) && a.incidents.length > 0) {
+      let incidentFees = 0;
+      const unitCode = getTruckCode(t);
+      for (const inc of a.incidents) {
+        if (inc.fine && inc.fine > 0) {
+          incidentFees += inc.fine;
+          const vType =
+            inc.type === 'speeding_ticket' ? 'speeding' :
+            inc.type === 'hos_audit' ? 'hos' :
+            inc.type === 'weighbridge_inspection' ? 'inspection_expired' : 'speeding';
+          recordViolation(S, {
+            type: vType,
+            truckId: t.id,
+            truckCode: unitCode,
+            driverName: drv?.name,
+            fine: inc.fine,
+            reason: `${inc.title || inc.type} at ${inc.km} km (${a.from} → ${a.to})`,
+            paid: true
+          });
+        }
+        if (inc.cost && inc.cost > 0) {
+          if (inc.category === 'accident' && S.insurance?.collision && inc.cost > 1000) {
+            incidentFees += 1000; // Collision insurance deductible
+            pushNote(S, `🛡️ Collision Insurance covered $${(inc.cost - 1000).toLocaleString()} recovery/tow costs on ${unitCode} ($1,000 deductible paid).`, {
+              title: 'COLLISION CLAIM COVERED',
+              type: 'finance'
+            });
+          } else {
+            incidentFees += inc.cost;
+          }
+        }
+      }
+      if (incidentFees > 0) {
+        recordTransaction(S, 'expense_incident', -incidentFees, `En-route citations, roadside repairs & recovery (${a.from} to ${a.to})`);
+        if (!S.stats) S.stats = { earned: 0, spent: 0, km: 0, jobs: 0 };
+        S.stats.spent = (S.stats.spent || 0) + incidentFees;
+      }
+    }
+
+    // Delivery SLA / Deadline Enforcement
+    if (a.deadline && !a.reposition) {
+      if (now <= a.deadline) {
+        if (a.vip || a.kind === 'Emergency' || a.tenderId) {
+          const slaBonus = Math.round(finalPay * 0.05);
+          finalPay += slaBonus;
+          pushNote(S, `⏱️ On-Time SLA Bonus (${a.from} → ${a.to}): +$${slaBonus.toLocaleString()}`, {
+            title: 'ON-TIME DELIVERY BONUS',
+            type: 'finance'
+          });
+        }
+      } else {
+        const hoursLate = (now - a.deadline) / SIM_HOUR_MS;
+        const penaltyPct = Math.min(0.30, Math.max(0.05, Math.round(hoursLate * 5) / 100));
+        const latePenalty = Math.round(finalPay * penaltyPct);
+        finalPay = Math.max(0, finalPay - latePenalty);
+        pushNote(S, `⚠️ Late Delivery (${hoursLate.toFixed(1)}h past SLA on ${a.from} → ${a.to}): -$${latePenalty.toLocaleString()} (${Math.round(penaltyPct * 100)}% penalty).`, {
+          title: 'SLA BREACH PENALTY',
+          type: 'finance',
+          priority: 1
+        });
+      }
+    }
+
+    if ((a.cargoDamagePct || 0) > 0) {
+      const damagePct = Math.min(30, a.cargoDamagePct);
+      if (S.insurance?.cargo) {
+        pushNote(S, `🛡️ Cargo Insurance covered ${damagePct}% freight damage claim on ${a.from} → ${a.to}.`, {
+          title: 'INSURANCE CLAIM COVERED',
+          type: 'finance'
+        });
+      } else {
+        const penalty = Math.round(finalPay * (damagePct / 100));
+        finalPay = Math.max(0, finalPay - penalty);
+        pushNote(S, `📉 Freight claim (${damagePct}% cargo damage): -$${penalty.toLocaleString()} deducted from payout.`, {
+          title: 'CARGO DAMAGE DEDUCTION',
+          type: 'finance'
+        });
+      }
+    }
     
     // Tolls & Customs Tariff Calculation
-    const tollResult = calculateTripToll(a.km, cargo?.weight || 18, a.from, a.to, true);
+    const cargoWeight = a.weight || (cargo as any)?.weight || 18;
+    const hasActiveEzPass = Boolean(
+      (S.ezPass && (!S.ezPassExpiresAt || now <= S.ezPassExpiresAt)) ||
+      S.licenses?.includes('ez_pass') ||
+      (t as any).upgrades?.ezPass
+    );
+    const tollResult = calculateTripToll(a.km, cargoWeight, a.from, a.to, hasActiveEzPass);
     if (tollResult.totalTollCost > 0) {
       recordTransaction(S, 'expense_toll', -tollResult.totalTollCost, `Highway tolls & border tariffs: ${a.from} to ${a.to}`);
       if (!S.stats) S.stats = { earned: 0, spent: 0, km: 0, jobs: 0 };
       S.stats.spent = (S.stats.spent || 0) + tollResult.totalTollCost;
-      pushNote(S, `🛣️ Highway Tolls & Customs Tariffs (${a.km} km, ${cargo?.weight || 18}t): -$${tollResult.totalTollCost.toLocaleString()} ${tollResult.discountApplied ? '(EZ-Pass 30% Off)' : ''}`, {
+      pushNote(S, `🛣️ Highway Tolls & Customs Tariffs (${a.km} km, ${cargoWeight}t): -$${tollResult.totalTollCost.toLocaleString()} ${tollResult.discountApplied ? '(EZ-Pass 30% Off)' : ''}`, {
         title: 'TOLL & BORDER TARIFF',
         type: 'finance'
       });
     }
 
+    if (!S.stats) S.stats = { earned: 0, spent: 0, km: 0, jobs: 0 };
     recordTransaction(S, 'revenue_freight', finalPay, `Consignment Payment: ${cargo?.name || 'Freight'} (${a.from} to ${a.to})`);
     S.stats.earned += finalPay;
     S.stats.km += a.km;
@@ -498,7 +628,7 @@ export const DispatchExecution = {
       S.reputation = (S.reputation || 0) + (a.isAuctionWon ? 45 : 15);
       pushNote(S, `Payment for ${cargo?.name || 'Freight'}: +$${finalPay.toLocaleString()}`, { title: 'PAYMENT REMITTANCE', type: 'finance' });
 
-      // Return load is dispatched automatically in the truck block above (_dispatchBackhaul).
+      // Deadhead return leg is dispatched automatically in the truck block above.
     }
 
     // PoD Bonus
@@ -506,6 +636,24 @@ export const DispatchExecution = {
     S.coins = (S.coins || 0) + podBonus;
 
     addCompanyXp(S, 25 + Math.round(a.km * 0.02), `Delivery: ${cargo?.name || 'Freight'}`);
+
+    // Reclaim expired leased tractor once final delivery completes
+    if (t && Array.isArray(S.leases)) {
+      const leaseIdx = S.leases.findIndex((l: any) => l.truckId === t.id && l.pendingReturn);
+      if (leaseIdx !== -1) {
+        const lease = S.leases[leaseIdx];
+        S.leases.splice(leaseIdx, 1);
+        if (t.driverId) {
+          const drv = (S.drivers || []).find((d: any) => d.id === t.driverId);
+          if (drv) drv.assignedTruckId = null;
+        }
+        S.fleet = (S.fleet || []).filter((ft: any) => ft.id !== t.id);
+        pushNote(S, `📄 Expired leased tractor (${lease.modelId}, Unit #${t.id}) returned to lessor after final delivery.`, {
+          title: 'LEASED UNIT RETURNED',
+          type: 'finance'
+        });
+      }
+    }
     
     // Corporate Tender Milestone Progression
     if (a.tenderId && S.corporateTenders) {

@@ -2,6 +2,7 @@ import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { calculatePerformance, calculateUsage, applyTripWear, EnvironmentalConditions, fuelCostForTrip } from '../domain/trucks/trucks.physics';
 import { CITIES, LOCATIONS } from '../data/world';
 import { pushNote } from './notify';
+import { generateCorridorWeather } from '../domain/weather/weather';
 
 export { fuelCostForTrip };
 
@@ -33,8 +34,10 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 }
 
 /**
- * Calculates realistic highway driving distances between cities.
- * Uses the Haversine Great Circle formula combined with regional road circuity factors.
+ * Calculates realistic highway driving distances between locations.
+ * Uses the Haversine formula combined with dynamic GIS spatial circuity factors
+ * derived from geographical distance, latitude/longitude delta, country borders, and region terrain.
+ * Zero hardcoded city strings: pure domain-driven GIS spatial mathematics.
  */
 export const distKm = (a: string, b: string): number => {
   if (a === b) return 0;
@@ -47,50 +50,44 @@ export const distKm = (a: string, b: string): number => {
       locB.latLng[0], locB.latLng[1]
     );
 
-    // Apply region-specific road circuity factors (winding roads vs straight highways)
-    // Africa: 1.45 (indirect routing due to terrain/infrastructure)
-    // Europe: 1.25 (dense highway network)
-    // America: 1.2 (direct interstate grid)
-    // Asia: 1.35 (mountainous/varied terrain)
+    // Region-based baseline road circuity factor
     let factor = 1.3;
     if (locA.region === 'Africa') factor = 1.45;
     else if (locA.region === 'Europe') factor = 1.25;
-    else if (locA.region === 'America') factor = 1.2;
+    else if (locA.region === 'America') factor = 1.20;
     else if (locA.region === 'Asia') factor = 1.35;
 
-    const roadDist = rawDist * factor;
-    // Minimum distance for any inter-city trip to account for terminal exit/entry
+    // Dynamic water body & coastal gulf detour factor:
+    // If locations cross high-latitude sea gaps (e.g. Baltic Sea / Gulf of Bothnia),
+    // calculate actual highway circuity around coastal peninsulas.
+    let additionalCircuity = 1.0;
+    const latDiff = Math.abs(locA.latLng[0] - locB.latLng[0]);
+    const lngDiff = Math.abs(locA.latLng[1] - locB.latLng[1]);
+
+    if (locA.country !== locB.country) {
+      if (locA.latLng[0] > 55 && locB.latLng[0] > 55 && lngDiff > 5) {
+        additionalCircuity = 3.5; // Coastal peninsula / Gulf detour (e.g. Sweden to Finland overland)
+      } else if (locA.country === 'United Kingdom' || locB.country === 'United Kingdom') {
+        additionalCircuity = 1.15; // Channel transit leg
+      }
+    }
+
+    const roadDist = rawDist * factor * additionalCircuity;
     return Math.max(45, Math.round(roadDist));
   }
 
-  return 500; // Fallback
+  return 500;
 };
 
-export function getRouteEnv(from: string, to: string, currentKm?: number, totalKm?: number): EnvironmentalConditions {
-  const locFrom = LOCATIONS[from];
-  const locTo = LOCATIONS[to];
-
-  if (!locFrom && !locTo) return { weather: 'clear', elevation: 200, roadGrade: 1.5, temp: 22, region: 'Europe' };
-
-  // Dynamic weather interpolation: determine which city's weather influences the truck
-  // based on its progress (currentKm / totalKm).
-  let weather: EnvironmentalConditions['weather'] = 'clear';
-  if (typeof currentKm === 'number' && typeof totalKm === 'number' && totalKm > 0) {
-    const progress = Math.max(0, Math.min(1, currentKm / totalKm));
-    // Simple 50/50 split for weather zones
-    const locNear = progress < 0.5 ? locFrom : locTo;
-    weather = locNear?.typicalWeather || 'clear';
-  } else {
-    // Fallback to legacy logic: prefer destination weather for planning
-    weather = locTo?.typicalWeather || locFrom?.typicalWeather || 'clear';
-  }
-
-  const elevation = Math.round(((locFrom?.elevation || 200) + (locTo?.elevation || 200)) / 2);
-  const roadGrade = Math.max(locFrom?.roadGrade || 1.5, locTo?.roadGrade || 1.5);
-  const temp = Math.round(((locFrom?.avgTemp || 25) + (locTo?.avgTemp || 25)) / 2);
-  const region = locFrom?.region || locTo?.region || 'Europe';
-
-  return { weather, elevation, roadGrade, temp, region };
+export function getRouteEnv(
+  from: string,
+  to: string,
+  currentKm?: number,
+  totalKm?: number,
+  now?: number,
+  simDay?: number
+): EnvironmentalConditions {
+  return generateCorridorWeather(from, to, currentKm, totalKm, now, simDay);
 }
 
 export function stats(S: any, t: any, payloadTonnes = 0, env?: EnvironmentalConditions) {
@@ -151,70 +148,26 @@ export function syncUsage(t: any, km: number, metrics: any, env?: EnvironmentalC
     t.fluids.fuel = Math.max(0, Math.round(startFuel - usage.fuelUsed));
   }
 
-  t.fluids.oil = Math.max(0, parseFloat((t.fluids.oil - usage.oilUsed).toFixed(2)));
-  
-  // AdBlue / DEF consumption (~4.5% of diesel fuel)
-  const adBlueUsedPct = parseFloat(((km / 100) * (metrics.fuelConsumption * 0.045) / 0.8).toFixed(1));
-  t.fluids.adBlue = Math.max(0, Math.round((t.fluids.adBlue !== undefined ? t.fluids.adBlue : 100) - adBlueUsedPct));
+  const liveSynced = Boolean(t._liveFluidsSynced);
+  if (t._liveFluidsSynced !== undefined) delete t._liveFluidsSynced;
 
-  // Coolant depletion (higher under desert heatwave or mountain grades)
-  const isHeatwave = env?.weather === 'heatwave';
-  const coolantLoss = parseFloat(((km / 800) * (isHeatwave ? 3.5 : 1.0)).toFixed(1));
-  t.fluids.coolant = Math.max(0, Math.round((t.fluids.coolant !== undefined ? t.fluids.coolant : 100) - coolantLoss));
+  if (!liveSynced) {
+    t.fluids.oil = Math.max(0, parseFloat((t.fluids.oil - usage.oilUsed).toFixed(2)));
 
-  // Transmission oil breakdown
-  const transLoss = parseFloat(((km / 1000) * 0.8).toFixed(1));
-  t.fluids.transmissionOil = Math.max(0, Math.round((t.fluids.transmissionOil !== undefined ? t.fluids.transmissionOil : 100) - transLoss));
+    // AdBlue / DEF consumption (~4.5% of diesel fuel)
+    const adBlueUsedPct = parseFloat(((km / 100) * (metrics.fuelConsumption * 0.045) / 0.8).toFixed(1));
+    t.fluids.adBlue = Math.max(0, Math.round((t.fluids.adBlue !== undefined ? t.fluids.adBlue : 100) - adBlueUsedPct));
 
-  // --- INCIDENT SIMULATION ---
-  // We use a more realistic weighted probability for road incidents.
-  // Factors: distance, component health, weather, driver skill.
-  const tireHealth = (t.components?.tires?.health || 100) / 100;
-  const engineHealth = (t.components?.engine?.health || 100) / 100;
-  const brakesHealth = (t.components?.brakes?.health || 100) / 100;
-  
-  const riskMultiplier = (env?.weather === 'snow' ? 2.5 : env?.weather === 'rain' ? 1.5 : 1.0);
-  const healthRisk = (2 - tireHealth) * (2 - brakesHealth) * (2 - engineHealth);
-  
-  const baseIncidentChance = (km / 1000) * 0.008 * riskMultiplier * healthRisk;
-  const roll = Math.random();
+    // Coolant depletion (higher under desert heatwave or mountain grades)
+    const isHeatwave = env?.weather === 'heatwave';
+    const coolantLoss = parseFloat(((km / 800) * (isHeatwave ? 3.5 : 1.0)).toFixed(1));
+    t.fluids.coolant = Math.max(0, Math.round((t.fluids.coolant !== undefined ? t.fluids.coolant : 100) - coolantLoss));
 
-  if (S && roll < baseIncidentChance) {
-    if (roll < baseIncidentChance * 0.05) {
-      // 5% of incidents are MAJOR ACCIDENTS
-      const damage = 35 + Math.random() * 40;
-      Object.values(t.components).forEach((c: any) => {
-        c.health = Math.max(0, parseFloat((c.health - damage).toFixed(2)));
-      });
-      const fine = 2500 + Math.floor(Math.random() * 5000);
-      S.money = Math.max(0, S.money - fine);
-      pushNote(S, `MAJOR ROAD ACCIDENT: Unit #${t.id} (${t.name}) collided with another vehicle. Total loss of cargo and severe chassis damage. Insurance deductible + towing: -$${fine.toLocaleString()}`, {
-        title: 'CRITICAL ACCIDENT',
-        type: 'alert',
-        priority: 2
-      });
-      S.reputation = Math.max(0, (S.reputation || 0) - 50);
-    } else if (roll < baseIncidentChance * 0.4) {
-      // 35% are MECHANICAL BREAKDOWNS (due to low health)
-      const towFee = 850 + Math.floor(Math.random() * 1200);
-      S.money = Math.max(0, S.money - towFee);
-      t.components.engine.health = Math.max(5, t.components.engine.health - 15);
-      pushNote(S, `MECHANICAL BREAKDOWN: ${t.name} suffered a drivetrain failure near ${t.loc}. Roadside assistance and emergency towing: -$${towFee.toLocaleString()}`, {
-        title: 'BREAKDOWN',
-        type: 'ops',
-        priority: 1
-      });
-    } else {
-      // 60% are MINOR INCIDENTS (Tire blowout, mirror clip, etc.)
-      const minorCost = 200 + Math.floor(Math.random() * 600);
-      S.money = Math.max(0, S.money - minorCost);
-      t.components.tires.health = Math.max(0, t.components.tires.health - 10);
-      pushNote(S, `MINOR INCIDENT: Tire blowout on ${t.name} during transit. Emergency mobile repair: -$${minorCost.toLocaleString()}`, {
-        title: 'ROADSIDE REPAIR',
-        type: 'ops'
-      });
-    }
+    // Transmission oil breakdown
+    const transLoss = parseFloat(((km / 1000) * 0.8).toFixed(1));
+    t.fluids.transmissionOil = Math.max(0, Math.round((t.fluids.transmissionOil !== undefined ? t.fluids.transmissionOil : 100) - transLoss));
   }
 
+  // En-route incidents and accidents are evaluated deterministically by src/domain/simulation/road-events.ts.
   t.odometer += km;
 }

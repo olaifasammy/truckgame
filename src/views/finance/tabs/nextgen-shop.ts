@@ -79,7 +79,7 @@ export function renderNextGenHardwareShop(S: any): string {
         <div>
           <div style="display:flex; align-items:center; gap:6px;">
             <span style="font-size:9px; font-weight:900; color:#38bdf8; background:rgba(56,189,248,0.12); border:1px solid rgba(56,189,248,0.3); padding:1px 6px; border-radius:4px; font-family:monospace; letter-spacing:0.5px;">
-              ⚡ QUANTUM & PHOTONIC DIVISION
+              ⚡ ADVANCED INFRASTRUCTURE DIVISION
             </span>
             <span style="font-size:9px; color:var(--mu); font-family:monospace;">
               ${totalInstalled}/${NEXT_GEN_HARDWARE.length} Hardwares Online
@@ -230,11 +230,11 @@ export function renderNextGenAestheticBay(S: any): string {
         <div style="display:flex; align-items:center; gap:8px;">
           <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:${installedHardware.length > 0 ? '#10b981' : 'var(--mu)'}; box-shadow:${installedHardware.length > 0 ? '0 0 8px #10b981' : 'none'};"></span>
           <span style="font-size:10px; font-weight:900; color:var(--tx); text-transform:uppercase; letter-spacing:0.5px;">
-            Datacenter Architecture & Quantum Bay
+            Datacenter Architecture & Advanced Infrastructure
           </span>
         </div>
         <div style="font-size:9px; color:var(--gold); font-family:monospace; font-weight:800;">
-          ${installedHardware.length} Architecture Nodes Active
+          ${installedHardware.length} Infrastructure Nodes Active
         </div>
       </div>
 
@@ -276,8 +276,8 @@ export function renderNextGenAestheticBay(S: any): string {
       <!-- Telemetry Strip -->
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-top:10px; padding-top:8px; border-top:1px solid #161f30; font-size:8px; color:var(--mu); font-family:monospace; position:relative; z-index:1;">
         <div>
-          <span>Quantum Superposition: </span>
-          <b style="color:${stats.dualMiningUnlocked ? '#f43f5e' : 'var(--mu)'};">${stats.dualMiningUnlocked ? 'COHERENT (DUAL-COIN READY)' : 'INACTIVE'}</b>
+          <span>Multi-Token Extraction: </span>
+          <b style="color:${stats.dualMiningUnlocked ? '#f43f5e' : 'var(--mu)'};">${stats.dualMiningUnlocked ? 'AUTHORIZED (DUAL-COIN READY)' : 'INACTIVE'}</b>
         </div>
         <div>
           <span>PUE Optimization: </span>

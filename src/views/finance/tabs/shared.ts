@@ -2,6 +2,7 @@ import { fmt, action, toast } from '../../../core/ui';
 import { refresh, set } from '../../../core/store';
 import { getGoldMarketData } from '../../../domain/finance/banking';
 import { CRYPTO_ASSETS, getCryptoMarketData, getTotalCryptoValue } from '../../../domain/finance/markets/crypto';
+import { recordCryptoPurchase, recordCryptoSale } from '../../../domain/finance/markets/cost-basis';
 import { MINING_RIG_TYPES, MINING_ADDITIONS, MINING_DURATIONS, getSubscriptionCost, getSubstationUpgradeCost, getSubstationPowerKw, calculateMiningStats, getVipLevel, MiningSubscription, formatCryptoQty } from '../../../domain/finance/markets/mining';
 
 // Initialize global state for selected crypto asset & mining configuration
@@ -48,11 +49,12 @@ action('crypto-buy-usd', d => {
 
     const cryptoQty = usdAmount / marketData.buyPrice;
     S.money -= usdAmount;
-    if (!S.cryptoHoldings) S.cryptoHoldings = {};
-    S.cryptoHoldings[assetId] = (S.cryptoHoldings[assetId] || 0) + cryptoQty;
+    
+    recordCryptoPurchase(S, assetId, cryptoQty, marketData.buyPrice);
 
     const formattedQty = cryptoQty < 1 ? cryptoQty.toFixed(4) : cryptoQty.toFixed(2);
-    toast(`Purchased ${formattedQty} ${marketData.symbol} for $${usdAmount.toLocaleString()}`, 'success');
+    const costPerToken = marketData.buyPrice.toLocaleString(undefined, { maximumFractionDigits: 2 });
+    toast(`Purchased ${formattedQty} ${marketData.symbol} at $${costPerToken}/token ($${usdAmount.toLocaleString()})`, 'success');
   });
 });
 
@@ -87,14 +89,14 @@ action('crypto-sell-custom', d => {
     }
 
     const actualQtyToSell = Math.min(qtyToSell, currentQty);
-    const usdPayout = actualQtyToSell * marketData.sellPrice;
-
-    S.cryptoHoldings[assetId] -= actualQtyToSell;
-    if (S.cryptoHoldings[assetId] <= 0.000001) delete S.cryptoHoldings[assetId];
-    S.money += usdPayout;
+    const saleResult = recordCryptoSale(S, assetId, actualQtyToSell, marketData.sellPrice);
+    S.money += saleResult.revenue;
 
     const formattedQty = actualQtyToSell < 1 ? actualQtyToSell.toFixed(4) : actualQtyToSell.toFixed(2);
-    toast(`Sold ${formattedQty} ${marketData.symbol} for $${Math.round(usdPayout).toLocaleString()}`, 'info');
+    const pnlSign = saleResult.realizedPnl >= 0 ? '+' : '';
+    const pnlStr = `${pnlSign}$${Math.round(saleResult.realizedPnl).toLocaleString()} (${pnlSign}${saleResult.realizedPnlPct.toFixed(2)}%)`;
+    const toastType = saleResult.realizedPnl >= 0 ? 'success' : 'info';
+    toast(`Sold ${formattedQty} ${marketData.symbol} for $${Math.round(saleResult.revenue).toLocaleString()} · P&L: ${pnlStr}`, toastType);
   });
 });
 
@@ -112,13 +114,14 @@ action('crypto-sell-pct', d => {
     const marketData = getCryptoMarketData(assetId);
     if (!marketData || qtyToSell <= 0) return;
 
-    const usdPayout = qtyToSell * marketData.sellPrice;
-    S.cryptoHoldings[assetId] -= qtyToSell;
-    if (S.cryptoHoldings[assetId] <= 0.000001) delete S.cryptoHoldings[assetId];
-    S.money += usdPayout;
+    const saleResult = recordCryptoSale(S, assetId, qtyToSell, marketData.sellPrice);
+    S.money += saleResult.revenue;
 
     const formattedQty = qtyToSell < 1 ? qtyToSell.toFixed(4) : qtyToSell.toFixed(2);
-    toast(`Sold ${formattedQty} ${marketData.symbol} for $${Math.round(usdPayout).toLocaleString()}`, 'info');
+    const pnlSign = saleResult.realizedPnl >= 0 ? '+' : '';
+    const pnlStr = `${pnlSign}$${Math.round(saleResult.realizedPnl).toLocaleString()} (${pnlSign}${saleResult.realizedPnlPct.toFixed(2)}%)`;
+    const toastType = saleResult.realizedPnl >= 0 ? 'success' : 'info';
+    toast(`Sold ${formattedQty} ${marketData.symbol} for $${Math.round(saleResult.revenue).toLocaleString()} · P&L: ${pnlStr}`, toastType);
   });
 });
 
@@ -411,13 +414,12 @@ export function renderFinanceNav(activeTab: string) {
   const tabs = [
     { id: 'treasury', label: 'P&L', active: activeTab === 'treasury' },
     { id: 'loans', label: 'Loans', active: isLoansActive },
-    { id: 'fuel', label: 'Fuel', active: activeTab === 'fuel' },
     { id: 'exchange', label: 'FX & Crypto', active: activeTab === 'exchange' },
     { id: 'insurance', label: 'Risk', active: activeTab === 'insurance' }
   ];
 
   return `
-    <div style="display:grid; grid-template-columns:repeat(5, 1fr); gap:4px; margin-bottom:16px;">
+    <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:4px; margin-bottom:16px;">
       ${tabs.map(t => `
         <button class="btn ${t.active ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:10px; font-weight:800;" data-act="finance-tab" data-tab="${t.id}">
           ${t.label}

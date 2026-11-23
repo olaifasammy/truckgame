@@ -18,6 +18,8 @@ import { GameState } from '../types/state';
 import { DEEPWATER_PORTS, getMaritimeShippingQuote, bookMaritimeShipping } from '../domain/fleet/shipping';
 import { isRegionUnlocked, REGIONAL_HUBS } from '../domain/logistics/network';
 import { renderHubConsole, activeGarageHubId, setActiveGarageHub } from './garage/hub-console';
+import { getTruckResaleValue } from '../domain/finance/accounting';
+import { recordTransaction } from '../core/ledger';
 import { isCityUnlockedHub, getHubForCity, getTrucksAtHub } from '../domain/hubs/hub-facility';
 import { DispatchActions } from '../domain/dispatch/actions';
 import { CARGO_TYPES } from '../domain/freight/cargo/registry';
@@ -173,16 +175,21 @@ let sellTruckTimeout: any = null;
 action('sell-truck', d => {
   const truckId = +(d as any).id;
   if (sellTruckConfirmId !== truckId) {
-    sellTruckConfirmId = truckId;
-    if (sellTruckTimeout) clearTimeout(sellTruckTimeout);
-    
+    let blockedReason = '';
     set((S: GameState) => {
       const t = (S.fleet || []).find((x: any) => x.id === truckId);
-      const model = t ? TRUCK_MODELS[t.modelId] : null;
-      const resaleValue = Math.round((model?.price || 150000) * 0.65);
-      toast(`⚠️ Tap SELL again within 4s to confirm selling Truck #${truckId} for $${resaleValue.toLocaleString()}`, 'err');
+      if (!t) { blockedReason = `Truck #${truckId} not found.`; return; }
+      if (t.status === 'busy') { blockedReason = 'Cannot sell a truck while it is in transit.'; return; }
+      if (t.status === 'repair') { blockedReason = 'Cannot sell a truck while it is on a repair hoist.'; return; }
+      const isLeased = (t as any).leased || (S.leases || []).some((l: any) => l.truckId === truckId);
+      if (isLeased) { blockedReason = 'Cannot sell a leased tractor (lessor-owned asset).'; return; }
+      const resaleValue = getTruckResaleValue(t);
+      toast(`⚠️ Tap SELL again within 4s to confirm selling Truck #${truckId} for $${resaleValue.toLocaleString()} (depreciated value)`, 'err');
     });
+    if (blockedReason) { toast(blockedReason, 'err'); return; }
 
+    sellTruckConfirmId = truckId;
+    if (sellTruckTimeout) clearTimeout(sellTruckTimeout);
     sellTruckTimeout = setTimeout(() => {
       sellTruckConfirmId = null;
     }, 4000);
@@ -197,8 +204,15 @@ action('sell-truck', d => {
         return;
       }
       const truck = S.fleet[idx];
-      const model = TRUCK_MODELS[truck.modelId];
-      const resaleValue = Math.round((model?.price || 150000) * 0.65);
+      if (truck.status === 'busy' || truck.status === 'repair') {
+        toast('Cannot sell a vehicle while it is in transit or under repair.', 'err');
+        return;
+      }
+      if ((truck as any).leased || (S.leases || []).some((l: any) => l.truckId === truckId)) {
+        toast('Cannot sell a leased tractor (lessor-owned asset).', 'err');
+        return;
+      }
+      const resaleValue = getTruckResaleValue(truck);
 
       if (truck.driverId) {
         const drv = (S.drivers || []).find((x: any) => x.id === truck.driverId);
@@ -207,7 +221,7 @@ action('sell-truck', d => {
         }
       }
       
-      S.money += resaleValue;
+      recordTransaction(S, 'revenue_asset', resaleValue, `Fleet liquidation: ${truck.name} (${Math.round(truck.odometer || 0).toLocaleString()} km)`);
       S.fleet.splice(idx, 1);
       toast(`Truck sold for $${resaleValue.toLocaleString()}. Funds credited to treasury.`, 'success');
     });
@@ -373,7 +387,7 @@ function panelHtml(S: GameState, t: Truck, busy: boolean) {
                   return `<option value="${c}">${loc?.name || c} — ${info.km}km (ETA: ${dur(info.ms)})</option>`;
                 }).join('')}
               </select>
-              <button class="btn gold" style="width:100%; padding:10px; font-size:11px; font-weight:900; letter-spacing:0.5px;" data-act="move" data-id="${t.id}">
+              <button class="btn gold" style="width:100%; padding:10px; font-size:11px; font-weight:900; letter-spacing:0.5px;" data-act="move" data-id="${t.id}" onclick="this.dataset.city = document.getElementById('transfer-city-${t.id}').value">
                 CONFIRM RELOCATION & DISPATCH
               </button>
             </div>
@@ -909,7 +923,7 @@ export default {
               <span>🔧</span> WORKSHOP SCAN
             </button>
             <button class="btn alt" style="padding:5px 10px; font-size:9px; font-weight:800; border-radius:6px; display:flex; align-items:center; gap:4px;" data-act="upgrade-garage" ${canUp ? '' : 'disabled'}>
-              <span>+ EXPAND (${fmt(upCost)})</span>
+              <span>🏭 WORKSHOP BAYS (${fmt(upCost)})</span>
             </button>
           </div>
         </div>
