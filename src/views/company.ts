@@ -290,12 +290,17 @@ export default {
                 const pct = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
                 const telem = getTruckTelematics(truckObj, a, drv, now);
                 const isPaused = telem.state === 'resting' || telem.state === 'refueling';
+                const isDeadhead = a.kind === 'move' || a.stage === 'deadhead' || (a.cargo || '').toLowerCase().includes('deadhead') || (a.cargo || '').toLowerCase().includes('return');
 
                 return `
                   <div style="background:#0f172a; border:1px solid ${telem.stateBadgeColor}80; border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px;">
                     <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
                       <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
-                        ${renderCargoBadge(a.cargoId || 'general_freight', { size: 30 })}
+                        ${isDeadhead ? `
+                          <div style="width:30px; height:30px; background:rgba(148,163,184,0.15); border:1px solid rgba(148,163,184,0.4); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;" title="Deadhead Empty Return">
+                            🔄
+                          </div>
+                        ` : renderCargoBadge(a.cargoId || 'general_freight', { size: 30 })}
                         <div style="min-width:0; flex:1;">
                           <div style="display:flex; align-items:center; gap:6px;">
                             <span style="font-size:12px; font-weight:900; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${cargoName}</span>
