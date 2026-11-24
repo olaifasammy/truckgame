@@ -260,13 +260,13 @@ export function upgradeHubFacility(S: any, hubId: string): boolean {
   const totalBerths = getHubTotalBerths(S, hubId);
   const yieldPct = (newLvl - 1) * 4;
 
-  pushNote(S, `🏛️ Facility Upgraded: ${hub.name} upgraded to Level ${newLvl}/${maxLvl}! (${totalBerths} Berths, ${facility.fuelCapacity.toLocaleString()}L Fuel Storage, +100 Tonnes/day Freight Tonnage Cap, +${yieldPct}% Freight Yield/km).`, {
+  pushNote(S, `🏛️ Facility Upgraded: ${hub.name} upgraded to Level ${newLvl}/${maxLvl}! (${totalBerths} Berths, ${facility.fuelCapacity.toLocaleString()}L Fuel Storage, +500 Tonnes/day Freight Tonnage Cap, +${yieldPct}% Freight Yield/km).`, {
     title: 'HUB FACILITY UPGRADED',
     type: 'ops',
     priority: 1
   });
 
-  toast(`🏛️ Hub Facility Upgraded to Level ${newLvl}/${maxLvl}! (+2 Berths, +10kL Fuel, +100 T/day Freight Cap, +4% Payout Yield)`, 'success');
+  toast(`🏛️ Hub Facility Upgraded to Level ${newLvl}/${maxLvl}! (+2 Berths, +10kL Fuel, +500 T/day Freight Cap, +4% Payout Yield)`, 'success');
   return true;
 }
 

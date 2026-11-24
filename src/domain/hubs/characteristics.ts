@@ -103,7 +103,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 1,
     specialties: [HUB_SPECIALTY_DEFS.containers, HUB_SPECIALTY_DEFS.heavy_machinery, HUB_SPECIALTY_DEFS.perishables],
     dailyJobLimit: 24,
-    dailyTonnageCapacity: 950,
+    dailyTonnageCapacity: 4500,
     baseFuelTankLiters: 45000,
     baseBerths: 6,
     demandMultiplier: 1.25
@@ -112,7 +112,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 1,
     specialties: [HUB_SPECIALTY_DEFS.containers, HUB_SPECIALTY_DEFS.automotive, HUB_SPECIALTY_DEFS.heavy_machinery],
     dailyJobLimit: 26,
-    dailyTonnageCapacity: 1100,
+    dailyTonnageCapacity: 5000,
     baseFuelTankLiters: 50000,
     baseBerths: 6,
     demandMultiplier: 1.30
@@ -121,7 +121,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 1,
     specialties: [HUB_SPECIALTY_DEFS.containers, HUB_SPECIALTY_DEFS.petroleum, HUB_SPECIALTY_DEFS.general],
     dailyJobLimit: 20,
-    dailyTonnageCapacity: 750,
+    dailyTonnageCapacity: 3800,
     baseFuelTankLiters: 35000,
     baseBerths: 5,
     demandMultiplier: 1.20
@@ -130,7 +130,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 1,
     specialties: [HUB_SPECIALTY_DEFS.containers, HUB_SPECIALTY_DEFS.automotive, HUB_SPECIALTY_DEFS.general],
     dailyJobLimit: 22,
-    dailyTonnageCapacity: 850,
+    dailyTonnageCapacity: 4000,
     baseFuelTankLiters: 40000,
     baseBerths: 6,
     demandMultiplier: 1.25
@@ -139,7 +139,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 1,
     specialties: [HUB_SPECIALTY_DEFS.containers, HUB_SPECIALTY_DEFS.perishables, HUB_SPECIALTY_DEFS.automotive],
     dailyJobLimit: 24,
-    dailyTonnageCapacity: 900,
+    dailyTonnageCapacity: 4200,
     baseFuelTankLiters: 45000,
     baseBerths: 6,
     demandMultiplier: 1.28
@@ -148,7 +148,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 1,
     specialties: [HUB_SPECIALTY_DEFS.automotive, HUB_SPECIALTY_DEFS.perishables, HUB_SPECIALTY_DEFS.general],
     dailyJobLimit: 20,
-    dailyTonnageCapacity: 700,
+    dailyTonnageCapacity: 3800,
     baseFuelTankLiters: 35000,
     baseBerths: 5,
     demandMultiplier: 1.22
@@ -157,7 +157,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 2,
     specialties: [HUB_SPECIALTY_DEFS.automotive, HUB_SPECIALTY_DEFS.petroleum, HUB_SPECIALTY_DEFS.heavy_machinery],
     dailyJobLimit: 14,
-    dailyTonnageCapacity: 480,
+    dailyTonnageCapacity: 2400,
     baseFuelTankLiters: 22000,
     baseBerths: 4,
     demandMultiplier: 1.10
@@ -166,7 +166,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 2,
     specialties: [HUB_SPECIALTY_DEFS.petroleum, HUB_SPECIALTY_DEFS.general, HUB_SPECIALTY_DEFS.automotive],
     dailyJobLimit: 16,
-    dailyTonnageCapacity: 520,
+    dailyTonnageCapacity: 2600,
     baseFuelTankLiters: 25000,
     baseBerths: 5,
     demandMultiplier: 1.12
@@ -175,7 +175,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 2,
     specialties: [HUB_SPECIALTY_DEFS.perishables, HUB_SPECIALTY_DEFS.petroleum, HUB_SPECIALTY_DEFS.general],
     dailyJobLimit: 13,
-    dailyTonnageCapacity: 420,
+    dailyTonnageCapacity: 2200,
     baseFuelTankLiters: 20000,
     baseBerths: 4,
     demandMultiplier: 1.08
@@ -184,7 +184,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 2,
     specialties: [HUB_SPECIALTY_DEFS.petroleum, HUB_SPECIALTY_DEFS.containers],
     dailyJobLimit: 12,
-    dailyTonnageCapacity: 380,
+    dailyTonnageCapacity: 2000,
     baseFuelTankLiters: 20000,
     baseBerths: 4,
     demandMultiplier: 1.05
@@ -193,7 +193,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 2,
     specialties: [HUB_SPECIALTY_DEFS.minerals, HUB_SPECIALTY_DEFS.general],
     dailyJobLimit: 10,
-    dailyTonnageCapacity: 320,
+    dailyTonnageCapacity: 1800,
     baseFuelTankLiters: 16000,
     baseBerths: 4,
     demandMultiplier: 1.00
@@ -202,7 +202,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 2,
     specialties: [HUB_SPECIALTY_DEFS.minerals, HUB_SPECIALTY_DEFS.heavy_machinery, HUB_SPECIALTY_DEFS.petroleum],
     dailyJobLimit: 12,
-    dailyTonnageCapacity: 400,
+    dailyTonnageCapacity: 2100,
     baseFuelTankLiters: 20000,
     baseBerths: 4,
     demandMultiplier: 1.05
@@ -211,7 +211,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 3,
     specialties: [HUB_SPECIALTY_DEFS.heavy_machinery, HUB_SPECIALTY_DEFS.general],
     dailyJobLimit: 7,
-    dailyTonnageCapacity: 180,
+    dailyTonnageCapacity: 1250,
     baseFuelTankLiters: 10000,
     baseBerths: 3,
     demandMultiplier: 0.95
@@ -220,7 +220,7 @@ const CUSTOM_HUB_PROFILES: Record<string, Partial<HubCharacteristics>> = {
     tier: 3,
     specialties: [HUB_SPECIALTY_DEFS.minerals, HUB_SPECIALTY_DEFS.general],
     dailyJobLimit: 6,
-    dailyTonnageCapacity: 150,
+    dailyTonnageCapacity: 1200,
     baseFuelTankLiters: 9000,
     baseBerths: 3,
     demandMultiplier: 0.90
@@ -275,7 +275,7 @@ export function getHubCharacteristics(hubIdOrCity: string): HubCharacteristics {
   const dailyJobLimit = custom?.dailyJobLimit || (tier === 1 ? 20 : tier === 2 ? 11 : 7);
 
   // Derive Daily Tonnage Capacity
-  const dailyTonnageCapacity = custom?.dailyTonnageCapacity || (tier === 1 ? 750 : tier === 2 ? 350 : 160);
+  const dailyTonnageCapacity = custom?.dailyTonnageCapacity || (tier === 1 ? 3800 : tier === 2 ? 2200 : 1200);
 
   // Derive Base Fuel Tank
   const baseFuelTankLiters = custom?.baseFuelTankLiters || (tier === 1 ? 35000 : tier === 2 ? 18000 : 10000);
@@ -354,13 +354,22 @@ export function getHubDailyUsage(S: any, hubIdOrCity: string): HubDailyUsage {
   if (!S) return { day: 1, jobsCount: 0, tonnageCount: 0 };
   if (!S.hubDailyUsage) S.hubDailyUsage = {};
   const currentDay = S.simulationDay || 1;
-  const key = (hubIdOrCity || '').toLowerCase();
+  const char = getHubCharacteristics(hubIdOrCity);
+  const canonicalKey = char.hubId.toLowerCase();
+  const legacyKey = (hubIdOrCity || '').toLowerCase();
   
-  const record = S.hubDailyUsage[key];
-  if (!record || record.day !== currentDay) {
-    S.hubDailyUsage[key] = { day: currentDay, jobsCount: 0, tonnageCount: 0 };
+  let record = S.hubDailyUsage[canonicalKey];
+  if (!record && legacyKey !== canonicalKey && S.hubDailyUsage[legacyKey]) {
+    record = S.hubDailyUsage[legacyKey];
+    S.hubDailyUsage[canonicalKey] = record;
+    delete S.hubDailyUsage[legacyKey];
   }
-  return S.hubDailyUsage[key];
+
+  if (!record || record.day !== currentDay) {
+    record = { day: currentDay, jobsCount: 0, tonnageCount: 0 };
+    S.hubDailyUsage[canonicalKey] = record;
+  }
+  return record;
 }
 
 /**
@@ -384,14 +393,14 @@ export function getHubEffectiveDailyJobLimit(S: any, hubIdOrCity: string): numbe
 }
 
 /**
- * Returns the effective daily tonnage capacity for a hub accounting for facility upgrade level (+100 tonnes/day per level).
+ * Returns the effective daily tonnage capacity for a hub accounting for facility upgrade level (+500 tonnes/day per level).
  */
 export function getHubEffectiveDailyTonnageCapacity(S: any, hubIdOrCity: string): number {
   const char = getHubCharacteristics(hubIdOrCity);
   if (!S) return char.dailyTonnageCapacity;
   const facility = S.hubFacilities?.[char.hubId];
   const level = facility?.level || 1;
-  return char.dailyTonnageCapacity + (level - 1) * 100;
+  return char.dailyTonnageCapacity + (level - 1) * 500;
 }
 
 /**
@@ -399,11 +408,9 @@ export function getHubEffectiveDailyTonnageCapacity(S: any, hubIdOrCity: string)
  */
 export function isHubDailyLimitReached(S: any, hubIdOrCity: string, extraTonnage: number = 0): boolean {
   if (!S) return false;
-  const maxJobs = getHubEffectiveDailyJobLimit(S, hubIdOrCity);
   const maxTonnage = getHubEffectiveDailyTonnageCapacity(S, hubIdOrCity);
   const usage = getHubDailyUsage(S, hubIdOrCity);
 
-  if (usage.jobsCount >= maxJobs) return true;
   if ((usage.tonnageCount + extraTonnage) > maxTonnage) return true;
   return false;
 }

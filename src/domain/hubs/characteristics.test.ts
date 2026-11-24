@@ -7,7 +7,8 @@ import {
   getHubNetworkSynergyBonus,
   getHubDailyUsage,
   recordHubJobDispatched,
-  isHubDailyLimitReached
+  isHubDailyLimitReached,
+  getHubEffectiveDailyTonnageCapacity
 } from './characteristics';
 import { ensureHubFacilities, getHubFacility, getHubTotalBerths } from './hub-facility';
 
@@ -77,13 +78,28 @@ test('Hub Characteristics - Daily payload tonnage and job limits tracking', () =
     hubDailyUsage: {}
   };
 
+  const innsbruck = getHubCharacteristics('hub_innsbruck');
+  assert.ok(innsbruck.dailyTonnageCapacity >= 1200, 'Lowest hub base tonnage is at least 1200T');
+
   assert.strictEqual(isHubDailyLimitReached(mockState, 'hub_innsbruck'), false);
 
-  // Record dispatching jobs at Innsbruck (daily job limit: 7, tonnage limit: 180T)
-  recordHubJobDispatched(mockState, 'hub_innsbruck', 100);
+  // Record dispatching jobs at Innsbruck (daily job limit: 7, base tonnage limit: 1250T)
+  recordHubJobDispatched(mockState, 'hub_innsbruck', 700);
   assert.strictEqual(isHubDailyLimitReached(mockState, 'hub_innsbruck'), false);
 
-  // Dispatch another 90 tonnes (total 190T > 180T limit)
-  recordHubJobDispatched(mockState, 'hub_innsbruck', 90);
+  // Dispatch another 600 tonnes (total 1300T > 1250T limit)
+  recordHubJobDispatched(mockState, 'hub_innsbruck', 600);
   assert.strictEqual(isHubDailyLimitReached(mockState, 'hub_innsbruck'), true, 'Innsbruck daily tonnage capacity limit reached');
+});
+
+test('Hub Facility - Significant Upgrade Tonnage Increase (+500 T/day per level)', () => {
+  const S: any = {
+    depots: ['hub_innsbruck'],
+    hubFacilities: {
+      hub_innsbruck: { level: 2 }
+    }
+  };
+  const baseCap = getHubCharacteristics('hub_innsbruck').dailyTonnageCapacity;
+  const upgradedCap = getHubEffectiveDailyTonnageCapacity(S, 'hub_innsbruck');
+  assert.strictEqual(upgradedCap, baseCap + 500, 'Level 2 adds exactly 500 tonnes/day');
 });

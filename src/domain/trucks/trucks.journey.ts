@@ -579,6 +579,14 @@ export function computeEta(a: any, truck: any, driver: any, now: number): EtaBre
   return { driveKm, driveMs, stopMs, totalMs: driveMs + stopMs, planSpeedKmh: plan };
 }
 
+export function forceRestJourney(a: any, truck: any, now: number) {
+  ensureJourney(a, truck, now);
+  a.resumeStage = (a.stage === 'deadhead' ? 'deadhead' : 'driving');
+  a.restType = 'full';
+  a.restFatigue0 = 50;
+  enterStage(a, 'resting', now, truck);
+}
+
 function updateEta(a: any, truck: any, driver: any, now: number, dt: number) {
   if (a.stage === 'done') {
     a.etaAt = now;

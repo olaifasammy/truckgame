@@ -1090,7 +1090,13 @@ export default {
                   </button>
                 </div>
                 <div style="display:flex; justify-content:space-between; align-items:center; font-size:9px; color:var(--mu); font-family:monospace; margin-top:-2px;">
-                  <span>#${a.truck} · ${drv ? drv.name : 'Driver'} · <b style="color:#38bdf8;">${telem.phase}</b></span>
+                  <span>#${a.truck} · ${drv ? drv.name : 'Driver'} · 
+                    ${telem.state === 'resting' 
+                      ? `<b style="color:#c084fc;">☕ Rest Break <span data-rest-eta="${a.stageEndsAt || (now + telem.stopTimeRemainingMs)}">${dur(telem.stopTimeRemainingMs)}</span></b>`
+                      : telem.state === 'refueling'
+                      ? `<b style="color:#eab308;">⛽ Refueling (<span data-rest-eta="${a.stageEndsAt || (now + telem.stopTimeRemainingMs)}">${dur(telem.stopTimeRemainingMs)}</span>)</b>`
+                      : `<b style="color:#38bdf8;">${telem.phase}</b>`}
+                  </span>
                   <span style="color:var(--gold); font-weight:800;" data-eta="${a.end}">${dur(remainingMs)}</span>
                 </div>
                 <div style="height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden;">

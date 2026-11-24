@@ -17,7 +17,10 @@ import {
 } from '../../domain/hubs/hub-facility';
 import {
   getHubCharacteristics,
-  getHubEffectiveDailyTonnageCapacity
+  getHubEffectiveDailyTonnageCapacity,
+  getHubDailyUsage,
+  getHubEffectiveDailyJobLimit,
+  isHubDailyLimitReached
 } from '../../domain/hubs/characteristics';
 import { action, fmt, toast } from '../../core/ui';
 import { set, refresh } from '../../core/store';
@@ -263,8 +266,25 @@ export function renderHubConsole(S: any, currentRegion: RegionName): string {
   const facilityLvl = facility.level || 1;
   const yieldBonusPct = (facilityLvl - 1) * 4;
   const maxTonnage = getHubEffectiveDailyTonnageCapacity(S, selectedHub.id);
-  const extraTonnageCount = (facilityLvl - 1) * 100;
+  const extraTonnageCount = (facilityLvl - 1) * 500;
   const isMaxLvl = facilityLvl >= maxLvl;
+
+  const usage = getHubDailyUsage(S, selectedHub.id);
+  const maxJobs = getHubEffectiveDailyJobLimit(S, selectedHub.id);
+  const limitReached = isHubDailyLimitReached(S, selectedHub.id);
+  const usageRatio = maxTonnage > 0 ? (usage.tonnageCount / maxTonnage) : 0;
+  const isNearingLimit = usageRatio >= 0.8 && !limitReached;
+  const showCapacityBanner = limitReached || isNearingLimit;
+
+  const lastDayTs = S.lastAccountingDayTimestamp || Date.now();
+  const nextDayTs = lastDayTs + 43200000;
+  const diffMs = Math.max(0, nextDayTs - Date.now());
+  const totalSec = Math.floor(diffMs / 1000);
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const formattedEta = `${hrs}:${pad(mins)}:${pad(secs)}`;
 
   return `
     ${hubSelectorBar}
@@ -308,6 +328,26 @@ export function renderHubConsole(S: any, currentRegion: RegionName): string {
         </div>
       ` : ''}
 
+      <!-- DAILY FREIGHT CAPACITY & USAGE STATUS BANNER (Shown only when nearing limit or reached) -->
+      ${showCapacityBanner ? `
+        <div style="background:${limitReached ? 'rgba(239,68,68,0.12)' : 'rgba(193,154,91,0.1)'}; border:1px solid ${limitReached ? 'rgba(239,68,68,0.45)' : 'rgba(193,154,91,0.4)'}; border-radius:8px; padding:8px 10px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font-size:16px;">${limitReached ? '⚠️' : '⚡'}</span>
+            <div>
+              <div style="font-size:9.5px; font-weight:900; color:${limitReached ? '#ef4444' : 'var(--gold)'}; text-transform:uppercase; letter-spacing:0.3px;">
+                ${limitReached ? `Max Hub payload tonnage reached for today (${usage.tonnageCount.toLocaleString()} / ${maxTonnage.toLocaleString()} Tonnes)` : `Hub Nearing Daily Tonnage Capacity (${Math.round(usageRatio * 100)}% Used)`}
+              </div>
+              <div style="font-size:8.5px; color:var(--mu); font-family:monospace; margin-top:2px;">
+                ${limitReached ? `Dispatches will resume in <b style="color:var(--gold);" data-hub-reset-eta="${nextDayTs}">${formattedEta}</b>` : `Payload: <b style="color:var(--tx);">${usage.tonnageCount.toLocaleString()} / ${maxTonnage.toLocaleString()} Tonnes</b> · Upgrade hub facility to expand capacity.`}
+              </div>
+            </div>
+          </div>
+          <div style="font-size:8.5px; font-weight:800; font-family:monospace; color:${limitReached ? '#ef4444' : 'var(--gold)'}; background:${limitReached ? 'rgba(239,68,68,0.2)' : 'rgba(193,154,91,0.2)'}; border:1px solid ${limitReached ? 'rgba(239,68,68,0.5)' : 'rgba(193,154,91,0.5)'}; padding:3px 8px; border-radius:4px; white-space:nowrap;">
+            ${limitReached ? 'CAPACITY REACHED' : 'NEAR CAPACITY'}
+          </div>
+        </div>
+      ` : ''}
+
       <!-- UNIFIED HUB FACILITY UPGRADE HEADER CARD -->
       <div style="background:#080c16; border:1px solid #1f293d; border-radius:8px; padding:8px 10px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
         <div>
@@ -323,7 +363,7 @@ export function renderHubConsole(S: any, currentRegion: RegionName): string {
             ✓ MAX LEVEL REACHED
           </span>
         ` : `
-          <button class="btn gold" style="padding:4px 10px; font-size:8.5px; font-weight:900;" data-act="hub-upgrade-facility" data-hub-id="${selectedHub.id}" ${S.money < facilityCost ? 'disabled style="opacity:0.4;"' : ''} title="Upgrade Hub Facility (+2 Berths, +10kL Fuel Storage, +100 T/day Max Freight Volume, +4% Yield)">
+          <button class="btn gold" style="padding:4px 10px; font-size:8.5px; font-weight:900;" data-act="hub-upgrade-facility" data-hub-id="${selectedHub.id}" ${S.money < facilityCost ? 'disabled style="opacity:0.4;"' : ''} title="Upgrade Hub Facility (+2 Berths, +10kL Fuel Storage, +500 T/day Max Freight Volume, +4% Yield)">
             🏛️ UPGRADE TO LVL ${facilityLvl + 1} (${fmt(facilityCost)})
           </button>
         `}

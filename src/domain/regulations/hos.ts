@@ -1,3 +1,5 @@
+import { forceRestJourney } from '../trucks/trucks.journey';
+
 export interface HosStatus {
   drivingHours: number; // Max 11.0 hours per shift
   maxHours: number; // 11.0 hours
@@ -44,7 +46,19 @@ export function sendDriverOnRest(driver: any, S: any, isMotel = true): { success
   driver.morale = Math.min(100, (driver.morale || 90) + 15);
   driver.stress = Math.max(0, (driver.stress || 20) - 35);
 
-  return { success: true, message: `${driver.name} is now resting at a roadside motel. Fatigue cleared & HOS reset.` };
+  // If driver is currently en route on an active job, make their truck pull over and rest!
+  if (S && S.fleet && S.active) {
+    const truck = S.fleet.find((t: any) => t.driverId === driver.id && t.status === 'busy');
+    if (truck) {
+      const activeJob = S.active.find((a: any) => a.truck === truck.id);
+      if (activeJob && (activeJob.stage === 'driving' || activeJob.stage === 'deadhead' || !activeJob.stage)) {
+        forceRestJourney(activeJob, truck, Date.now());
+        driver.hosRestUntil = activeJob.stageEndsAt;
+      }
+    }
+  }
+
+  return { success: true, message: `${driver.name} is now pulling over at a roadside motel/plaza to rest. Fatigue cleared & HOS reset.` };
 }
 
 /**
