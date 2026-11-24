@@ -215,7 +215,7 @@ export class BiddingEngine {
         from: auc.from,
         to: auc.to,
         km: auc.km,
-        pay: auc.currentBid,
+        pay: Math.round(auc.currentBid * 1.03),
         deadline: Date.now() + Math.round((driveHours + 14) * SIM_HOUR_MS),
         requirements: auc.requirements,
         vip: false,
