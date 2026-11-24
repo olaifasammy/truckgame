@@ -160,6 +160,39 @@ function enterStage(a: any, stage: Stage, now: number, truck?: any) {
     a.retarder = false;
     a.mode = stage;
   }
+
+  // Push live event
+  if (!a.events) a.events = [];
+  let label = '';
+  let type: 'info' | 'warn' | 'danger' | 'success' = 'info';
+  let icon = '📌';
+
+  if (stage === 'loading') {
+    label = repo ? `Staged at ${a.from} warehouse pre-trip inspection.` : `Docked at shipper warehouse in ${a.from} for cargo loading.`;
+    type = 'info';
+    icon = '📦';
+  } else if (stage === 'unloading') {
+    label = `Arrived at consignee receiving dock in ${a.to}. Offloading freight.`;
+    type = 'success';
+    icon = '🏁';
+  } else if (stage === 'resting') {
+    label = `Pulling over at roadside motel / travel plaza for mandatory HOS rest.`;
+    type = 'warn';
+    icon = '☕';
+  } else if (stage === 'refueling') {
+    label = `Pulling into travel plaza fuel island for commercial diesel bunkering.`;
+    type = 'info';
+    icon = '⛽';
+  } else if (stage === 'driving' || stage === 'deadhead') {
+    label = stage === 'deadhead' ? `Deadheading empty to pickup point in ${a.from}.` : `Linehaul transit underway towards ${a.to}.`;
+    type = 'info';
+    icon = '🚚';
+  }
+
+  if (label) {
+    a.events.unshift({ time: now, text: label, type, icon });
+    if (a.events.length > 25) a.events.pop();
+  }
 }
 
 /** Start (or restart, e.g. for round-trip leg 2) the journey state on a job. */
@@ -460,10 +493,16 @@ function stepDrive(a: any, truck: any, driver: any, now: number, dt: number, hoo
 
     if (triggered.length > 0) {
       if (!a.incidents) a.incidents = [];
+      if (!a.events) a.events = [];
       for (const inc of triggered) {
         a.incidents.push(inc);
         if (inc.forceRest) forceRestNow = true;
         hooks?.onIncident?.(inc, truck, driver);
+
+        const incType = inc.severity === 'critical' || inc.severity === 'major' ? 'danger' : 'warn';
+        const incIcon = inc.type === 'speeding_ticket' ? '👮' : inc.type === 'accident' ? '💥' : inc.type === 'breakdown' ? '🔧' : '⚠️';
+        a.events.unshift({ time: now, text: inc.description || inc.message || 'En-route road incident recorded.', type: incType, icon: incIcon });
+        if (a.events.length > 25) a.events.pop();
       }
     }
   }

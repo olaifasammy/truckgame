@@ -19,6 +19,16 @@ let hubTab: 'regions' | 'hubs' | 'routes' = 'regions';
 
 let resetConfirm = false;
 
+action('toggle-job-events', d => {
+  set((S: GameState) => {
+    const jobId = +(d as any).jobId;
+    const job = (S.active || []).find((j: any) => j.id === jobId);
+    if (job) {
+      job.showEvents = !job.showEvents;
+    }
+  });
+});
+
 action('transit-page', d => {
   transitPage = +(d as any).page;
   refresh();
@@ -314,6 +324,31 @@ export default {
 
                     <div style="height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden;">
                       <div style="width:${pct}%; height:100%; background:${isPaused ? '#64748b' : 'linear-gradient(90deg, #0284c7, #38bdf8)'}; transition:${isPaused ? 'none' : 'width 0.5s ease'};"></div>
+                    </div>
+
+                    <!-- Live Event Stream Drawer -->
+                    <div style="border-top:1px dashed rgba(255,255,255,0.08); padding-top:4px; margin-top:2px;">
+                      <div style="display:flex; justify-content:space-between; align-items:center; font-size:8.5px; font-weight:800; color:var(--gold); cursor:pointer;" data-act="toggle-job-events" data-job-id="${a.id}">
+                        <span>⚡ Live Event Log (${(a.events || []).length})</span>
+                        <span>${a.showEvents ? '▲ Hide' : '▼ Details'}</span>
+                      </div>
+                      ${a.showEvents ? `
+                        <div style="background:rgba(0,0,0,0.35); border:1px solid #1f293d; border-radius:6px; padding:6px; margin-top:4px; max-height:130px; overflow-y:auto; display:flex; flex-direction:column; gap:4px;">
+                          ${(!a.events || a.events.length === 0) ? `
+                            <div style="text-align:center; color:var(--mu); font-size:8px; padding:4px;">No live events logged yet.</div>
+                          ` : a.events.map((ev: any) => {
+                            const timeStr = new Date(ev.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                            const color = ev.type === 'danger' ? '#ef4444' : ev.type === 'warn' ? '#f59e0b' : ev.type === 'success' ? '#10b981' : '#38bdf8';
+                            return `
+                              <div style="font-size:8px; font-family:monospace; color:var(--tx); display:flex; align-items:flex-start; gap:6px; border-bottom:1px solid rgba(255,255,255,0.04); padding-bottom:3px;">
+                                <span style="color:var(--mu); flex-shrink:0;">[${timeStr}]</span>
+                                <span style="flex-shrink:0;">${ev.icon || '📌'}</span>
+                                <span style="color:${color}; flex:1; line-height:1.2;">${ev.text}</span>
+                              </div>
+                            `;
+                          }).join('')}
+                        </div>
+                      ` : ''}
                     </div>
                   </div>
                 `;
