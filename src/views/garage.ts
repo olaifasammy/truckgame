@@ -1069,6 +1069,7 @@ export default {
             const elapsed = Math.max(0, now - a.start);
             const pct = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
             const telem = getTruckTelematics(truckObj, a, drv, now);
+            const isPaused = telem.state === 'resting' || telem.state === 'refueling';
 
             return `
               <div style="background:#0f172a; border:1px solid ${telem.stateBadgeColor}80; border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px; cursor:pointer;" data-act="truck-toggle" data-id="${a.truck}">
@@ -1092,15 +1093,15 @@ export default {
                 <div style="display:flex; justify-content:space-between; align-items:center; font-size:9px; color:var(--mu); font-family:monospace; margin-top:-2px;">
                   <span>#${a.truck} · ${drv ? drv.name : 'Driver'} · 
                     ${telem.state === 'resting' 
-                      ? `<b style="color:#c084fc;">☕ Rest Break <span data-rest-eta="${a.stageEndsAt || (now + telem.stopTimeRemainingMs)}">${dur(telem.stopTimeRemainingMs)}</span></b>`
+                      ? `<b style="color:#c084fc;">☕ Rest Break (<span data-rest-eta="${a.stageEndsAt || (now + telem.stopTimeRemainingMs)}">${dur(telem.stopTimeRemainingMs)}</span>)</b>`
                       : telem.state === 'refueling'
                       ? `<b style="color:#eab308;">⛽ Refueling (<span data-rest-eta="${a.stageEndsAt || (now + telem.stopTimeRemainingMs)}">${dur(telem.stopTimeRemainingMs)}</span>)</b>`
                       : `<b style="color:#38bdf8;">${telem.phase}</b>`}
                   </span>
-                  <span style="color:var(--gold); font-weight:800;" data-eta="${a.end}">${dur(remainingMs)}</span>
+                  <span style="color:${isPaused ? 'var(--mu)' : 'var(--gold)'}; font-weight:800;" ${isPaused ? '' : `data-eta="${a.end}"`}>${isPaused ? '--:--' : dur(remainingMs)}</span>
                 </div>
                 <div style="height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden;">
-                  <div style="width:${pct}%; height:100%; background:linear-gradient(90deg, #0284c7, #38bdf8); transition:width 0.5s ease;"></div>
+                  <div style="width:${pct}%; height:100%; background:${isPaused ? '#64748b' : 'linear-gradient(90deg, #0284c7, #38bdf8)'}; transition:${isPaused ? 'none' : 'width 0.5s ease'};"></div>
                 </div>
               </div>
             `;
