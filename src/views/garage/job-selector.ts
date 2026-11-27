@@ -8,6 +8,7 @@ import { LOCATIONS, resolveTruckRegion } from '../../data/world';
 import { distKm, getRouteEnv, tripMs } from '../../systems/calc';
 import { getDailyBidDispatchQuota } from '../../domain/freight/bids/quota';
 import { FreightEngine } from '../../domain/freight/engine/generator';
+import { REGIONAL_HUBS } from '../../domain/logistics/network';
 
 export let activeJobSelectorTruckId: number | null = null;
 
@@ -39,9 +40,21 @@ export function renderJobSelectorOverlay(S: any) {
     return;
   }
 
-  // Ensure there is at least one outbound load from truck.loc
-  const hasLocalJob = (S.jobs || []).some((j: any) => j.from === truck.loc);
-  if (!hasLocalJob && truck.loc) {
+  // Determine if truck is stationed at an owned regional hub
+  const originHub = REGIONAL_HUBS.find(
+    h => h.city === truck.loc && (S.depots || []).includes(h.id)
+  );
+
+  // Use the exact jobs generated for this truck's current hub (plus any local S.jobs / won auctions departing from truck.loc)
+  const hubPool: any[] = originHub ? (S.hubJobs?.[originHub.id] || []) : [];
+  const localGlobalJobs: any[] = (S.jobs || []).filter((j: any) => j.from === truck.loc || j.isAuctionWon);
+
+  // Only generate a fallback backhaul if the truck has zero outbound loads at its current location
+  const hasLocalJob =
+    hubPool.some((j: any) => j.from === truck.loc) ||
+    (S.jobs || []).some((j: any) => j.from === truck.loc);
+
+  if (!hasLocalJob && truck.loc && !originHub) {
     const truckRegion = resolveTruckRegion(truck.loc);
     const regionCities = Object.entries(LOCATIONS)
       .filter(([k, loc]) => loc.region === truckRegion && k !== truck.loc)
@@ -56,11 +69,22 @@ export function renderJobSelectorOverlay(S: any) {
     if (newJob) {
       if (!S.jobs) S.jobs = [];
       S.jobs.unshift(newJob);
+      localGlobalJobs.unshift(newJob);
     }
   }
 
+  const combinedJobs = originHub
+    ? [...hubPool, ...localGlobalJobs]
+    : [...localGlobalJobs, ...(S.jobs || [])];
+  const seenIds = new Set<number>();
+  const uniqueJobs = combinedJobs.filter((j: any) => {
+    if (!j || seenIds.has(j.id)) return false;
+    seenIds.add(j.id);
+    return true;
+  });
+
   // Filter jobs: Show only what this truck can do
-  const jobs = (S.jobs || []).filter((j: any) => !why(S, truck, j));
+  const jobs = uniqueJobs.filter((j: any) => !why(S, truck, j));
   // Sort: Direct Departures first (dh === 0), then lowest deadhead
   jobs.sort((a: any, b: any) => {
     const aDirect = a.from === truck.loc ? 1 : 0;
@@ -99,7 +123,7 @@ export function renderJobSelectorOverlay(S: any) {
       </div>
 
       <!-- Freight List -->
-      <div style="flex:1; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px;">
+      <div style="flex:1; min-height:0; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:10px;">
         ${jobs.length === 0 ? `
           <div style="padding:40px 20px; text-align:center; color:var(--mu); font-size:11px; font-family:monospace;">
             No compatible freight loads currently available for this tractor's trailer equipment and maintenance status. Check Freight Board for auctions or wait for incoming manifests.
@@ -115,7 +139,7 @@ export function renderJobSelectorOverlay(S: any) {
             const locTo = LOCATIONS[j.to];
             
             return `
-              <div class="card" style="padding:12px; border-radius:8px; border:1px solid ${isSpecial ? 'var(--grn)' : '#1e2638'}; background:#070a12; display:flex; justify-content:space-between; align-items:center; position:relative; overflow:hidden;">
+              <div class="card" style="flex-shrink:0; margin-bottom:0; padding:12px; border-radius:8px; border:1px solid ${isSpecial ? 'var(--grn)' : '#1e2638'}; background:#070a12; display:flex; justify-content:space-between; align-items:center; gap:10px; position:relative;">
                 ${isSpecial ? `<div style="position:absolute; top:0; right:0; background:var(--grn); color:#070a12; font-size:7px; font-weight:900; padding:2px 8px; border-bottom-left-radius:6px; font-family:monospace;">WON CONTRACT</div>` : ''}
                 <div style="display:flex; align-items:center; gap:10px; min-width:0;">
                   ${renderCargoBadge(cargo?.id || j.cargoId || 'general_freight', { size: 34, isAuctionWon: isSpecial })}

@@ -11,6 +11,8 @@ export interface RealisticOpts {
   /** Livery stripe color (hex). */
   accent?: string;
   isMoving?: boolean;
+  /** Whether the trailer is currently carrying a load (shows cargo on open trailers like flatbed/lowboy). */
+  hasCargo?: boolean;
 }
 
 export const DEFAULT_PAINT = '#2b4a6f';

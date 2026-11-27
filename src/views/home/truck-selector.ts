@@ -225,7 +225,13 @@ action('batch-certify-drivers', d => {
 
 export function renderSelectorOverlay(S: any) {
   if (activeSelectorJobId === null) return;
-  const job = S.jobs.find((j: any) => j.id === activeSelectorJobId);
+  let job = (S.jobs || []).find((j: any) => j.id === activeSelectorJobId);
+  if (!job && S.hubJobs) {
+    for (const hJobs of Object.values(S.hubJobs) as any[][]) {
+      job = hJobs.find((j: any) => j.id === activeSelectorJobId);
+      if (job) break;
+    }
+  }
   if (!job) {
     closeTruckSelector();
     return;
@@ -248,7 +254,9 @@ export function renderSelectorOverlay(S: any) {
   const missingLicense = requiredLicenseId && !hasLicense(S, requiredLicenseId) ? FREIGHT_LICENSES[requiredLicenseId] : null;
 
   const fleet = S.fleet || [];
-  // Show only idle tractors in this continent/region, prioritized by proximity (0 km deadhead first)
+  const originName = LOCATIONS[job.from]?.name || job.from;
+
+  // Show idle compatible tractors prioritized by proximity (0 km at hub first)
   const compatibleFleet = fleet
     .filter((t: any) => t.status === 'idle' && !why(S, t, job))
     .sort((a: any, b: any) => {
@@ -256,6 +264,29 @@ export function renderSelectorOverlay(S: any) {
       const bAtLoc = b.loc === job.from ? 1 : 0;
       if (aAtLoc !== bAtLoc) return bAtLoc - aAtLoc;
       return distKm(a.loc, job.from) - distKm(b.loc, job.from);
+    });
+
+  // Collect tractors stationed at this hub (job.from) that did NOT qualify, with exact reason
+  const ineligibleAtHub = fleet
+    .filter((t: any) => {
+      if (t.loc !== job.from) return false;
+      if (t.status === 'idle' && !why(S, t, job)) return false;
+      return true;
+    })
+    .map((t: any) => {
+      let reason = '';
+      if (t.status !== 'idle') {
+        reason = t.status === 'busy'
+          ? 'Currently en-route on another haul'
+          : t.status === 'delivering'
+            ? 'In transit from dealership / maritime vessel'
+            : t.status === 'repairing' || t.status === 'maintenance'
+              ? 'Currently in maintenance bay'
+              : `Unavailable (status: ${t.status})`;
+      } else {
+        reason = why(S, t, job) || 'Does not meet dispatch requirements';
+      }
+      return { truck: t, reason };
     });
   
   let existing = document.getElementById('truck-selector-overlay');
@@ -405,31 +436,59 @@ export function renderSelectorOverlay(S: any) {
         ` : `
           <!-- No Compatible Trucks Notice -->
           ${(() => {
-            const jobRegion = LOCATIONS[job.from]?.region || 'job region';
-            const trucksInRegion = fleet.filter((t: any) => LOCATIONS[t.loc]?.region === jobRegion);
-            const isCrossContinentBlocked = fleet.length > 0 && trucksInRegion.length === 0;
+            const trucksAtHub = fleet.filter((t: any) => t.loc === job.from);
+            const noTrucksAtHub = trucksAtHub.length === 0;
 
             return `
-              <div style="padding:16px 14px; text-align:center; background:#070a12; border:1px dashed #1e2638; border-radius:8px;">
-                <div style="font-size:24px; margin-bottom:4px;">${isCrossContinentBlocked ? '🌍' : '🚛'}</div>
-                <div style="font-weight:800; font-size:12px; color:${isCrossContinentBlocked ? '#ef4444' : 'var(--gold)'};">
-                  ${isCrossContinentBlocked ? `No Tractors Stationed in ${jobRegion}` : 'No Compatible Tractors Ready For Dispatch'}
+              <div style="padding:14px; text-align:center; background:#070a12; border:1px dashed #1e2638; border-radius:8px;">
+                <div style="font-size:22px; margin-bottom:4px;">${noTrucksAtHub ? '🏢' : '🚛'}</div>
+                <div style="font-weight:800; font-size:12px; color:${noTrucksAtHub ? '#ef4444' : 'var(--gold)'};">
+                  ${noTrucksAtHub ? `No Tractors Stationed at ${originName} Hub` : `No Compatible Tractors Ready at ${originName} Hub`}
                 </div>
                 <div style="font-size:10px; color:var(--mu); margin-top:4px; font-family:monospace; line-height:1.4;">
-                  ${isCrossContinentBlocked 
-                    ? `Your fleet tractors are stationed in other regions. Cross-continental highway deadhead is prohibited (e.g. America to Europe). Station or purchase a tractor in ${jobRegion} to haul this cargo.` 
-                    : 'Ensure you have idle trucks in this region with the correct trailer coupling and qualified CDL drivers assigned in the Garage.'}
+                  ${noTrucksAtHub 
+                    ? `You have no tractors currently stationed at ${originName}. Purchase or transfer a tractor to this hub in the Garage.` 
+                    : `See below for the exact disqualification reasons for your ${trucksAtHub.length} tractor(s) stationed at ${originName}.`}
                 </div>
               </div>
             `;
           })()}
         `}
 
+        ${ineligibleAtHub.length > 0 ? `
+          <div style="margin-top:4px;">
+            <div style="font-size:10px; font-weight:800; color:#f59e0b; font-family:monospace; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px;">
+              INELIGIBLE / UNAVAILABLE AT ${originName.toUpperCase()} HUB (${ineligibleAtHub.length})
+            </div>
+            <div style="display:flex; flex-direction:column; gap:6px;">
+              ${ineligibleAtHub.map(({ truck: t, reason }: any) => {
+                const model = TRUCK_MODELS[t.modelId] || { name: 'Truck', brand: 'Heavy' };
+                const trailerDesc = t.trailer ? (TRAILERS[t.trailer as keyof typeof TRAILERS] || t.trailer) : 'Bobtail (No Trailer)';
+                return `
+                  <div style="padding:9px 11px; border-radius:8px; border:1px solid rgba(239,68,68,0.28); background:#070a12; display:flex; flex-direction:column; gap:4px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                      <div style="font-weight:800; color:var(--tx); font-size:11px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+                        ${t.name} <span style="font-size:9.5px; color:var(--mu); font-weight:600;">(${model.brand} ${model.name})</span>
+                      </div>
+                      <span style="font-size:9px; color:var(--mu); font-family:monospace; flex-shrink:0;">
+                        ${trailerDesc}
+                      </span>
+                    </div>
+                    <div style="font-size:9.5px; color:#fca5a5; background:rgba(239,68,68,0.1); border-left:2px solid #ef4444; padding:4px 7px; border-radius:3px; font-family:monospace; line-height:1.35;">
+                      ✕ ${reason}
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        ` : ''}
+
       </div>
 
       <!-- Footer (Inside modal-card) -->
       <div style="padding:10px 16px; border-top:1px solid rgba(255,255,255,0.08); text-align:center; font-size:9px; color:var(--mu); background:#060a14; font-family:monospace; flex-shrink:0;">
-        Displaying verified compatible tractors only (${compatibleFleet.length} matched).
+        ${compatibleFleet.length} ready for dispatch · ${ineligibleAtHub.length} ineligible/unavailable at ${originName} Hub.
       </div>
 
     </div>

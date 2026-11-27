@@ -18,13 +18,16 @@ import {
 import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { getOwnedHubs, REGIONAL_HUBS } from '../domain/logistics/network';
 
-type GovDept = 'dmv' | 'safety' | 'customs' | 'compliance';
+type GovDept = 'dmv' | 'customs' | 'compliance';
 type GovFilter = 'registered' | 'unregistered' | 'tax_expired' | 'inspection_expired';
+
+const GOV_PAGE_SIZE = 6;
 
 let activeDept: GovDept = 'dmv';
 let selectedGovFilter: GovFilter = 'registered';
 let activeRegistrationTruckId: number | null = null;
 let useSpecialVanityPlate = false;
+let dmvPage = 1;
 
 action('set-gov-dept', d => {
   activeDept = ((d as any).dept as GovDept) || 'dmv';
@@ -33,6 +36,19 @@ action('set-gov-dept', d => {
 
 action('set-gov-filter', d => {
   selectedGovFilter = ((d as any).filter as GovFilter) || 'registered';
+  dmvPage = 1;
+  refresh();
+});
+
+action('gov-dmv-prev', () => {
+  if (dmvPage > 1) {
+    dmvPage--;
+    refresh();
+  }
+});
+
+action('gov-dmv-next', () => {
+  dmvPage++;
   refresh();
 });
 
@@ -231,9 +247,6 @@ export default {
           <button class="btn ${activeDept === 'dmv' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:9px; font-weight:900;" data-act="set-gov-dept" data-dept="dmv">
             🚘 DMV & VEHICLE LICENSING
           </button>
-          <button class="btn ${activeDept === 'safety' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:9px; font-weight:900;" data-act="set-gov-dept" data-dept="safety">
-            🔍 DOT SAFETY & TÜV BOARD
-          </button>
           <button class="btn ${activeDept === 'customs' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:9px; font-weight:900;" data-act="set-gov-dept" data-dept="customs">
             📜 TOLLS & CUSTOMS AGENCY
           </button>
@@ -268,14 +281,20 @@ export default {
             </div>
 
             <!-- Fleet Registration Cards Grid -->
+            ${(() => {
+              const dmvTotalPages = Math.max(1, Math.ceil(filteredFleet.length / GOV_PAGE_SIZE));
+              if (dmvPage > dmvTotalPages) dmvPage = dmvTotalPages;
+              const dmvStart = (dmvPage - 1) * GOV_PAGE_SIZE;
+              const pagedDmvFleet = filteredFleet.slice(dmvStart, dmvStart + GOV_PAGE_SIZE);
+              return `
             <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(320px, 1fr)); gap:12px;">
-              ${filteredFleet.length === 0 ? `
+              ${pagedDmvFleet.length === 0 ? `
                 <div style="grid-column:1/-1; background:#0b0f19; border:1px solid #1e293b; border-radius:10px; padding:32px; text-align:center; color:var(--mu);">
                   <div style="font-size:24px; margin-bottom:8px;">✅</div>
                   <div style="font-size:12px; font-weight:800; color:var(--tx);">No Vehicles Match Active Filter</div>
                   <div style="font-size:10px; margin-top:4px;">All company transport vehicles are compliant for this filter.</div>
                 </div>
-              ` : filteredFleet.map((truck: any) => {
+              ` : pagedDmvFleet.map((truck: any) => {
                 const model = TRUCK_MODELS[truck.modelId] || TRUCK_MODELS['scania_s730'];
                 const code = getTruckCode(truck);
                 const regInfo = getTruckRegistrationStatus(truck);
@@ -336,11 +355,8 @@ export default {
                           📝 REGISTER VEHICLE & ISSUE OFFICIAL PLATE ($${(GOV_FEES.REGISTRATION / 1000).toFixed(1)}k)
                         </button>
                       ` : `
-                        <button class="btn ${truck.taxExpiresAt && now > truck.taxExpiresAt ? 'gold' : 'alt'}" style="padding:6px; font-size:8px; font-weight:800;" data-act="renew-truck-tax" data-id="${truck.id}">
+                        <button class="btn ${truck.taxExpiresAt && now > truck.taxExpiresAt ? 'gold' : 'alt'}" style="grid-column:1/-1; padding:6px; font-size:8px; font-weight:800;" data-act="renew-truck-tax" data-id="${truck.id}">
                           💳 RENEW TAX ($${(GOV_FEES.ROAD_TAX / 1000).toFixed(1)}k)
-                        </button>
-                        <button class="btn ${truck.inspectionExpiresAt && now > truck.inspectionExpiresAt ? 'gold' : 'alt'}" style="padding:6px; font-size:8px; font-weight:800;" data-act="inspect-truck-safety" data-id="${truck.id}">
-                          🔍 SAFETY TEST ($${GOV_FEES.INSPECTION.toLocaleString()})
                         </button>
                       `}
                     </div>
@@ -349,46 +365,16 @@ export default {
                 `;
               }).join('')}
             </div>
+            ${dmvTotalPages > 1 ? `
+              <div style="display:flex; justify-content:space-between; align-items:center; background:#090d16; border:1px solid #1e293b; border-radius:8px; padding:8px 12px;">
+                <button type="button" class="btn alt" style="padding:5px 12px; font-size:9px; font-weight:800;" data-act="gov-dmv-prev" ${dmvPage <= 1 ? 'disabled' : ''}>← Prev</button>
+                <span style="font-size:10px; color:var(--mu); font-family:monospace;">Page <b style="color:var(--tx);">${dmvPage}</b> of <b style="color:var(--tx);">${dmvTotalPages}</b> (${filteredFleet.length} units)</span>
+                <button type="button" class="btn alt" style="padding:5px 12px; font-size:9px; font-weight:800;" data-act="gov-dmv-next" ${dmvPage >= dmvTotalPages ? 'disabled' : ''}>Next →</button>
+              </div>
+            ` : ''}
+            `;
+            })()}
 
-          </div>
-        ` : activeDept === 'safety' ? `
-          <!-- 2. DOT SAFETY & TÜV TECHNICAL BOARD -->
-          <div style="background:#090d16; border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px;">
-            <h3 style="font-size:14px; font-weight:900; color:var(--tx); margin:0 0 4px 0;">🔍 DOT COMMERCIAL SAFETY & TÜV INSPECTION BOARD</h3>
-            <p style="font-size:10px; color:var(--mu); margin:0 0 16px 0;">Mandatory Annual Component Safety, Emissions & Brake Systems Testing</p>
-
-            <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:12px;">
-              ${fleet.map((t: any) => {
-                const code = getTruckCode(t);
-                const comps = Object.values(t.components || {}) as any[];
-                const totalH = comps.reduce((acc, c) => acc + (c?.health ?? 100), 0);
-                const avgHealth = comps.length > 0 ? totalH / comps.length : 100;
-                const passed = avgHealth >= 65;
-
-                return `
-                  <div style="background:#05080f; border:1px solid #1e293b; border-radius:8px; padding:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                      <span style="font-size:12px; font-weight:900; color:var(--gold); font-family:monospace;">${code}</span>
-                      <span style="font-size:8px; padding:2px 6px; border-radius:3px; font-weight:900; font-family:monospace; background:${passed ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)'}; color:${passed ? 'var(--grn)' : '#ef4444'};">
-                        ${passed ? 'ROADWORTHY' : 'REPAIR REQUIRED'}
-                      </span>
-                    </div>
-
-                    <div style="font-size:9px; color:var(--mu); margin-top:4px;">
-                      Overall Component Health: <b style="color:var(--tx);">${avgHealth.toFixed(1)}%</b> (Min 65% Required)
-                    </div>
-
-                    <div style="width:100%; height:4px; background:#1e293b; border-radius:2px; margin:6px 0; overflow:hidden;">
-                      <div style="width:${Math.min(100, avgHealth)}%; height:100%; background:${passed ? 'var(--grn)' : '#ef4444'};"></div>
-                    </div>
-
-                    <button class="btn ${passed ? 'alt' : 'gold'}" style="width:100%; padding:6px; font-size:8px; font-weight:800; margin-top:4px;" data-act="inspect-truck-safety" data-id="${t.id}">
-                      🔍 RUN ANNUAL SAFETY INSPECTION ($${GOV_FEES.INSPECTION.toLocaleString()})
-                    </button>
-                  </div>
-                `;
-              }).join('')}
-            </div>
           </div>
         ` : activeDept === 'customs' ? (() => {
           const hasEzPass = Boolean(S.ezPass && (!S.ezPassExpiresAt || now <= S.ezPassExpiresAt));

@@ -1,12 +1,12 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { VehicleMaintenance, THIRD_PARTY_REPAIR_SURCHARGE } from './maintenance';
+import { VehicleMaintenance, THIRD_PARTY_REPAIR_SURCHARGE, PART_BASE_PRICES } from './maintenance';
 import { createTruck } from './trucks.physics';
 import { advanceJourney } from './trucks.journey';
 import { TRUCK_MODELS } from './trucks.data';
 
 describe('Maintenance, Workshop Location & Live Fluid Consumption', () => {
-  it('applies +40% 3rd-party dealer surcharge and blocks HQ stock outside owned hubs', () => {
+  it('applies +25% 3rd-party dealer surcharge and blocks HQ stock outside owned hubs', () => {
     const truck = createTruck(1, 'scania_s730', 'Scania 1', 'IBADAN'); // Not owned hub
     truck.components.brakes.health = 50;
 
@@ -29,7 +29,7 @@ describe('Maintenance, Workshop Location & Live Fluid Consumption', () => {
 
     const remoteEff = VehicleMaintenance.getPartEffectiveCost(state, truck, 'brakes');
     assert.equal(remoteEff.fromInventory, false);
-    assert.equal(remoteEff.cost, Math.round(3500 * 0.5 * THIRD_PARTY_REPAIR_SURCHARGE));
+    assert.equal(remoteEff.cost, Math.round(PART_BASE_PRICES.brakes * 0.5 * THIRD_PARTY_REPAIR_SURCHARGE));
 
     // Move truck to owned hub LAGOS -> 1.0x cost and HQ warehouse stock applies
     truck.loc = 'LAGOS';
@@ -39,7 +39,8 @@ describe('Maintenance, Workshop Location & Live Fluid Consumption', () => {
 
     const hubEff = VehicleMaintenance.getPartEffectiveCost(state, truck, 'brakes');
     assert.equal(hubEff.fromInventory, true);
-    assert.equal(hubEff.cost, Math.round(3500 * 0.5 * 0.15));
+    const expectedBase = PART_BASE_PRICES.brakes * 0.5;
+    assert.equal(hubEff.cost, Math.min(150, Math.max(25, Math.round(expectedBase * 0.08))));
   });
 
   it('restores oil to model oilCapacity (not 100L) and records maintenance transaction', () => {
@@ -61,8 +62,8 @@ describe('Maintenance, Workshop Location & Live Fluid Consumption', () => {
 
     const err = VehicleMaintenance.startRepair(state, 2, ['oil']);
     assert.equal(err, null);
-    assert.equal(state.money, 20000 - 150);
-    assert.equal(state.dailyStats.maintenance, 150);
+    assert.equal(state.money, 20000 - PART_BASE_PRICES.oil);
+    assert.equal(state.dailyStats.maintenance, PART_BASE_PRICES.oil);
 
     const rep = state.repairs[0];
     VehicleMaintenance.completeRepairs(state, rep.end + 100);

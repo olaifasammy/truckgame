@@ -5,6 +5,7 @@ import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { PART_LABELS } from '../systems/calc';
 import { LOCATIONS, RegionName, resolveTruckRegion } from '../data/world';
 import { renderDiagnosticTable } from './repair/diagnostic-table';
+import { renderUpgradesAndConsumablesPanel } from './repair/upgrades-panel';
 import { VehicleMaintenance } from '../domain/trucks/maintenance';
 import { calculateRepairDurationMs, getPartEffectiveCost, startRepair } from '../systems/maintenance';
 import { FleetService } from '../application/services/fleet';
@@ -434,6 +435,7 @@ export default {
                 })()}
               `}
             </div>
+            ${renderUpgradesAndConsumablesPanel(S, truck, TRUCK_MODELS[truck.modelId])}
           `}
         ` : `
           <!-- TAB 3: ACTIVE REPAIR BAY QUEUE -->

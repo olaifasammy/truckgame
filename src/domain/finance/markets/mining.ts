@@ -505,7 +505,16 @@ export function processMiningTick(S: any, elapsedMs: number) {
   }
 
   if (totalPowerCostUSD > 0) {
-    recordTransaction(S, 'expense_fuel', -totalPowerCostUSD, `Crypto Data Center Electricity & Power Draw`);
+    S.mining.accruedPowerCostUSD = (S.mining.accruedPowerCostUSD || 0) + totalPowerCostUSD;
+    S.mining.accruedPowerDays = (S.mining.accruedPowerDays || 0) + daysElapsed;
+    if (S.mining.accruedPowerDays >= 1) {
+      const billAmt = Math.round(S.mining.accruedPowerCostUSD);
+      S.mining.accruedPowerCostUSD = 0;
+      S.mining.accruedPowerDays = 0;
+      if (billAmt > 0) {
+        recordTransaction(S, 'expense_other', -billAmt, `Daily Crypto Data Center Electricity & Power Draw`);
+      }
+    }
   }
 }
 

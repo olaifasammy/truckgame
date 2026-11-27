@@ -20,7 +20,7 @@ export interface AiSubscriptionPlan {
 }
 
 export interface AiAddonPlan {
-  id: 'maintenance' | 'offline_dispatch' | 'quant_trader';
+  id: 'maintenance' | 'offline_dispatch' | 'quant_trader' | 'executive_autopilot';
   label: string;
   priceUsd: number;
   priceFlb: number;
@@ -70,6 +70,8 @@ export interface AiState {
   offlineExpiresTimestamp: number;
   quantTraderActive: boolean;
   quantTraderExpiresTimestamp: number;
+  executiveAutopilotActive: boolean;
+  executiveExpiresTimestamp: number;
   filters: AiFilterConfig;
   logs: AiLogEntry[];
   totalDispatchedCount: number;

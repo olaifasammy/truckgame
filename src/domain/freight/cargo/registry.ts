@@ -5,6 +5,15 @@ export const CARGO_TYPES: CargoType[] = [
   { id: 'electronics', name: 'High-End Electronics', icon: 'cpu', trailer: 'curtain', baseValue: 16.5, density: 250, isFragile: true },
   { id: 'furniture', name: 'Office Furniture', icon: 'home', trailer: 'curtain', baseValue: 4.2, density: 180 },
   { id: 'clothing', name: 'Apparel & Textiles', icon: 'layers', trailer: 'curtain', baseValue: 3.8, density: 150 },
+
+  // Box Dry Van
+  { id: 'packaged_fmcg', name: 'Packaged Consumer Goods', icon: 'box', trailer: 'box', baseValue: 5.8, density: 280 },
+  { id: 'parcel_express', name: 'Express Parcel & Postal Freight', icon: 'box', trailer: 'box', baseValue: 8.4, density: 210, isFragile: true },
+  { id: 'ambient_pharma', name: 'Ambient Medical & Hygiene Supplies', icon: 'shield', trailer: 'box', baseValue: 11.2, density: 240, isFragile: true },
+
+  // Auto Car Transporter (Carrier)
+  { id: 'passenger_cars', name: 'New Passenger Sedans & Hatchbacks', icon: 'truck', trailer: 'carrier', baseValue: 17.5, density: 320, isFragile: true },
+  { id: 'commercial_vans', name: 'Light Commercial Vans & SUVs', icon: 'truck', trailer: 'carrier', baseValue: 19.0, density: 360, isFragile: true },
   
   // Temperature Controlled
   { id: 'frozen_fish', name: 'Frozen Seafood', icon: 'snowflake', trailer: 'reefer', baseValue: 10.5, density: 600, tempControlled: true },
@@ -14,9 +23,12 @@ export const CARGO_TYPES: CargoType[] = [
   // Industrial / Flatbed / Lowboy
   { id: 'excavator', name: 'Caterpillar 320', icon: 'anchor', trailer: 'lowboy', baseValue: 26.0, density: 2000 },
   { id: 'steel_pipes', name: 'Structural Steel', icon: 'layers', trailer: 'flatbed', baseValue: 15.0, density: 7800 },
+  { id: 'timber_lumber', name: 'Processed Timber & Lumber', icon: 'layers', trailer: 'flatbed', baseValue: 7.4, density: 650 },
   { id: 'wind_blade', name: 'Turbine Blade', icon: 'wind', trailer: 'lowboy', baseValue: 32.0, density: 500, isFragile: true },
 
-  // Hazardous / Tanker
+  // Foodgrade & Hazardous / Tanker
+  { id: 'foodgrade_oil', name: 'Refined Edible & Vegetable Oil', icon: 'droplet', trailer: 'tanker', baseValue: 9.2, density: 920 },
+  { id: 'bulk_dairy', name: 'Chilled Bulk Dairy & Milk', icon: 'droplet', trailer: 'tanker', baseValue: 8.6, density: 1030 },
   { id: 'gasoline', name: 'Premium Gasoline', icon: 'fuel', trailer: 'tanker', baseValue: 13.0, density: 750, isHazmat: true, adrClass: 3 },
   { id: 'liquid_oxy', name: 'Liquid Oxygen', icon: 'droplet', trailer: 'tanker', baseValue: 19.5, density: 1140, isHazmat: true, adrClass: 2 },
   { id: 'toxic_waste', name: 'Chemical Waste', icon: 'shield', trailer: 'hazmat', baseValue: 24.0, density: 1200, isHazmat: true, adrClass: 6 },
@@ -27,7 +39,9 @@ export const CARGO_TYPES: CargoType[] = [
 
   // Long Combination Vehicle (Double Trailer LCV) & Container
   { id: 'consumer_lcv', name: 'Double-Trailer FMCG Retail Freight', icon: 'box', trailer: 'double_trailer', baseValue: 9.5, density: 220 },
+  { id: 'lcv_superstore_stock', name: 'Superstore B-Train Palletized Stock', icon: 'box', trailer: 'double_trailer', baseValue: 10.2, density: 260 },
   { id: 'intermodal_box', name: 'Intermodal 40ft Maritime Container', icon: 'box', trailer: 'container', baseValue: 8.0, density: 600 },
+  { id: 'port_import_box', name: 'Port Import General Cargo Container', icon: 'box', trailer: 'container', baseValue: 11.8, density: 450 },
   { id: 'heavy_transformer', name: '45-Tonne Electrical Substation Transformer', icon: 'zap', trailer: 'lowboy', baseValue: 36.0, density: 2800, isFragile: true },
 
   // Specialized Ultra-High-Value Contracts (For High VIP Bidding)

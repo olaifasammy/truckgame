@@ -75,10 +75,12 @@ export function getDispatchEligibilityError(
   }
 
   // 2.2 Hub-to-Hub Corridor Distance Limit (Strategy: 1500km feeder / 2800km trunk)
+  // For round-trip turnarounds, validate the one-way corridor distance rather than doubled total km.
   const isHubToHub = isOwnedOriginHub && isCityUnlockedHub(state, job.to);
   const distanceLimit = isHubToHub ? 2800 : 1500;
-  if (job.km > distanceLimit) {
-    return `Route distance (${job.km}km) exceeds ${isHubToHub ? 'Inter-Hub Trunk' : 'Feeder'} limit (${distanceLimit}km).`;
+  const corridorKm = job.isRoundTrip ? Math.round(job.km / 2) : job.km;
+  if (corridorKm > distanceLimit) {
+    return `Corridor distance (${corridorKm}km one-way) exceeds ${isHubToHub ? 'Inter-Hub Trunk' : 'Feeder'} limit (${distanceLimit}km).`;
   }
 
   // 3. Cross-Continental Boundary Check (Constitution 6.4)

@@ -1,7 +1,10 @@
 export const $ = (id: string): HTMLElement | null => document.getElementById(id);
 
 export const fmt = Object.assign(
-  (n: number): string => '$' + Math.round(n).toLocaleString(),
+  (n: number): string => {
+    const safe = typeof n === 'number' && Number.isFinite(n) ? n : 0;
+    return '$' + Math.round(safe).toLocaleString();
+  },
   {
     time: (at: number): string => {
       const d = new Date(at);

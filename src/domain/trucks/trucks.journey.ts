@@ -1,5 +1,5 @@
 import { TRUCK_MODELS } from './trucks.data';
-import { calculateMechanicalLimits, DRIVER_TRAITS, fuelPer100km } from '../simulation/physics';
+import { calculateMechanicalLimits, DRIVER_TRAITS, fuelPer100km, applyContinuousWear, deterministicRoll } from '../simulation/physics';
 import { evaluateRoadEvents, RoadIncident } from '../simulation/road-events';
 import { TRAIT_REGISTRY } from '../drivers/drivers.names';
 import { resolveTruckRegion } from '../../data/world';
@@ -100,7 +100,8 @@ function mechFor(a: any, truck: any, stage: Stage, gradePct: number, now?: numbe
     cargoWeightKg: cargoKg,
     gradientPct: gradePct,
     weatherCoeff: weatherCoeff(a),
-    trailerType: isRepositioning(a) ? undefined : truck?.trailer
+    trailerType: isRepositioning(a) ? undefined : truck?.trailer,
+    roadType: a.env?.terrain
   };
   return { ctx, mech: calculateMechanicalLimits(truck, ctx) };
 }
@@ -121,8 +122,9 @@ export function cruiseTarget(a: any, truck: any, driver: any, mech: { maxAttaina
 }
 
 function fatigueRate(driver: any): number {
-  const def = driver?.trait ? (TRAIT_REGISTRY as any)[driver.trait] : null;
-  return FATIGUE_PER_SIM_HOUR * (1 + (def?.effect?.fatigueMod || 0));
+  const trait = (driver?.trait || 'STANDARD') as keyof typeof DRIVER_TRAITS;
+  const cfg = DRIVER_TRAITS[trait] || DRIVER_TRAITS.STANDARD;
+  return FATIGUE_PER_SIM_HOUR * (cfg.fatigueMod || 1.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -389,11 +391,22 @@ function stepDrive(a: any, truck: any, driver: any, now: number, dt: number, hoo
     decel = (v0 - v1) / dtS;
   }
 
+  // ---- speed stability jitter (Phase 2: fatigue effect)
+  const fatigue = driver?.fatigue || 0;
+  if (fatigue > 60 && limiter === 'cruise') {
+    const seed = (a.jobId || 0) + Math.floor(now / 5000);
+    const noise = (deterministicRoll(seed) - 0.5) * ((fatigue - 50) / 50) * 12; // ±6 km/h at 100% fatigue
+    v1 = Math.max(15, v1 + noise);
+  }
+
   // ---- distance
   let dKm = ((v0 + v1) / 2) * (dt / SIM_HOUR_MS);
   let arrived = false;
   if (dKm >= rem || rem - dKm < 0.02) { dKm = rem; arrived = true; }
   if (isDh) a.dhTravelled = done0 + dKm; else a.kmTravelled = done0 + dKm;
+
+  // ---- continuous mechanical wear (Phase 2)
+  applyContinuousWear(truck, dKm, mech.wearRateMod, cfg.wearMod);
 
   // ---- fuel & live fluids: burn diesel + AdBlue (DEF), oil, coolant & transmission fluid per km
   const per100 = fuelPer100km(truck, ctx, (v0 + v1) / 2) * (cfg.fuelBurnMod || 1);

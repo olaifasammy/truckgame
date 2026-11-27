@@ -5,23 +5,31 @@ import { REGIONAL_HUBS } from '../logistics/network';
 import { TRUCK_MODELS } from './trucks.data';
 import { recordTransaction } from '../../core/ledger';
 
-export const CONSUMABLES_SERVICE_COST = 450;
-export const THIRD_PARTY_REPAIR_SURCHARGE = 1.40; // +40% mobile mechanic / outside dealer markup
+export const CONSUMABLES_SERVICE_COST = 350;
+export const THIRD_PARTY_REPAIR_SURCHARGE = 1.25; // +25% mobile mechanic / outside dealer markup
 export const THIRD_PARTY_DURATION_MULT = 1.25;
+export const WHOLESALE_PART_DISCOUNT = 0.55; // 45% off retail when stocked in HQ warehouse
+export const WHOLESALE_BULK_DISCOUNT = 0.45; // 55% off retail for bulk 4-pack orders
+
+export function getWholesalePartPrice(partKey: string, qty = 1): number {
+  const retail = PART_BASE_PRICES[partKey] || 500;
+  const mult = qty >= 4 ? WHOLESALE_BULK_DISCOUNT : WHOLESALE_PART_DISCOUNT;
+  return Math.max(25, Math.round(retail * mult));
+}
 
 export const PART_BASE_PRICES: Record<string, number> = {
-  engine: 15000,
-  transmission: 8000,
-  brakes: 3500,
-  tires: 2500,
-  windshield: 1200,
-  oilFilter: 400,
-  fuelFilter: 500,
-  airFilter: 350,
-  suspension: 5000,
-  oil: 150,
-  coolant: 100,
-  adBlue: 200
+  engine: 11500,
+  transmission: 6200,
+  brakes: 2700,
+  tires: 1950,
+  windshield: 900,
+  oilFilter: 300,
+  fuelFilter: 380,
+  airFilter: 270,
+  suspension: 3800,
+  oil: 120,
+  coolant: 80,
+  adBlue: 150
 };
 
 export interface RepairFacilityInfo {
@@ -185,7 +193,7 @@ export const VehicleMaintenance = {
     retailCost = Math.round(basePartCost * facility.costMultiplier);
 
     if (stock > 0) {
-      const laborOnlyCost = Math.round(basePartCost * 0.15);
+      const laborOnlyCost = Math.min(150, Math.max(25, Math.round(basePartCost * 0.08)));
       return { cost: laborOnlyCost, retailCost, fromInventory: true };
     }
     return { cost: retailCost, retailCost, fromInventory: false };

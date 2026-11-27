@@ -13,6 +13,10 @@ const INSURANCE_POLICIES: any = {
   cargo: { dailyCost: 310 }
 };
 
+function getUtcDateKey(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10);
+}
+
 /**
  * Authoritative economic simulation engine.
  * Following Engineering Constitution Section 6.3 (Economic Simulation).
@@ -26,6 +30,55 @@ export const EconomySimulation = {
     if (!S.lastTick) S.lastTick = now;
     const elapsedMs = now - S.lastTick;
     if (elapsedMs <= 0) return;
+
+    const todayKey = getUtcDateKey(now);
+    if (!S.dailyAccountingDate) {
+      S.dailyAccountingDate = todayKey;
+    } else if (S.dailyAccountingDate !== todayKey) {
+      const ds = S.dailyStats || { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
+      const revenue = Math.round(ds.revenue || 0);
+      const fuel = Math.round(ds.fuel || 0);
+      const salaries = Math.round(ds.salaries || 0);
+      const maintenance = Math.round(ds.maintenance || 0);
+      const insurance = Math.round(ds.insurance || 0);
+      const loans = Math.round(ds.loans || 0);
+      const parking = Math.round(ds.parking || 0);
+      const leases = Math.round(ds.leases || 0);
+      const overdraftInterest = Math.round(ds.overdraftInterest || 0);
+      const tolls = Math.round(ds.tolls || 0);
+      const totalExpenses = fuel + salaries + maintenance + insurance + loans + parking + leases + overdraftInterest + tolls;
+
+      if (!Array.isArray(S.dailyHistory)) S.dailyHistory = [];
+      S.dailyHistory.unshift({
+        date: S.dailyAccountingDate,
+        revenue,
+        fuel,
+        salaries,
+        maintenance,
+        insurance,
+        loans,
+        parking,
+        leases,
+        overdraftInterest,
+        tolls,
+        net: revenue - totalExpenses
+      });
+      if (S.dailyHistory.length > 30) S.dailyHistory.length = 30;
+
+      S.dailyStats = {
+        revenue: 0,
+        salaries: 0,
+        fuel: 0,
+        maintenance: 0,
+        insurance: 0,
+        loans: 0,
+        parking: 0,
+        leases: 0,
+        overdraftInterest: 0,
+        tolls: 0
+      };
+      S.dailyAccountingDate = todayKey;
+    }
 
     const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -117,22 +170,49 @@ export const EconomySimulation = {
       : 0;
 
     const periodInflow = Math.round(dailyInflow * daysElapsedActual);
-    const periodSalaries = Math.round(dailySalaries * daysElapsedActual);
     const periodInsurance = Math.round(dailyInsurance * daysElapsedActual);
     const periodParking = Math.round(dailyParking * daysElapsedActual);
     const periodLeases = Math.round(dailyLeaseCost * daysElapsedActual);
     const periodOverdraftInterest = Math.round(dailyOverdraftInterest * daysElapsedActual);
-    const netPeriod = periodInflow - periodSalaries - periodInsurance - periodParking - periodLeases - periodOverdraftInterest;
+    const netPeriod = periodInflow - periodInsurance - periodParking - periodLeases - periodOverdraftInterest;
 
-    if (netPeriod !== 0 || periodInflow !== 0 || periodSalaries !== 0 || periodInsurance !== 0 || periodParking !== 0 || periodLeases !== 0 || periodOverdraftInterest !== 0) {
+    if (netPeriod !== 0 || periodInflow !== 0 || periodInsurance !== 0 || periodParking !== 0 || periodLeases !== 0 || periodOverdraftInterest !== 0) {
       S.money = S.money + netPeriod;
       if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
       if (periodInflow > 0) S.dailyStats.revenue += periodInflow;
-      if (periodSalaries > 0) S.dailyStats.salaries += periodSalaries;
       if (periodInsurance > 0) S.dailyStats.insurance += periodInsurance;
       if (periodParking > 0) S.dailyStats.parking = (S.dailyStats.parking || 0) + periodParking;
       if (periodLeases > 0) S.dailyStats.leases = (S.dailyStats.leases || 0) + periodLeases;
       if (periodOverdraftInterest > 0) S.dailyStats.overdraftInterest = (S.dailyStats.overdraftInterest || 0) + periodOverdraftInterest;
+    }
+
+    // 4e. Weekly Staff Payroll Accrual & End-of-Week Settlement (Every 7 simulation days)
+    if (dailySalaries > 0) {
+      S.accruedPayroll = (S.accruedPayroll || 0) + (dailySalaries * daysElapsedActual);
+    }
+    S.payrollWeekDays = (S.payrollWeekDays || 0) + daysElapsedActual;
+    if (S.payrollWeekDays >= 7) {
+      S.payrollWeekDays = S.payrollWeekDays % 7;
+      const weeklyPayroll = Math.round(S.accruedPayroll || 0);
+      S.accruedPayroll = 0;
+      if (weeklyPayroll > 0) {
+        if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
+        S.money -= weeklyPayroll;
+        S.dailyStats.salaries = (S.dailyStats.salaries || 0) + weeklyPayroll;
+        if (!Array.isArray(S.ledger)) S.ledger = [];
+        S.ledger.push({
+          id: `tx-payroll-${now}-${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: now,
+          category: 'expense_payroll',
+          amount: -weeklyPayroll,
+          description: `Weekly Staff Payroll (${(S.drivers || []).length} drivers)`
+        });
+        if (S.ledger.length > 200) S.ledger.shift();
+        pushNote(S, `💼 Weekly Staff Payroll settled: -$${weeklyPayroll.toLocaleString()} for ${(S.drivers || []).length} driver(s).`, {
+          title: 'WEEKLY PAYROLL',
+          type: 'finance'
+        });
+      }
     }
 
     // 5. Driver Lifecycle: Stress recovery, burnout drain & idle resignations

@@ -15,6 +15,7 @@ export interface GameState {
   trailers?: string[];
   repairs?: any[];
   jobs?: any[];
+  hubJobs?: Record<string, any[]>;
   depots?: string[];
   hubFacilities?: Record<string, any>;
   repairTruckId?: number | null;

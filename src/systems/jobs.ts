@@ -25,6 +25,7 @@ export const fuelCost = (job: { km: number, weight: number }, truck?: Truck) =>
   OperatingCosts.calculateFuelCost(job.km, job.weight, truck);
 
 export const replenish = (S: GameState) => FreightEngine.replenish(S);
+export const replenishHub = (S: GameState, hubId: string, count?: number) => FreightEngine.replenishHub(S, hubId, count);
 export const makeJob = (S: GameState, vip = false) => FreightEngine.generate(S, { vip });
 
 export const recallTruck = (S: GameState, truckId: number) => 

@@ -15,7 +15,7 @@ import { processPendingFuelDeliveries } from '../hubs/hub-facility';
 import { advanceJourney } from '../trucks/trucks.journey';
 import { settleExpiredTenders, tenderLoadsDue } from '../contracts/tenders';
 import { onTruckArrival } from '../../systems/fleet';
-import { runAiAutoDispatch, runAiFleetMaintenance } from '../ai/ai.engine';
+import { runAiAutoDispatch, runAiFleetMaintenance, runAiExecutiveStrategy } from '../ai/ai.engine';
 import { runAiCryptoTradingTick } from '../ai/ai.quant';
 import { AI_SUBSCRIPTION_PLANS } from '../ai/ai.config';
 import { pushNote } from '../../systems/notify';
@@ -188,6 +188,13 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
     st.jobs = st.jobs.filter((j: any) => !j.deadline || j.deadline > now || j.tenderId || j.isAuctionWon);
   }
 
+  // Purge expired hub jobs
+  if (st.hubJobs) {
+    Object.keys(st.hubJobs).forEach(hubId => {
+      st.hubJobs[hubId] = st.hubJobs[hubId].filter((j: any) => !j.deadline || j.deadline > now || j.tenderId || j.isAuctionWon);
+    });
+  }
+
   // EMERGENCY CLEANUP: If the board is overwhelmed (e.g. from legacy state or bugs), 
   // truncate it immediately to maintain performance and UI sanity.
   if (st.jobs && st.jobs.length > 20) {
@@ -315,6 +322,16 @@ export function executeSimulationStep(st: any, now: number): SimulationTickResul
       maintCount = runAiFleetMaintenance(st) || 0;
     } catch (e) {
       console.error('Simulation: Fleet Maintenance error', e);
+    }
+  }
+
+  // AI Executive Strategy Engine: Autonomous Company Operations
+  const isExecActive = !!(st.aiState?.executiveAutopilotActive && now < (st.aiState?.executiveExpiresTimestamp || 0));
+  if (isExecActive) {
+    try {
+      runAiExecutiveStrategy(st);
+    } catch (e) {
+      console.error('Simulation: AI Executive Strategy error', e);
     }
   }
 

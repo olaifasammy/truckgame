@@ -25,6 +25,7 @@ let showSubscriptionModal: boolean = false;
 let includeMaintenance: boolean = true;
 let includeOfflineDispatch: boolean = true;
 let includeQuantTrader: boolean = false;
+let includeExecutiveAutopilot: boolean = false;
 let autoRenew: boolean = true;
 let allowExtension: boolean = false;
 
@@ -133,13 +134,18 @@ action('ai-toggle-extension', () => {
   refresh();
 });
 
+action('ai-toggle-executive', () => {
+  includeExecutiveAutopilot = !includeExecutiveAutopilot;
+  refresh();
+});
+
 action('ai-checkout-usd', () => {
-  const success = activateAiSuiteSystem(selectedPlan as any, false, includeMaintenance, includeOfflineDispatch, includeQuantTrader, autoRenew, allowExtension);
+  const success = activateAiSuiteSystem(selectedPlan as any, false, includeMaintenance, includeOfflineDispatch, includeQuantTrader, autoRenew, allowExtension, includeExecutiveAutopilot);
   if (success) refresh();
 });
 
 action('ai-checkout-flb', () => {
-  const success = activateAiSuiteSystem(selectedPlan as any, true, includeMaintenance, includeOfflineDispatch, includeQuantTrader, autoRenew, allowExtension);
+  const success = activateAiSuiteSystem(selectedPlan as any, true, includeMaintenance, includeOfflineDispatch, includeQuantTrader, autoRenew, allowExtension, includeExecutiveAutopilot);
   if (success) refresh();
 });
 
@@ -230,20 +236,26 @@ export default {
     const maintBase = addons?.maintenance || { priceUsd: 0, priceFlb: 0 };
     const offlineBase = addons?.offline_dispatch || { priceUsd: 0, priceFlb: 0 };
     const quantBase = addons?.quant_trader || { priceUsd: 0, priceFlb: 0 };
+    const execBase = addons?.executive_autopilot || { priceUsd: 0, priceFlb: 0 };
 
     const maintCost = includeMaintenance ? maintBase : { priceUsd: 0, priceFlb: 0 };
     const offlineCost = includeOfflineDispatch ? offlineBase : { priceUsd: 0, priceFlb: 0 };
     const quantCost = includeQuantTrader ? quantBase : { priceUsd: 0, priceFlb: 0 };
+    const execCost = includeExecutiveAutopilot ? execBase : { priceUsd: 0, priceFlb: 0 };
 
-    const totalUsd = currentPlan.priceUsd + maintCost.priceUsd + offlineCost.priceUsd + quantCost.priceUsd;
-    const totalFlb = currentPlan.priceFlb + maintCost.priceFlb + offlineCost.priceFlb + quantCost.priceFlb;
+    const totalUsd = currentPlan.priceUsd + maintCost.priceUsd + offlineCost.priceUsd + quantCost.priceUsd + execCost.priceUsd;
+    const totalFlb = currentPlan.priceFlb + maintCost.priceFlb + offlineCost.priceFlb + quantCost.priceFlb + execCost.priceFlb;
 
     const playerFlb = (S.cryptoHoldings && S.cryptoHoldings['flb']) || S.coins || 0;
     const canAffordUsd = (S.money || 0) >= totalUsd;
     const canAffordFlb = playerFlb >= totalFlb;
 
     const idleTrucks = (S.fleet || []).filter((t: any) => t.status === 'idle' && t.driverId);
-    const availableJobs = S.jobs || [];
+    const allHubJobs = S.hubJobs
+      ? (Object.values(S.hubJobs) as any[][]).flat().filter(Boolean)
+      : [];
+    const availableJobs = [...allHubJobs, ...(S.jobs || [])];
+    const availableJobsCount = availableJobs.length;
 
     return `
       <div class="ai-view">
@@ -279,7 +291,7 @@ export default {
             </div>
             <div class="ai-stat-box">
               <span class="ai-stat-lbl">Fleet / Jobs</span>
-              <span class="ai-stat-val">${idleTrucks.length} Units / ${availableJobs.length} Jobs</span>
+              <span class="ai-stat-val">${idleTrucks.length} Units / ${availableJobsCount} Jobs</span>
             </div>
           </div>
         </div>
@@ -319,7 +331,7 @@ export default {
 
             <div style="font-size:11px; color:var(--mu); line-height:1.4;">
               ${isEngineRunning
-                ? 'The Neural Core automatically evaluates state.jobs on every simulation tick, dispatching idle fleet units based on your active optimization profile.'
+                ? 'The Neural Core automatically evaluates all Hub Freight Boards & VIP contracts on every simulation tick, dispatching idle fleet units based on your active optimization profile.'
                 : isSubActive
                 ? 'Continuous background dispatching is paused. Resume engine to start automatic fleet matching.'
                 : 'Subscribe to an AI Corporate License to activate continuous automated freight dispatch.'}
@@ -870,6 +882,18 @@ export default {
                 <div style="text-align:right;">
                   <div style="font-size:11px; font-weight:800; color:var(--grn);">+$${quantBase.priceUsd.toLocaleString()}</div>
                   <div style="font-size:9px; color:var(--gold);">${quantBase.priceFlb} FLB</div>
+                </div>
+              </div>
+
+              <div class="ai-toggle-row-complex ${includeExecutiveAutopilot ? 'active' : ''}" data-act="ai-toggle-executive">
+                <input type="checkbox" ${includeExecutiveAutopilot ? 'checked' : ''} style="pointer-events:none;" />
+                <div style="flex:1;">
+                  <div style="color:var(--tx); font-weight:800; font-size:11px;">AI Executive Co-Pilot</div>
+                  <div style="font-size:10px; color:var(--mu);">Autonomous company expansion</div>
+                </div>
+                <div style="text-align:right;">
+                  <div style="font-size:11px; font-weight:800; color:var(--grn);">+$${execBase.priceUsd.toLocaleString()}</div>
+                  <div style="font-size:9px; color:var(--gold);">${execBase.priceFlb} FLB</div>
                 </div>
               </div>
 

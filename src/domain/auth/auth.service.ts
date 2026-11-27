@@ -3,6 +3,7 @@ import { UserAccount } from './auth.types';
 import { pushNote } from '../../systems/notify';
 import { getWelcomeMessage } from '../notifications/templates/welcome';
 import { REGIONAL_HUBS } from '../logistics/network';
+import { db } from '../../db/db';
 
 const ACCOUNTS_KEY = 'sam.accounts.v1';
 
@@ -25,6 +26,11 @@ export function saveAccount(account: UserAccount) {
     accounts.push(account);
   }
   localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+  if (typeof indexedDB !== 'undefined') {
+    try {
+      (db as any).state.put({ id: 'accounts', list: accounts }).catch(() => {});
+    } catch {}
+  }
 }
 
 export const authService = {
@@ -32,11 +38,22 @@ export const authService = {
     // Simulate network delay
     await new Promise(r => setTimeout(r, 800));
     
-    const accounts = getAccounts();
+    let accounts = getAccounts();
+    if (accounts.length === 0 && typeof indexedDB !== 'undefined') {
+      try {
+        const backup = await (db as any).state.get('accounts');
+        if (backup && Array.isArray(backup.list) && backup.list.length > 0) {
+          accounts = backup.list;
+          localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(accounts));
+        }
+      } catch {}
+    }
+
     const query = username.trim().toLowerCase();
-    const account = accounts.find(a => a.username.toLowerCase() === query);
+    const cleanPass = pass.trim();
+    const account = accounts.find(a => a.username.trim().toLowerCase() === query);
     
-    if (account && account.passwordHash === pass) {
+    if (account && account.passwordHash.trim() === cleanPass) {
       set(s => {
         s.isAuthenticated = true;
         s.company = account.companyName || s.company;
@@ -49,21 +66,23 @@ export const authService = {
   async register(username: string, pass: string, company: string, initials: string, startingRegion: string, startingHubId: string): Promise<void> {
     await new Promise(r => setTimeout(r, 1200));
     
+    const cleanUser = username.trim();
+    const cleanPass = pass.trim();
     const accounts = getAccounts();
-    if (accounts.some(a => a.username.toLowerCase() === username.toLowerCase())) {
-      throw new Error(`Username "${username}" already exists. Please choose another username or log in.`);
+    if (accounts.some(a => a.username.trim().toLowerCase() === cleanUser.toLowerCase())) {
+      throw new Error(`Username "${cleanUser}" already exists. Please choose another username or log in.`);
     }
 
     const hub = REGIONAL_HUBS.find(h => h.id === startingHubId) || REGIONAL_HUBS[0];
 
     const newAccount: UserAccount = {
-      username,
-      passwordHash: pass,
-      companyName: company,
-      companyInitials: initials,
+      username: cleanUser,
+      passwordHash: cleanPass,
+      companyName: company.trim(),
+      companyInitials: initials.trim(),
       startingRegion,
       startingHubId: hub.id,
-      email: `${username}@nexhaul.com`,
+      email: `${cleanUser}@nexhaul.com`,
       createdAt: Date.now()
     };
 

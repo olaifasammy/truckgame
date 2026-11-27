@@ -1,7 +1,7 @@
 import { ic } from '../../core/icons';
 import { Region, Driver } from '../../domain/drivers/drivers.types';
 import { GameState } from '../../types/state';
-import { activeTab, selectedRegion, expandedDriverId, transferModalDriverId, currentPage, DRIVERS_PER_PAGE } from './actions';
+import { activeTab, selectedRegion, expandedDriverId, transferModalDriverId, currentPage, DRIVERS_PER_PAGE, searchQuery } from './actions';
 import { renderEmployedCard } from './employedCard';
 import { renderPoolCard } from './poolCard';
 import { renderTransferModal } from './transferModal';
@@ -16,8 +16,18 @@ export default {
     const employed: Driver[] = S.drivers || [];
     const pool: Driver[] = (S as any).pool || [];
 
-    const filteredEmployed = selectedRegion === 'All' ? employed : employed.filter(d => (d.region || 'Africa') === selectedRegion);
-    const filteredPool = selectedRegion === 'All' ? pool : pool.filter(d => (d.region || 'Africa') === selectedRegion);
+    const query = searchQuery.toLowerCase().trim();
+    const matchesSearch = (d: Driver) => {
+      if (!query) return true;
+      return d.name.toLowerCase().includes(query) || (d.region || '').toLowerCase().includes(query) || (d.trait || '').toLowerCase().includes(query);
+    };
+
+    const filteredEmployed = employed.filter(d => 
+      (selectedRegion === 'All' || (d.region || 'Africa') === selectedRegion) && matchesSearch(d)
+    );
+    const filteredPool = pool.filter(d => 
+      (selectedRegion === 'All' || (d.region || 'Africa') === selectedRegion) && matchesSearch(d)
+    );
 
     const list = activeTab === 'employed' ? filteredEmployed : filteredPool;
     let page = currentPage;
@@ -74,6 +84,14 @@ export default {
               ${r.toUpperCase()}
             </button>
           `).join('')}
+        </div>
+
+        <!-- Search Bar -->
+        <div style="margin-bottom:12px;">
+          <div style="position:relative;">
+            <div style="position:absolute; left:12px; top:50%; transform:translateY(-50%); color:var(--mu); font-size:14px;">${ic('search')}</div>
+            <input id="driver-search-input" type="text" class="input" style="width:100%; background:#000000; color:var(--tx); border:1px solid var(--line); border-radius:8px; padding:0 12px 0 36px; height:40px; font-size:12px; outline:none; box-sizing:border-box;" placeholder="Search by driver name, region or trait..." value="${searchQuery.replace(/"/g, '&quot;')}" data-act="driver-search" />
+          </div>
         </div>
 
         <!-- Driver List -->

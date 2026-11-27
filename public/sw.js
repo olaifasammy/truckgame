@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nexhaul-offline-v4';
+const CACHE_NAME = 'nexhaul-offline-v5';
 const MAP_TILE_CACHE = 'nexhaul-map-tiles';
 
 const STATIC_ASSETS = [

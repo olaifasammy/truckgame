@@ -1,4 +1,5 @@
 import { register } from './registry';
 import dealership from './dealership';
+import parts from './parts';
 
-[dealership].forEach(register);
+[dealership, parts].forEach(register);

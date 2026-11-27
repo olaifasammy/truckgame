@@ -256,22 +256,29 @@ export function processLoanTick(S: any, elapsedDays: number, now: number): void 
     const loan = S.loans[i];
     if (loan.status === 'settled') continue;
 
-    const paymentDue = Math.round(loan.dailyRate * elapsedDays);
+    loan.accruedDays = (loan.accruedDays || 0) + elapsedDays;
+    if (loan.accruedDays < 1) continue;
+
+    const wholeDays = Math.floor(loan.accruedDays);
+    loan.accruedDays -= wholeDays;
+
+    const remaining = loan.balance ?? loan.remainingBalance ?? 0;
+    const paymentDue = Math.min(remaining, Math.round(loan.dailyRate * wholeDays));
     if (paymentDue <= 0) continue;
 
     if (S.money >= paymentDue) {
       // Normal payment (recordTransaction updates S.money once)
-      loan.balance = Math.max(0, (loan.balance || loan.remainingBalance) - paymentDue);
+      loan.balance = Math.max(0, remaining - paymentDue);
       loan.remainingBalance = loan.balance;
-      loan.daysRemaining = Math.max(0, loan.daysRemaining - elapsedDays);
-      recordTransaction(S, 'expense_finance', -paymentDue, `Auto-Payment: ${loan.lender}`);
+      loan.daysRemaining = Math.max(0, loan.daysRemaining - wholeDays);
+      recordTransaction(S, 'expense_finance', -paymentDue, `Daily Auto-Payment (${wholeDays}d): ${loan.lender}`);
       if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
       S.dailyStats.loans = (S.dailyStats.loans || 0) + paymentDue;
     } else {
       // DELINQUENCY: Insufficient funds
-      loan.missedPayments = (loan.missedPayments || 0) + elapsedDays;
+      loan.missedPayments = (loan.missedPayments || 0) + wholeDays;
       // Penalty: APR increases by 5% per missed day (up to double)
-      const penaltyApr = 5.0 * elapsedDays;
+      const penaltyApr = 5.0 * wholeDays;
       const prevApr = loan.apr || 35;
       loan.apr = Math.min(prevApr * 2, prevApr + penaltyApr);
       
@@ -329,7 +336,7 @@ function seizePropertyForDebt(S: any, loanIdx: number): void {
        // Internal penalty logic could go here
     }
 
-    pushNote(S, `🏛️ ASSET SEIZURE: Collections agents have seized Tractor [${truck.id}] to settle $${debt.toLocaleString()} debt. ${excess > 0 ? `Excess value of $${excess.toLocaleString()} returned to accounts.` : ''}`, {
+    pushNote(S, `🏛️ ASSET SEIZURE: Collections agents have seized Tractor [${truck.id}] to settle ${debt.toLocaleString()} debt. ${excess > 0 ? `Excess value of ${excess.toLocaleString()} returned to accounts.` : ''}`, {
       title: 'COLLECTIONS SEIZURE',
       type: 'finance',
       priority: 'high'
@@ -382,7 +389,7 @@ export function executePayoffLoan(S: any, loanId: string, customAmount?: number)
   }
 
   if (S.money < payoffAmount) {
-    toast(`Insufficient funds. Needs $${payoffAmount.toLocaleString()}`, 'err');
+    toast(`Insufficient funds. Needs ${payoffAmount.toLocaleString()}`, 'err');
     return false;
   }
 
@@ -390,7 +397,7 @@ export function executePayoffLoan(S: any, loanId: string, customAmount?: number)
   
   if (payoffAmount >= currentBalance) {
     S.loans.splice(idx, 1);
-    pushNote(S, `🏦 Commercial Loan Fully Settled: $${payoffAmount.toLocaleString()} paid to ${loan.lender}. Credit rating updated.`, {
+    pushNote(S, `🏦 Commercial Loan Fully Settled: ${payoffAmount.toLocaleString()} paid to ${loan.lender}. Credit rating updated.`, {
       title: 'LOAN FULLY SETTLED',
       type: 'finance',
       priority: 'medium'
@@ -402,12 +409,12 @@ export function executePayoffLoan(S: any, loanId: string, customAmount?: number)
     if (loan.daysRemaining && loan.daysRemaining > 0) {
       loan.dailyRate = Math.round((loan.balance / Math.max(1, loan.daysRemaining)) * (1 + loan.apr / 100 / 365));
     }
-    pushNote(S, `🏦 Loan Principal Paydown: $${payoffAmount.toLocaleString()} paid towards ${loan.name}. Remaining balance: $${loan.balance.toLocaleString()}.`, {
+    pushNote(S, `🏦 Loan Principal Paydown: ${payoffAmount.toLocaleString()} paid towards ${loan.name}. Remaining balance: ${loan.balance.toLocaleString()}.`, {
       title: 'LOAN PRINCIPAL REDUCED',
       type: 'finance',
       priority: 'medium'
     });
-    toast(`Successfully paid $${payoffAmount.toLocaleString()} towards loan!`, 'success');
+    toast(`Successfully paid ${payoffAmount.toLocaleString()} towards loan!`, 'success');
   }
   return true;
 }

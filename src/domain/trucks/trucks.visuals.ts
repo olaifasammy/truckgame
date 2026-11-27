@@ -81,8 +81,8 @@ export function isRigidModel(model: any, trailerType?: string | null): boolean {
  * - If trailerType is empty/none: renders standard bobtail tractor (viewBox="0 0 160 70").
  * - If trailerType is provided: renders complete connected tractor + trailer rig (viewBox="0 0 340 70" or 440 for LCV).
  */
-export function getTruckSilhouetteSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4', trailerType?: string | null, paint?: string): string {
-  const real = getRealisticTruckSvg(model, axle || model?.axle, trailerType, { paint, accent: accentColor });
+export function getTruckSilhouetteSvg(model: any, accentColor = 'var(--gold)', axle: string = '6x4', trailerType?: string | null, paint?: string, hasCargo: boolean = false): string {
+  const real = getRealisticTruckSvg(model, axle || model?.axle, trailerType, { paint, accent: accentColor, hasCargo });
   if (real) return real;
 
   if (isSprinterModel(model)) {

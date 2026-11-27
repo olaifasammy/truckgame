@@ -396,7 +396,7 @@ export function payViolation(S: any, violationId: number): boolean {
     return false;
   }
   S.money -= v.fine;
-  v.paid = true;
+  S.violations = (S.violations || []).filter((x: DotViolationRecord) => x.id !== violationId && !x.paid);
   pushNote(S, `⚖️ DOT CITATION SETTLED: Paid $${v.fine.toLocaleString()} for ${v.reason}.`, {
     title: 'DOT FINE PAID',
     type: 'compliance'
@@ -411,6 +411,9 @@ export function payViolation(S: any, violationId: number): boolean {
 export function payAllViolations(S: any): boolean {
   const unpaid = (S.violations || []).filter((x: DotViolationRecord) => !x.paid);
   if (unpaid.length === 0) {
+    if (Array.isArray(S.violations) && S.violations.length > 0) {
+      S.violations = [];
+    }
     toast('No outstanding DOT fines to settle', 'info');
     return false;
   }
@@ -420,7 +423,7 @@ export function payAllViolations(S: any): boolean {
     return false;
   }
   S.money -= total;
-  unpaid.forEach((x: DotViolationRecord) => { x.paid = true; });
+  S.violations = [];
   pushNote(S, `⚖️ ALL DOT VIOLATIONS SETTLED: Paid ${unpaid.length} citations (-$${total.toLocaleString()}). Safety standing restored.`, {
     title: 'DOT COMPLIANCE RESTORED',
     type: 'compliance',

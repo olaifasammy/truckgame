@@ -13,7 +13,8 @@ import network from './network';
 import dispatch from './dispatch';
 import copilot from './copilot';
 import government from './government';
+import devtools from './devtools';
 
-[home, garage, dispatch, company, network, finance, government, store, rankings, repair, drivers, storage, notifications, copilot].forEach(register);
+[home, garage, dispatch, company, network, finance, government, store, rankings, repair, drivers, storage, notifications, copilot, devtools].forEach(register);
 
 

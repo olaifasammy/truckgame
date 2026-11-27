@@ -1,6 +1,7 @@
 import { Region, FreightJob, JobKind } from '../types';
 import { COMPANIES } from '../companies/registry';
 import { CARGO_TYPES } from '../cargo/registry';
+import { TRUCK_MODELS } from '../../trucks/trucks.data';
 import { CITIES, LOCATIONS, RegionName, resolveTruckRegion } from '../../../data/world';
 import { REGIONAL_HUBS } from '../../logistics/network';
 import { rnd, toast } from '../../../core/ui';
@@ -54,16 +55,49 @@ export class FreightEngine {
 
     // Collect all trailer types the player currently owns (hitched to fleet or stored in HQ yard)
     const ownedTrailers = new Set<string>();
+    const localTrailers = new Set<string>();
+    const hasAdr = !!(S?.licenses?.includes('adr_hazmat'));
+
     (S?.fleet || []).forEach((t: any) => {
-      if (t.trailer) ownedTrailers.add(t.trailer);
+      const model = TRUCK_MODELS[t.modelId];
+      const isLocal =
+        (options.forceFrom && t.loc === options.forceFrom) ||
+        (!options.forceFrom && options.forceRegion && resolveTruckRegion(t.loc) === options.forceRegion);
+
+      if (t.trailer) {
+        ownedTrailers.add(t.trailer);
+        if (isLocal) localTrailers.add(t.trailer);
+      } else if (model?.haul) {
+        // Bobtail tractor: can haul any yard trailer compatible with its chassis
+        (S?.trailers || []).forEach((tr: string) => {
+          if (model.haul.includes(tr as any)) {
+            ownedTrailers.add(tr);
+            if (isLocal) localTrailers.add(tr);
+          }
+        });
+      }
     });
     (S?.trailers || []).forEach((tr: string) => ownedTrailers.add(tr));
     
     // Consignor-supplied tankers are available if the carrier has ADR authority
-    if (S?.licenses?.includes('adr_hazmat')) {
+    if (hasAdr) {
       ownedTrailers.add('hazmat');
       ownedTrailers.add('tanker');
     }
+
+    // Helper: pick uniformly by trailer type so every owned vehicle/trailer has equal chance
+    const pickBalancedCargo = (pool: typeof CARGO_TYPES, targetTrailers: Set<string>) => {
+      const eligible = pool.filter(c => {
+        if (!targetTrailers.has(c.trailer)) return false;
+        if (c.isHazmat && !hasAdr) return false;
+        return true;
+      });
+      if (eligible.length === 0) return null;
+      const trailerTypes = Array.from(new Set(eligible.map(c => c.trailer)));
+      const chosenTrailer = rnd(trailerTypes);
+      const trailerCargos = eligible.filter(c => c.trailer === chosenTrailer);
+      return rnd(trailerCargos);
+    };
 
     let cargo;
     if (tender) {
@@ -90,33 +124,30 @@ export class FreightEngine {
       const premiumCargos = CARGO_TYPES.filter(c => c.baseValue >= 11.0);
       const pool = (Math.random() < ultraTierChance && ultraCargos.length > 0) ? ultraCargos : (premiumCargos.length ? premiumCargos : CARGO_TYPES);
 
-      // 70% probability to match player's owned trailers
-      const ownedMatches = pool.filter(c => ownedTrailers.has(c.trailer));
-      if (ownedTrailers.size > 0 && ownedMatches.length > 0 && Math.random() < 0.70) {
-        cargo = rnd(ownedMatches);
-      } else {
-        cargo = rnd(pool);
-      }
+      // 70% probability to match player's owned trailers (balanced across trailer types)
+      const matched = (ownedTrailers.size > 0 && Math.random() < 0.70)
+        ? pickBalancedCargo(pool, ownedTrailers)
+        : null;
+      cargo = matched || rnd(pool);
     } else {
       // Normal job generator: payouts shouldn't be too high, everyday freight
       const standardCargos = CARGO_TYPES.filter(c => c.baseValue < 30);
       const pool = standardCargos.length ? standardCargos : CARGO_TYPES;
 
       if (options.forceTrailer) {
-        const trailerCargos = pool.filter(c => c.trailer === options.forceTrailer);
+        const trailerCargos = pool.filter(c => c.trailer === options.forceTrailer && (!c.isHazmat || hasAdr));
         if (trailerCargos.length > 0) {
           cargo = rnd(trailerCargos);
         }
       }
 
       if (!cargo) {
-        // 75% probability to prioritize player's owned trailers
-        const ownedMatches = pool.filter(c => ownedTrailers.has(c.trailer));
-        if (ownedTrailers.size > 0 && ownedMatches.length > 0 && Math.random() < 0.75) {
-          cargo = rnd(ownedMatches);
-        } else {
-          cargo = rnd(pool);
-        }
+        // 85% probability to match trailers at this hub/region first, then global owned trailers
+        const preferLocal = localTrailers.size > 0 && Math.random() < 0.85;
+        const preferGlobal = ownedTrailers.size > 0 && Math.random() < 0.80;
+        cargo = (preferLocal ? pickBalancedCargo(pool, localTrailers) : null)
+          || (preferGlobal ? pickBalancedCargo(pool, ownedTrailers) : null)
+          || rnd(pool);
       }
     }
 
@@ -535,9 +566,44 @@ export class FreightEngine {
     return limit;
   }
 
+  static replenishHub(S: any, hubId: string, count = 6) {
+    if (!S.hubJobs) S.hubJobs = {};
+    if (!S.hubJobs[hubId]) S.hubJobs[hubId] = [];
+    
+    const hub = REGIONAL_HUBS.find(h => h.id === hubId);
+    if (!hub) return;
+
+    // Filter out expired jobs from this hub
+    const now = Date.now();
+    S.hubJobs[hubId] = S.hubJobs[hubId].filter((j: any) => !j.deadline || j.deadline > now);
+
+    // Enforce per-hub limit (e.g., 10 regular jobs per hub to prevent "heat")
+    const MAX_HUB_JOBS = 10;
+    if (S.hubJobs[hubId].length >= MAX_HUB_JOBS) return;
+
+    const needed = MAX_HUB_JOBS - S.hubJobs[hubId].length;
+    const toGenerate = Math.min(count, needed);
+
+    for (let i = 0; i < toGenerate; i++) {
+      const newJob = this.generate(S, { 
+        forceFrom: hub.city,
+        forceRegion: hub.region 
+      });
+      if (newJob) {
+        S.hubJobs[hubId].push(newJob);
+      }
+    }
+  }
+
   static replenish(S: any, count = 6) {
     if (!S.jobs) S.jobs = [];
     if (!S.auctions) S.auctions = [];
+    if (!S.hubJobs) S.hubJobs = {};
+
+    // Replenish each owned hub
+    (S.depots || []).forEach((hubId: string) => {
+      this.replenishHub(S, hubId, 2); // Slow replenish for all hubs
+    });
 
     // STRICTOR LIMIT ENFORCEMENT: Section 2.1 & 6.4 compliance
     // Ensure the board never exceeds 17 total jobs, protecting secured won bids and tenders.
@@ -582,6 +648,7 @@ export class FreightEngine {
         if (!isPremium && limit.count >= MAX_FREE_LISTINGS) break;
         const newJob = this.generate(S, { tenderId: plan.tenderId });
         if (newJob) {
+          // VIP and Tender jobs always go to the global board for high-level visibility
           S.jobs.unshift(newJob);
           consumeTenderListing(S, plan.tenderId, now);
           if (!isPremium) limit.count++;
@@ -590,34 +657,45 @@ export class FreightEngine {
     }
 
     // FLEET-AWARE OUTBOUND HAUL GUARANTEE:
-    // Cap this to avoid overwhelming the board when the fleet is large.
-    // Prioritize idle trucks that don't already have a local job.
+    // Ensure idle trucks stationed at owned hubs have at least one outbound job on their hub board.
     const fleet = (S.fleet || []).filter((t: any) => t.status === 'idle');
     let addedFleetJobs = 0;
     for (const truck of fleet) {
-      if (addedFleetJobs >= 4 || S.jobs.length >= 17) break;
+      if (addedFleetJobs >= 8) break;
       if (!truck.loc) continue;
       const truckRegion = resolveTruckRegion(truck.loc);
       if (!unlockedRegions.includes(truckRegion)) continue;
 
-      const hasJobFromTruckLoc = S.jobs.some((j: any) => j.from === truck.loc);
+      const originHubId = (S.depots || []).find((hId: string) => {
+        const h = REGIONAL_HUBS.find(rh => rh.id === hId);
+        return h && h.city === truck.loc;
+      });
+      if (!originHubId) continue;
+
+      const hubList = S.hubJobs[originHubId] || [];
+      const hasJobFromTruckLoc = hubList.some((j: any) => j.from === truck.loc);
       if (!hasJobFromTruckLoc) {
         const regionCities = Object.entries(LOCATIONS)
           .filter(([k, loc]) => loc.region === truckRegion && k !== truck.loc)
           .map(([k]) => k);
         const returnDest = regionCities.length > 0 ? rnd(regionCities) : undefined;
         
-        S.jobs.unshift(this.generate(S, {
+        const newJob = this.generate(S, {
           forceRegion: truckRegion,
           forceFrom: truck.loc,
           forceTo: returnDest,
           forceTrailer: truck.trailer || 'curtain'
-        }));
-        addedFleetJobs++;
+        });
+
+        if (newJob) {
+          if (!S.hubJobs[originHubId]) S.hubJobs[originHubId] = [];
+          S.hubJobs[originHubId].unshift(newJob);
+          addedFleetJobs++;
+        }
       }
     }
 
-    // Ensure each unlocked region has balanced jobs on the board simultaneously
+    // Ensure each unlocked region has VIP contracts on the main board
     for (const region of unlockedRegions) {
       if (S.jobs.length >= 17) break;
       const regionJobsCount = S.jobs.filter((j: any) => {
@@ -626,13 +704,20 @@ export class FreightEngine {
       }).length;
 
       if (regionJobsCount < 2) {
-        S.jobs.push(this.generate(S, { vip: isVipCarrier && Math.random() < 0.15, forceRegion: region }));
+        const vipJob = this.generate(S, { vip: true, forceRegion: region });
+        if (vipJob) S.jobs.push(vipJob);
       }
     }
 
     while (S.jobs.length < count && S.jobs.length < 17) {
       const forceRegion = unlockedRegions[Math.floor(Math.random() * unlockedRegions.length)];
-      S.jobs.push(this.generate(S, { vip: isVipCarrier && Math.random() < 0.15, forceRegion }));
+      // Only generate VIP jobs for the global board. Regular jobs are now hub-centric.
+      const newJob = this.generate(S, { vip: true, forceRegion });
+      if (newJob) {
+        S.jobs.push(newJob);
+      } else {
+        break;
+      }
     }
   }
 
@@ -652,8 +737,8 @@ export class FreightEngine {
         if ((tender.completedLoads >= tender.totalLoads || tender.loadsRemaining <= 0) && !tender.bonusAwarded) {
           tender.bonusAwarded = true;
           // Drastically reduced bonus to 35% of original windfall
-          const adjustedBonus = Math.round(tender.bonusPayout * 0.35);
-          S.money += adjustedBonus;
+          const adjustedBonus = Math.round((Number(tender.bonusPayout) || 0) * 0.35);
+          S.money = (Number.isFinite(S.money) ? S.money : 0) + adjustedBonus;
           if (S.stats) S.stats.earned += adjustedBonus;
           pushNote(S, `${tender.client} contract completed! Awarded $${adjustedBonus.toLocaleString()} SLA performance bonus!`, {
             title: 'CORPORATE TENDER COMPLETED',
@@ -679,7 +764,7 @@ export class FreightEngine {
     // Corrected labor costs: Elite drivers cost more
     const totalSalaries = (S.drivers || []).reduce((acc: number, d: any) => {
       const baseWage = 480; // Hardcore base wage
-      const skillBonus = (d.experience || 0) * 1.5;
+      const skillBonus = (Number(d.experience) || 0) * 1.5;
       return acc + (baseWage + skillBonus);
     }, 0);
     dailyOutflow += totalSalaries;
@@ -692,12 +777,14 @@ export class FreightEngine {
       if (S.insurance.cargo) dailyOutflow += (110 * activeTruckCount);
     }
 
-    if (S.loans) S.loans.forEach((l: any) => dailyOutflow += (l.dailyRate || 0));
-    if (S.leases) S.leases.forEach((l: any) => dailyOutflow += (l.dailyRate || 0));
+    if (S.loans) S.loans.forEach((l: any) => dailyOutflow += (Number(l.dailyRate) || 0));
+    if (S.leases) S.leases.forEach((l: any) => dailyOutflow += (Number(l.dailyRate) || 0));
 
     const netDaily = dailyInflow - dailyOutflow;
-    const netDelta = (netDaily / MS_PER_DAY) * elapsedMs;
-    S.money += netDelta;
+    const netDelta = (netDaily / MS_PER_DAY) * (Number(elapsedMs) || 0);
+    if (Number.isFinite(netDelta)) {
+      S.money = (Number.isFinite(S.money) ? S.money : 0) + netDelta;
+    }
 
     // 2. Loan Amortization
     if (S.loans && S.loans.length > 0) {

@@ -1,11 +1,27 @@
+import { set } from '../../core/store';
+import { action } from '../../core/ui';
 import { ic } from '../../core/icons';
 import { TRAIT_REGISTRY } from '../../domain/drivers/drivers.names';
 import { DRIVER_CERTIFICATIONS } from '../../domain/drivers/certifications';
 import { skillUpgradeCost, transferFee } from './helpers';
+import { resolveTruckRegion } from '../../data/world';
+import { focusGarageTruck } from '../garage';
+
+action('goto-garage-truck', d => {
+  const id = +(d as any).id;
+  set(S => {
+    const truck = (S.fleet || []).find((t: any) => t.id === id);
+    const region = truck ? resolveTruckRegion(truck) : undefined;
+    focusGarageTruck(id, region);
+    S.tab = 'garage';
+  });
+});
 
 export function renderEmployedCard(d: any, S: any, isExpanded: boolean): string {
   const trait = TRAIT_REGISTRY[d.trait as keyof typeof TRAIT_REGISTRY];
   const assignedTruck = S.fleet?.find((t: any) => t.driverId === d.id || t.id === d.assignedTruckId);
+  const truckName = assignedTruck ? (assignedTruck.name || `Unit #${assignedTruck.id}`) : 'UNASSIGNED';
+  
   const regionStr = (d.region || 'Africa').toUpperCase();
   const stats = {
     tripsCompleted: d.stats?.tripsCompleted || 0,
@@ -25,7 +41,21 @@ export function renderEmployedCard(d: any, S: any, isExpanded: boolean): string 
           <div style="width:36px; height:36px; background:var(--bg); border:1px solid var(--gold); border-radius:8px; display:flex; align-items:center; justify-content:center; color:var(--gold); font-size:16px;">${ic('user')}</div>
           <div>
             <div style="font-weight:800; font-size:13px; color:var(--tx);">${d.name}</div>
-            <div style="font-size:10px; color:var(--gold); font-weight:700; margin-top:2px;">${regionStr} · Daily Wage: $${salary}</div>
+            <div style="display:flex; align-items:center; gap:6px; margin-top:2px;">
+              <div style="font-size:10px; color:var(--gold); font-weight:700;">${regionStr}</div>
+              <div style="width:3px; height:3px; background:var(--mu); border-radius:50%;"></div>
+              <div style="font-size:10px; color:var(--mu); font-weight:700;">Wage: $${salary}</div>
+            </div>
+            <div style="margin-top:4px;">
+              ${assignedTruck ? `
+                <div style="display:inline-flex; align-items:center; gap:4px; padding:2px 6px; background:rgba(193,154,91,0.08); border:1px solid rgba(193,154,91,0.2); border-radius:4px; cursor:pointer;" data-act="goto-garage-truck" data-id="${assignedTruck.id}">
+                  <span style="font-size:10px; color:var(--gold);">${ic('truck')}</span>
+                  <span style="font-size:9px; font-weight:800; color:var(--tx); text-transform:uppercase;">${truckName}</span>
+                </div>
+              ` : `
+                <span style="font-size:9px; font-weight:800; color:var(--mu); text-transform:uppercase;">[ NO TRUCK ASSIGNED ]</span>
+              `}
+            </div>
             <!-- Skill & Certifications Badges -->
             <div style="display:flex; align-items:center; gap:4px; margin-top:4px; flex-wrap:wrap;">
               <span style="font-size:9px; background:rgba(193,154,91,0.15); border:1px solid var(--gold); border-radius:3px; padding:1px 5px; color:var(--gold); font-weight:800; font-family:monospace;">

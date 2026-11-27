@@ -5,6 +5,7 @@ import { TRAILERS, getTrailerIcon } from '../domain/trucks/trucks.data';
 import { getTrailerSilhouetteSvg } from '../domain/trucks/trucks.visuals';
 import { FREIGHT_LICENSES, buyLicense, hasLicense } from '../domain/freight/licenses';
 import { PART_BASE_PRICES } from '../systems/maintenance';
+import { getWholesalePartPrice } from '../domain/trucks/maintenance';
 import { PART_LABELS } from '../systems/calc';
 
 let storageTab: 'trailers' | 'parts' | 'licenses' = 'trailers';
@@ -24,8 +25,8 @@ action('open-storage-subtab', d => {
 
 action('buy-storage-part', d => {
   const partKey = (d as any).part;
-  const qty = Number((d as any).qty) || 1;
-  const unitPrice = PART_BASE_PRICES[partKey] || 500;
+  const qty = Math.max(1, Number((d as any).qty) || 1);
+  const unitPrice = getWholesalePartPrice(partKey, qty);
   const totalCost = unitPrice * qty;
 
   set(S => {
@@ -37,7 +38,7 @@ action('buy-storage-part', d => {
     S.money -= totalCost;
     if (!S.partsInventory) S.partsInventory = {};
     S.partsInventory[partKey] = (S.partsInventory[partKey] || 0) + qty;
-    toast(`Purchased ${qty}x ${PART_LABELS[partKey] || partKey} for HQ Warehouse`, 'success');
+    toast(`Purchased ${qty}x ${PART_LABELS[partKey] || partKey} at wholesale ($${totalCost.toLocaleString()})`, 'success');
   });
 });
 
@@ -223,15 +224,15 @@ export default {
                         </span>
                       </div>
                       <div style="font-size:11px; font-weight:900; color:var(--grn); font-family:monospace; margin-bottom:8px;">
-                        ${fmt(price)} / unit
+                        ${fmt(getWholesalePartPrice(partKey, 1))} <span style="font-size:9px; color:var(--mu); text-decoration:line-through;">${fmt(price)}</span> / unit
                       </div>
                     </div>
 
                     <div style="display:flex; gap:6px;">
-                      <button class="btn alt" style="flex:1; padding:5px 6px; font-size:9px; font-weight:800;" data-act="buy-storage-part" data-part="${partKey}" data-qty="1" ${canAfford ? '' : 'disabled'}>
+                      <button class="btn alt" style="flex:1; padding:5px 6px; font-size:9px; font-weight:800;" data-act="buy-storage-part" data-part="${partKey}" data-qty="1" ${S.money >= getWholesalePartPrice(partKey, 1) ? '' : 'disabled'}>
                         + BUY 1x
                       </button>
-                      <button class="btn gold" style="flex:1; padding:5px 6px; font-size:9px; font-weight:900;" data-act="buy-storage-part" data-part="${partKey}" data-qty="4" ${S.money >= price * 4 ? '' : 'disabled'}>
+                      <button class="btn gold" style="flex:1; padding:5px 6px; font-size:9px; font-weight:900;" data-act="buy-storage-part" data-part="${partKey}" data-qty="4" ${S.money >= getWholesalePartPrice(partKey, 4) * 4 ? '' : 'disabled'}>
                         + BUY 4x
                       </button>
                     </div>

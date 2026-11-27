@@ -38,17 +38,18 @@ function chassisBack(u: string, P: Palette, x0: number, x1: number, a0: number, 
   return `
   ${beam ? `<rect x="${x0}" y="176" width="${x1 - x0}" height="12" fill="#14171c"/><rect x="${x0}" y="176" width="${x1 - x0}" height="2" fill="#3a4049"/>` : ''}
   ${skirt ? trailerSkirt(u, P, x0 + 160, a0 - 52) : `<rect x="${guardX}" y="192" width="${Math.max(40, a0 - 60 - guardX)}" height="5" rx="2" fill="url(#${u}chrome)"/>`}
-  <!-- Retracted landing gear (cranked up when coupled) -->
-  <rect x="${x0 + 48}" y="181" width="12" height="11" rx="2" fill="#1f232b" stroke="#4b525a"/>
-  <rect x="${x0 + 64}" y="181" width="12" height="11" rx="2" fill="#1f232b" stroke="#4b525a"/>
-  <rect x="${x0 + 42}" y="185" width="38" height="3" fill="url(#${u}chrome)"/>
-  <circle cx="${x0 + 84}" cy="186" r="3" fill="#cfd6dc"/>
+  <!-- Retracted landing gear (cranked up cleanly behind drive axles) -->
+  <rect x="${x0 + 96}" y="182" width="12" height="12" rx="2" fill="#1f232b" stroke="#4b525a"/>
+  <rect x="${x0 + 112}" y="182" width="12" height="12" rx="2" fill="#1f232b" stroke="#4b525a"/>
+  <rect x="${x0 + 90}" y="186" width="38" height="3" fill="url(#${u}chrome)"/>
+  <circle cx="${x0 + 132}" cy="187" r="3" fill="#cfd6dc"/>
 
-  <!-- Fifth wheel kingpin coupling & realistic umbilical jumper cables (Gladhands & Pigtail) -->
-  <path d="M${x0 - 24},144 Q${x0 - 12},126 ${x0 + 6},140" fill="none" stroke="#e74c3c" stroke-width="2.6" stroke-linecap="round"/>
-  <path d="M${x0 - 22},148 Q${x0 - 10},130 ${x0 + 8},144" fill="none" stroke="#3498db" stroke-width="2.6" stroke-linecap="round"/>
-  <path d="M${x0 - 26},141 Q${x0 - 14},122 ${x0 + 4},136" fill="none" stroke="#f1c40f" stroke-width="2.2" stroke-dasharray="3 2" stroke-linecap="round"/>
-  <rect x="${x0 - 6}" y="168" width="22" height="10" rx="2" fill="url(#${u}chromeH)" stroke="#2b3036"/>`;
+  <!-- Fifth wheel kingpin coupling (seated directly on tractor fifth-wheel plate) & air/electric jumper lines -->
+  <path d="M${x0 - 32},144 Q${x0 - 16},126 ${x0 + 2},140" fill="none" stroke="#e74c3c" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M${x0 - 30},148 Q${x0 - 14},130 ${x0 + 4},144" fill="none" stroke="#3498db" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M${x0 - 34},141 Q${x0 - 18},122 ${x0},136" fill="none" stroke="#f1c40f" stroke-width="2.2" stroke-dasharray="3 2" stroke-linecap="round"/>
+  <rect x="${x0 + 24}" y="170" width="28" height="7" rx="1.5" fill="url(#${u}chromeH)" stroke="#2b3036"/>
+  <rect x="${x0 + 34}" y="176" width="8" height="6" rx="1" fill="#1a1e24" stroke="#4b525a"/>`;
 }
 
 function wheelsFront(u: string, axles: number[], moving: boolean, fender = true): string {
@@ -124,44 +125,57 @@ function tankBody(u: string, P: Palette, x0: number, x1: number, hazard: boolean
 }
 
 /* ---------- flatbed ---------- */
-function flatbedBody(u: string, P: Palette, x0: number, x1: number): string {
+function flatbedBody(u: string, P: Palette, x0: number, x1: number, hasCargo: boolean): string {
   const crates: string[] = [];
-  const cw = 134;
-  for (let i = 0; i < 5; i++) {
-    const x = x0 + 34 + i * (cw + 6);
-    crates.push(`<rect x="${x}" y="116" width="${cw}" height="52" rx="2" fill="${i % 2 ? lighten(P.trailerPaint, 0.1) : P.trailerPaint}" stroke="#0b0c0e" stroke-opacity=".6"/>`);
-    if (i < 4) crates.push(`<rect x="${x + 10}" y="64" width="${cw - 20}" height="52" rx="2" fill="${i % 2 ? P.trailerPaint : lighten(P.trailerPaint, 0.1)}" stroke="#0b0c0e" stroke-opacity=".6"/>`);
+  if (hasCargo) {
+    const cw = 134;
+    for (let i = 0; i < 5; i++) {
+      const x = x0 + 34 + i * (cw + 6);
+      crates.push(`<rect x="${x}" y="116" width="${cw}" height="52" rx="2" fill="${i % 2 ? lighten(P.trailerPaint, 0.1) : P.trailerPaint}" stroke="#0b0c0e" stroke-opacity=".6"/>`);
+      if (i < 4) crates.push(`<rect x="${x + 10}" y="64" width="${cw - 20}" height="52" rx="2" fill="${i % 2 ? P.trailerPaint : lighten(P.trailerPaint, 0.1)}" stroke="#0b0c0e" stroke-opacity=".6"/>`);
+    }
   }
+  const winches = [x0 + 160, x0 + 260, x0 + 360, x0 + 460, x0 + 560, x0 + 660];
   return `
   <rect x="${x0}" y="168" width="${x1 - x0}" height="10" fill="#2b3037"/>
   <rect x="${x0}" y="168" width="${x1 - x0}" height="2" fill="#6b737c"/>
   <rect x="${x0}" y="176" width="${x1 - x0}" height="12" fill="#14171c"/>
-  ${crates.join('')}
-  <g fill="${P.accent}" opacity=".9">${[x0 + 120, x0 + 330, x0 + 560].map(x => `<rect x="${x}" y="62" width="5" height="108"/>`).join('')}</g>
+  ${hasCargo ? `
+    ${crates.join('')}
+    <g fill="${P.accent}" opacity=".9">${[x0 + 120, x0 + 330, x0 + 560].map(x => `<rect x="${x}" y="62" width="5" height="108"/>`).join('')}</g>
+  ` : ''}
+  <!-- Front steel bulkhead / headache rack -->
   <rect x="${x0 + 2}" y="96" width="8" height="74" rx="2" fill="url(#${u}chromeH)"/>
-  ${[x0 + 200, x0 + 400, x0 + 600].map(x => `<rect x="${x}" y="150" width="5" height="18" fill="#4b525a"/>`).join('')}`;
+  <rect x="${x0 + 10}" y="138" width="4" height="30" fill="#2b3037"/>
+  <!-- Side rub-rail stake pockets & tie-down winches -->
+  ${winches.map(x => `<rect x="${x}" y="168" width="6" height="10" fill="#4b525a"/>`).join('')}
+  ${[x0 + 200, x0 + 400, x0 + 600].map(x => `<rect x="${x}" y="176" width="5" height="8" fill="#4b525a"/>`).join('')}`;
 }
 
 /* ---------- lowboy ---------- */
-function lowboyBody(u: string, P: Palette, x0: number, x1: number): string {
+function lowboyBody(u: string, P: Palette, x0: number, x1: number, hasCargo: boolean): string {
   const g1 = x0 + 110, g2 = x0 + 140, l1 = x1 - 200, l2 = x1 - 170;
   const deck = `M${x0},170 L${g1},170 L${g2},200 L${l1},200 L${l2},170 L${x1},170 L${x1},186 L${l2 + 10},186 L${l1 + 8},214 L${g2 - 8},214 L${g1 - 6},186 L${x0},186 Z`;
   const tx0 = g2 + 40, tx1 = l1 - 30;
   const fins: number[] = []; for (let x = tx0 + 18; x < tx1 - 10; x += 12) fins.push(x);
+  const planks: number[] = []; for (let x = g2 + 16; x < l1 - 10; x += 36) planks.push(x);
   return `
   <path d="${deck}" fill="#1c2026" stroke="#3a4049" stroke-width="1.5"/>
   <path d="M${g2},200 L${l1},200" stroke="#6b737c" stroke-width="2"/>
-  <defs><linearGradient id="${u}xf" x1="0" y1="0" x2="0" y2="1">
-    <stop offset="0" stop-color="${lighten(P.trailerPaint, 0.3)}"/><stop offset="1" stop-color="${darken(P.trailerPaint, 0.5)}"/>
-  </linearGradient></defs>
-  <rect x="${tx0}" y="108" width="${tx1 - tx0}" height="92" rx="4" fill="url(#${u}xf)" stroke="#0b0c0e" stroke-opacity=".6"/>
-  <g stroke="#000" stroke-opacity=".3" stroke-width="2">${fins.map(x => `<path d="M${x} 116V194"/>`).join('')}</g>
-  ${[0.25, 0.5, 0.75].map(p => {
-    const cx = Math.round(tx0 + (tx1 - tx0) * p);
-    return `<rect x="${cx - 6}" y="84" width="12" height="26" rx="2" fill="#e8e2d4" stroke="#7c8791"/><ellipse cx="${cx}" cy="84" rx="9" ry="4" fill="#cfc8b8" stroke="#7c8791"/>`;
-  }).join('')}
-  <rect x="${tx0 - 4}" y="124" width="${tx1 - tx0 + 8}" height="6" fill="url(#${u}gold)"/>
-  <g stroke="#f5c400" stroke-width="3"><path d="M${tx0 + 20} 108L${tx0 - 6} 198M${tx1 - 20} 108L${tx1 + 6} 198"/></g>
+  <g stroke="#2d343d" stroke-width="2">${planks.map(x => `<path d="M${x} 201V212"/>`).join('')}</g>
+  ${hasCargo ? `
+    <defs><linearGradient id="${u}xf" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="${lighten(P.trailerPaint, 0.3)}"/><stop offset="1" stop-color="${darken(P.trailerPaint, 0.5)}"/>
+    </linearGradient></defs>
+    <rect x="${tx0}" y="108" width="${tx1 - tx0}" height="92" rx="4" fill="url(#${u}xf)" stroke="#0b0c0e" stroke-opacity=".6"/>
+    <g stroke="#000" stroke-opacity=".3" stroke-width="2">${fins.map(x => `<path d="M${x} 116V194"/>`).join('')}</g>
+    ${[0.25, 0.5, 0.75].map(p => {
+      const cx = Math.round(tx0 + (tx1 - tx0) * p);
+      return `<rect x="${cx - 6}" y="84" width="12" height="26" rx="2" fill="#e8e2d4" stroke="#7c8791"/><ellipse cx="${cx}" cy="84" rx="9" ry="4" fill="#cfc8b8" stroke="#7c8791"/>`;
+    }).join('')}
+    <rect x="${tx0 - 4}" y="124" width="${tx1 - tx0 + 8}" height="6" fill="url(#${u}gold)"/>
+    <g stroke="#f5c400" stroke-width="3"><path d="M${tx0 + 20} 108L${tx0 - 6} 198M${tx1 - 20} 108L${tx1 + 6} 198"/></g>
+  ` : ''}
   <rect x="${x0 + 30}" y="150" width="20" height="20" rx="3" fill="#2b3037"/>`;
 }
 
@@ -252,7 +266,7 @@ function doubleBody(u: string, P: Palette, x0: number, x1: number, axles: number
 }
 
 /* ---------- entry point ---------- */
-export function renderRealisticTrailer(type: string, u: string, P: Palette, x0: number, moving: boolean): string | null {
+export function renderRealisticTrailer(type: string, u: string, P: Palette, x0: number, moving: boolean, hasCargo: boolean = false): string | null {
   if (!hasRealisticTrailer(type)) return null;
   const { x1, axles } = trailerLayout(type, x0);
   const a0 = axles[0];
@@ -269,9 +283,9 @@ export function renderRealisticTrailer(type: string, u: string, P: Palette, x0: 
     case 'hazmat':
       return `${chassisBack(u, P, x0, x1, a0)}${tankBody(u, P, x0, x1, true)}${lightsAndTail(x0, x1)}${wheelsFront(u, axles, moving)}`;
     case 'flatbed':
-      return `${chassisBack(u, P, x0, x1, a0, false)}${flatbedBody(u, P, x0, x1)}${lightsAndTail(x0, x1)}${wheelsFront(u, axles, moving)}`;
+      return `${chassisBack(u, P, x0, x1, a0, false)}${flatbedBody(u, P, x0, x1, hasCargo)}${lightsAndTail(x0, x1)}${wheelsFront(u, axles, moving)}`;
     case 'lowboy':
-      return `${chassisBack(u, P, x0, x1, a0, false)}${lowboyBody(u, P, x0, x1)}${lightsAndTail(x0, x1)}${wheelsFront(u, axles, moving)}`;
+      return `${chassisBack(u, P, x0, x1, a0, false)}${lowboyBody(u, P, x0, x1, hasCargo)}${lightsAndTail(x0, x1)}${wheelsFront(u, axles, moving)}`;
     case 'tipper':
       return `${chassisBack(u, P, x0, x1, a0, false)}${tipperBody(u, P, x0, x1)}${lightsAndTail(x0, x1)}${wheelsFront(u, axles, moving)}`;
     case 'container':

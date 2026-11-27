@@ -36,7 +36,21 @@ export const DispatchExecution = {
    */
   takeJob(state: GameState, jobId: number, truckId?: number, silent: boolean = false): { success: boolean; reason?: string } {
     const S = state as any;
-    const j = S.jobs.find((x: any) => x.id === jobId);
+    
+    // Find job in global board or hub boards
+    let j = S.jobs?.find((x: any) => x.id === jobId);
+    let foundInHubId: string | null = null;
+
+    if (!j && S.hubJobs) {
+      for (const hId in S.hubJobs) {
+        j = S.hubJobs[hId].find((x: any) => x.id === jobId);
+        if (j) {
+          foundInHubId = hId;
+          break;
+        }
+      }
+    }
+
     if (!j) return { success: false, reason: 'Job not found' };
 
     // VIP Eligibility Check
@@ -129,7 +143,12 @@ export const DispatchExecution = {
       previousTrailer = t.trailer;
     }
 
-    S.jobs = S.jobs.filter((x: any) => x.id !== jobId);
+    // 4. Execution & Finalization
+    if (foundInHubId) {
+      S.hubJobs[foundInHubId] = S.hubJobs[foundInHubId].filter((x: any) => x.id !== jobId);
+    } else {
+      S.jobs = S.jobs.filter((x: any) => x.id !== jobId);
+    }
     
     // Record origin hub daily job count & payload tonnage usage
     recordHubJobDispatched(S, j.from, (j as any).weightTonnes || (j as any).weight || 20);
@@ -189,18 +208,10 @@ export const DispatchExecution = {
       S.fuelBunker.currentLiters -= fromBunker;
     }
     
-    const stillNeeded = neededFuel - fromBunker;
-    let stationCost = 0;
-    if (stillNeeded > 0) {
-      stationCost = Math.round(stillNeeded * 1.25);
-      S.money = Math.max(0, S.money - stationCost);
+    if (fromBunker > 0) {
+      t.fluids.fuel = Math.min(tankCapacity, (t.fluids.fuel ?? 0) + fromBunker);
+      pushNote(S, `${t.name}: Filled ${Math.round(fromBunker)}L from ${fuelSourceLabel} ($0 cash).`, { title: 'AUTO-REFUEL', type: 'ops' });
     }
-    t.fluids.fuel = tankCapacity;
-    
-    const msg = stillNeeded > 0 
-      ? `Topped up tank (${Math.round(fromBunker)}L from ${fuelSourceLabel}, ${Math.round(stillNeeded)}L station: -$${stationCost}).`
-      : `Filled tank (${tankCapacity}L) from ${fuelSourceLabel} ($0 cash).`;
-    pushNote(S, `${t.name}: ${msg}`, { title: 'AUTO-REFUEL', type: 'ops' });
   },
 
   /**
@@ -317,15 +328,11 @@ export const DispatchExecution = {
         if (!drv.stats) drv.stats = { tripsCompleted: 0, kmDriven: 0, earned: 0 };
         drv.stats.tripsCompleted++; drv.stats.kmDriven += km;
 
-        // Per-km performance mileage pay
+        // Per-km performance mileage pay (accrued for end-of-week payroll settlement)
         const perKmRate = getDriverPerKmRate(drv.skill || 1);
         const driverTripWage = Math.round(km * perKmRate);
         if (driverTripWage > 0) {
-          recordTransaction(S, 'expense_payroll', -driverTripWage, `Driver mileage pay: ${drv.name} (${km} km @ $${perKmRate.toFixed(2)}/km)`);
-          if (!S.stats) S.stats = { earned: 0, spent: 0, km: 0, jobs: 0 };
-          S.stats.spent = (S.stats.spent || 0) + driverTripWage;
-          if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
-          S.dailyStats.salaries += driverTripWage;
+          S.accruedPayroll = (S.accruedPayroll || 0) + driverTripWage;
           drv.stats.earned = (drv.stats.earned || 0) + driverTripWage;
         }
 

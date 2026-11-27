@@ -18,14 +18,19 @@ import { getDispatchNeuralNetwork, trainOnHistoricalLogs } from './neuralNetwork
 import { DispatchExecution } from '../dispatch/execution';
 import { FreightEngine } from '../freight/engine/generator';
 import { getCompanyProgression } from '../company/progression';
-import { isRegionUnlocked } from '../logistics/network';
+import { isRegionUnlocked, REGIONAL_HUBS, REGION_AUTHORITIES } from '../logistics/network';
 import { LOCATIONS } from '../../data/world';
 import { TRUCK_MODELS } from '../trucks/trucks.data';
+import { createTruck } from '../trucks/trucks.physics';
+import { ensureHubFacilities } from '../hubs/hub-facility';
 import { getHubFacilityForCity, isCityUnlockedHub } from '../hubs/hub-facility';
 import { getDispatchEligibilityError } from '../dispatch/validation';
 import { getCompanySafetyRating } from '../trucks/registration';
 import { getRegionalRetailFuelPrice } from '../economy/fuel-market';
 import { recordTransaction } from '../../core/ledger';
+import { fuelPer100km } from '../simulation/physics';
+import { VehicleMaintenance, getWholesalePartPrice, PART_BASE_PRICES } from '../trucks/maintenance';
+import { getTruckRegistrationStatus, registerTruckAtCity, renewVehicleRoadTax, payAllViolations, buyEzPass } from '../trucks/registration';
 import { pushNote } from '../../systems/notify';
 import { toast } from '../../core/ui';
 
@@ -66,18 +71,24 @@ export function calculateDispatchFeatureVector(S: any, truck: any, job: any, dri
   const weight = job.weight || 10;
   const capacityNorm = Math.min(1, Math.max(0.1, weight / maxGVW));
 
-  // 5. Driver readiness (well-rested = 1.0, fatigued/high HOS = near 0)
+  // 5. Driver & Fluid readiness (well-rested = 1.0, fatigued/high HOS or low DEF/coolant = penalized)
   const fatigue = driver?.fatigue || 0;
   const hosHours = driver?.hosHours || 0;
-  const driverReadiness = Math.max(0.1, 1 - (fatigue / 100) * 0.7 - (hosHours / 14) * 0.3);
+  const fluidPenalty = ((truck.fluids?.adBlue ?? 100) < 15 || (truck.fluids?.coolant ?? 100) < 35) ? 0.25 : 0;
+  const driverReadiness = Math.max(0.1, 1 - (fatigue / 100) * 0.7 - (hosHours / 14) * 0.3 - fluidPenalty);
 
-  // 6. Estimated Net Profit Margin Ratio (Fuel + Wear + Driver Expenses = ~$0.90/km)
-  const estimatedCost = totalKm * 0.90;
+  // 6. Real Physics Estimated Net Profit Margin Ratio (Fuel burn w/ upgrades + Wear w/ suspension + Driver Wage)
+  const cargoKg = Math.max(1000, (job.weight || 10) * 1000);
+  const estL100 = fuelPer100km(truck, { cargoWeightKg: cargoKg, gradientPct: 1.5, weatherCoeff: 0.9, roadType: 'asphalt', hasTrailer: true }, 82);
+  const fuelPrice = getRegionalRetailFuelPrice(typeof job.from === 'string' ? job.from : (typeof truck.loc === 'string' ? truck.loc : 'ROTTERDAM'), S) || 1.55;
+  const fuelCost = (totalKm / 100) * estL100 * fuelPrice;
+  const suspWearFactor = truck.upgrades?.heavyDutySuspension ? 0.75 : 1.0;
+  const wearAndWageCost = totalKm * (0.28 * suspWearFactor + 0.25);
+  const estimatedCost = fuelCost + wearAndWageCost;
   const netMargin = Math.max(0, Math.min(1, (payout - estimatedCost) / Math.max(1, payout)));
 
   // 7. Route familiarity & Hub Proximity
-  const hasOriginDepot = (S.depots || []).some((d: string) => d.toLowerCase().includes((job.from || '').toLowerCase()));
-  const familiarity = hasOriginDepot ? 1.0 : 0.6;
+  const familiarity = isCityUnlockedHub(S, job.from) ? 1.0 : 0.6;
 
   // 8. Reputation & Progression Potential
   const repScore = Math.min(1, (job.isAuctionWon ? 45 : 15) / 50 + (km / 3000) * 0.2);
@@ -155,10 +166,14 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
   if (effectiveYieldPerKm < minYpk) return -Infinity;
   if (km > maxDist) return -Infinity;
 
-  // 8. Hazmat preference filter
+  // 8. Hazmat preference filter (inspect both hub boards & VIP/auction board)
   const cargo = CARGO_TYPES.find(c => c.id === job.cargoId);
+  const allBoardJobs = [
+    ...(S.jobs || []),
+    ...(S.hubJobs ? (Object.values(S.hubJobs) as any[][]).flat() : [])
+  ];
   if (filters.requireHazmatCert) {
-    const hasAnyHazmatOnBoard = (S.jobs || []).some((j: any) => {
+    const hasAnyHazmatOnBoard = allBoardJobs.some((j: any) => {
       const c = CARGO_TYPES.find(cg => cg.id === j.cargoId);
       return c?.isHazmat;
     });
@@ -169,7 +184,7 @@ export function scoreJobForTruck(S: any, truck: any, job: any, filters: AiFilter
 
   // 9. Cargo type preference filter
   if (filters.priorityCargoTypes && filters.priorityCargoTypes.length > 0) {
-    const hasPriorityJobsOnBoard = (S.jobs || []).some((j: any) => filters.priorityCargoTypes!.includes(j.cargoId));
+    const hasPriorityJobsOnBoard = allBoardJobs.some((j: any) => filters.priorityCargoTypes!.includes(j.cargoId));
     if (hasPriorityJobsOnBoard && !filters.priorityCargoTypes.includes(job.cargoId)) {
       return -Infinity;
     }
@@ -313,19 +328,27 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
       const tankCapacity = truckModel?.tankSize || 800;
       const currentFuel = truck.fluids?.fuel !== undefined ? truck.fluids.fuel : tankCapacity;
       if (currentFuel < tankCapacity * 0.40) {
-        const needed = Math.round(tankCapacity - currentFuel);
+        let needed = Math.round(tankCapacity - currentFuel);
+        if (!truck.fluids) truck.fluids = { fuel: currentFuel, oil: 100, coolant: 100, adblue: 100, transmission: 100 };
+
         const hubFacility = getHubFacilityForCity(S, truck.loc);
-        if (hubFacility && hubFacility.fuelLiters >= needed) {
-          hubFacility.fuelLiters -= needed;
-          truck.fluids.fuel = tankCapacity;
-        } else if (S.fuelBunker && S.fuelBunker.currentLiters >= needed) {
-          S.fuelBunker.currentLiters -= needed;
-          truck.fluids.fuel = tankCapacity;
-        } else {
+        if (hubFacility && hubFacility.fuelLiters > 0) {
+          const draw = Math.min(needed, hubFacility.fuelLiters);
+          hubFacility.fuelLiters -= draw;
+          truck.fluids.fuel = (truck.fluids.fuel ?? currentFuel) + draw;
+          needed -= draw;
+        }
+        if (needed > 0 && S.fuelBunker && S.fuelBunker.currentLiters > 0 && truck.loc === S.homeCity) {
+          const draw = Math.min(needed, S.fuelBunker.currentLiters);
+          S.fuelBunker.currentLiters -= draw;
+          truck.fluids.fuel = (truck.fluids.fuel ?? currentFuel) + draw;
+          needed -= draw;
+        }
+        if (needed > 0 && !hubFacility && truck.loc !== S.homeCity) {
           const retailPrice = getRegionalRetailFuelPrice(truck.loc, S);
           const fuelCost = Math.round(needed * retailPrice);
           if ((S.money || 0) >= fuelCost) {
-            recordTransaction(S, 'expense_fuel', -fuelCost, `AI Auto-Refuel: ${truck.name} (${needed}L @ $${retailPrice.toFixed(2)}/L)`);
+            recordTransaction(S, 'expense_fuel', -fuelCost, `AI Auto-Refuel (Off-Hub): ${truck.name} (${needed}L @ $${retailPrice.toFixed(2)}/L)`);
             if (!S.dailyStats) S.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
             S.dailyStats.fuel += fuelCost;
             truck.fluids.fuel = tankCapacity;
@@ -335,19 +358,37 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
     }
   }
 
-  // 5. Check if market freight board needs replenishment
-  if (!S.jobs || S.jobs.length === 0) {
+  // 5. Hub-centric & VIP market board replenishment
+  if (!S.jobs) S.jobs = [];
+  if (!S.hubJobs) S.hubJobs = {};
+
+  if (S.jobs.length === 0) {
     try {
       replenish(S);
     } catch (e) {}
   } else if (S.jobs.length > 17) {
-    // Truncate if board is oversized
     S.jobs = S.jobs.slice(0, 17);
   }
 
-  const marketJobs = [...(S.jobs || [])];
+  // Ensure every owned hub (especially hubs with idle trucks) has hub freight generated
+  for (const hubId of (S.depots || [])) {
+    if (!S.hubJobs[hubId] || S.hubJobs[hubId].length === 0) {
+      try {
+        FreightEngine.replenishHub(S, hubId, 4);
+      } catch (e) {}
+    }
+  }
+
+  const marketJobs: any[] = [];
+  if (S.hubJobs) {
+    Object.values(S.hubJobs).forEach((hJobs: any) => {
+      if (Array.isArray(hJobs)) marketJobs.push(...hJobs);
+    });
+  }
+  marketJobs.push(...(S.jobs || []));
+
   if (marketJobs.length === 0) {
-    return { dispatchedCount: 0, message: 'No market jobs available in bulletin board' };
+    return { dispatchedCount: 0, message: 'No market jobs available across hub boards' };
   }
 
   let dispatchedCount = 0;
@@ -366,28 +407,33 @@ export function runAiAutoDispatch(S: any, overrideNow?: number): { dispatchedCou
       }
     }
 
-    // Fallback contract procurement: If no compatible jobs exist on the board for this truck's current location,
-    // generate an immediate matchable outbound consignment from truck.loc so fleet units never stall
-    // ONLY generate fallback jobs if truck is at an OWNED hub terminal
-    if (candidateJobs.length === 0 && (S.jobs || []).length < 17) {
+    // Fallback contract procurement: If no compatible jobs exist on the hub board for this truck's current location,
+    // generate an immediate matchable outbound consignment directly into that hub's S.hubJobs[hubId]
+    if (candidateJobs.length === 0) {
       const truckLoc = getLocationRecord(truck.loc);
-      if (truckLoc && isRegionUnlocked(S as any, truckLoc.region) && isCityUnlockedHub(S, truck.loc)) {
-        try {
-          const compatibleJob = FreightEngine.generate(S, {
-            forceRegion: truckLoc.region,
-            forceFrom: truck.loc,
-            vip: false
-          });
-          if (compatibleJob) {
-            if (!S.jobs) S.jobs = [];
-            S.jobs.unshift(compatibleJob);
-            marketJobs.unshift(compatibleJob);
-            const score = scoreJobForTruck(S, truck, compatibleJob, filters);
-            if (score > -Infinity) {
-              candidateJobs.push({ job: compatibleJob, score });
+      const originHub = REGIONAL_HUBS.find(
+        h => h.city === truck.loc && (S.depots || []).includes(h.id)
+      );
+      if (originHub && truckLoc && isRegionUnlocked(S as any, truckLoc.region)) {
+        if (!S.hubJobs[originHub.id]) S.hubJobs[originHub.id] = [];
+        if (S.hubJobs[originHub.id].length < 10) {
+          try {
+            const compatibleJob = FreightEngine.generate(S, {
+              forceRegion: truckLoc.region,
+              forceFrom: truck.loc,
+              forceTrailer: truck.trailer || undefined,
+              vip: false
+            });
+            if (compatibleJob) {
+              S.hubJobs[originHub.id].unshift(compatibleJob);
+              marketJobs.unshift(compatibleJob);
+              const score = scoreJobForTruck(S, truck, compatibleJob, filters);
+              if (score > -Infinity) {
+                candidateJobs.push({ job: compatibleJob, score });
+              }
             }
-          }
-        } catch (e) {}
+          } catch (e) {}
+        }
       }
     }
 
@@ -513,17 +559,42 @@ export function runAiFleetMaintenance(S: any): number {
     const avgHealth = healthValues.length > 0 ? (healthValues.reduce((a, b) => a + b, 0) / healthValues.length) : 100;
     const minCompHealth = healthValues.length > 0 ? Math.min(...healthValues) : 100;
 
-    // Service trucks proactively if average health drops below 75% or ANY component < 55%
-    if (avgHealth < 75 || minCompHealth < 55) {
-      const repairCost = Math.round((100 - avgHealth) * 85);
-      if (S.money >= repairCost + 1000) {
-        S.money -= repairCost;
-        Object.keys(comp).forEach(k => {
-          if (typeof comp[k] === 'number') comp[k] = 100;
-          else if (comp[k]) comp[k].health = 100;
-        });
+    // Top up AdBlue/Coolant/Oil if low
+    if ((truck.fluids?.adBlue ?? 100) < 40 || (truck.fluids?.coolant ?? 100) < 60) {
+      VehicleMaintenance.serviceConsumables(S, truck.id);
+    }
 
+    // Renew expired DMV registration or road tax on idle trucks
+    const regStatus = getTruckRegistrationStatus(truck);
+    if (!regStatus.registered && S.money > 3000) {
+      registerTruckAtCity(S, truck.id, truck.loc || 'ROTTERDAM');
+    }
+    if (!regStatus.taxPaid && S.money > 3000) {
+      renewVehicleRoadTax(S, truck.id);
+    }
+
+    // Service trucks proactively if average health drops below 75% or ANY component < 55%, using HQ Warehouse parts!
+    if (avgHealth < 75 || minCompHealth < 55) {
+      let totalSpent = 0;
+      let partsUsedFromStock = 0;
+      const compKeys = Object.keys(comp) as Array<keyof typeof comp>;
+      for (const partKey of compKeys) {
+        const curH = typeof comp[partKey] === 'number' ? comp[partKey] : comp[partKey]?.health ?? 100;
+        if (curH < 85) {
+          const quote = VehicleMaintenance.getPartEffectiveCost(S, truck, partKey as string);
+          if (S.money >= quote.cost + 1000) {
+            const err = VehicleMaintenance.repairPart(S, truck.id, partKey as any);
+            if (!err) {
+              totalSpent += quote.cost;
+              if (quote.fromInventory) partsUsedFromStock++;
+            }
+          }
+        }
+      }
+
+      if (totalSpent > 0) {
         servicedCount++;
+        const stockNote = partsUsedFromStock > 0 ? ` (${partsUsedFromStock} from HQ stock)` : '';
         const logEntry: AiLogEntry = {
           id: `ai-maint-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
           timestamp: Date.now(),
@@ -534,12 +605,12 @@ export function runAiFleetMaintenance(S: any): number {
           cargoName: 'Fleet Maintenance',
           from: truck.loc,
           to: truck.loc,
-          payoutUsd: -repairCost,
+          payoutUsd: -totalSpent,
           km: 0,
           yieldPerKm: 0,
           profileUsed: S.aiState.filters?.profile || 'balanced_efficiency',
           status: 'serviced',
-          message: `Autonomous Service: ${truck.name} restored to 100% health (-$${repairCost.toLocaleString()})`
+          message: `Autonomous Service: ${truck.name} repaired${stockNote} (-$${totalSpent.toLocaleString()})`
         };
 
         if (!S.aiState.logs) S.aiState.logs = [];
@@ -550,4 +621,139 @@ export function runAiFleetMaintenance(S: any): number {
   }
 
   return servicedCount;
+}
+
+/**
+ * AI Executive Strategy Engine: Autonomous Company Operations
+ * Handles autonomous recruitment, fleet expansion, and network growth.
+ */
+export function runAiExecutiveStrategy(S: any): { actions: string[] } {
+  if (!S.aiState || !S.aiState.executiveAutopilotActive) return { actions: [] };
+  const now = Date.now();
+  if (now >= S.aiState.executiveExpiresTimestamp) return { actions: [] };
+
+  const actions: string[] = [];
+  const logAction = (msg: string) => {
+    actions.push(msg);
+    const entry: AiLogEntry = {
+      id: `ai-exec-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      timestamp: Date.now(),
+      simTimeFormatted: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      truckId: 0,
+      truckName: 'Corporate HQ',
+      jobId: 0,
+      cargoName: 'Executive Strategy',
+      from: 'HQ',
+      to: 'HQ',
+      payoutUsd: 0,
+      km: 0,
+      yieldPerKm: 0,
+      profileUsed: S.aiState.filters?.profile || 'balanced_efficiency',
+      status: 'dispatched',
+      message: `[EXECUTIVE] ${msg}`
+    };
+    if (!S.aiState.logs) S.aiState.logs = [];
+    S.aiState.logs.unshift(entry);
+    if (S.aiState.logs.length > 60) S.aiState.logs.pop();
+  };
+
+  // 1. AUTONOMOUS RECRUITMENT: Pair idle trucks with drivers
+  const idleTrucksWithoutDrivers = (S.fleet || []).filter((t: any) => t.status === 'idle' && !t.driverId);
+  if (idleTrucksWithoutDrivers.length > 0) {
+    for (const truck of idleTrucksWithoutDrivers) {
+      const region = LOCATIONS[truck.loc]?.region || 'Europe';
+      const candidate = (S.pool || []).find((p: any) => p.region === region);
+      if (candidate) {
+        const fee = candidate.skill * 1500;
+        if (S.money >= fee + 5000) {
+          S.money -= fee;
+          S.pool = S.pool.filter((p: any) => p.id !== candidate.id);
+          S.drivers.push(candidate);
+          truck.driverId = candidate.id;
+          candidate.assignedTruckId = truck.id;
+          logAction(`Hired ${candidate.name} (${candidate.skill}★) for ${truck.name}.`);
+          break; // One hire per tick to prevent massive cash drain
+        }
+      }
+    }
+  }
+
+  // 2. AUTONOMOUS FLEET EXPANSION: Buy trucks when profitable and space available
+  const idleTrucksWithDrivers = (S.fleet || []).filter((t: any) => t.status === 'idle' && t.driverId).length;
+  const hasSpace = S.fleet.length < 100; // Arbitrary soft cap for AI expansion
+  if (S.money > 450000 && idleTrucksWithDrivers < 2 && hasSpace) {
+    const models = Object.values(TRUCK_MODELS).filter(m => m.price > 100000 && m.price < 250000);
+    const model = models[Math.floor(Math.random() * models.length)];
+    if (model && S.money >= model.price + 100000) {
+      const spawnLoc = S.depots?.[0] ? REGIONAL_HUBS.find(h => h.id === S.depots[0])?.city : 'ROTTERDAM';
+      const newId = S.nextId++;
+      const truck = createTruck(newId, model.id, `${model.brand} ${model.name} (AI Unit #${newId})`, spawnLoc || 'ROTTERDAM', null);
+      S.fleet.push(truck);
+      S.money -= model.price;
+      logAction(`Acquired ${model.brand} ${model.name} to expand fleet capacity.`);
+    }
+  }
+
+  // 3. AUTONOMOUS NETWORK GROWTH: Acquire new hubs in current or new regions
+  if (S.money > 850000 && S.fleet.length > (S.depots?.length || 0) * 6) {
+    const targetHub = REGIONAL_HUBS.find(h => 
+      isRegionUnlocked(S, h.region) && 
+      !(S.depots || []).includes(h.id) && 
+      S.money >= h.cost + 200000
+    );
+
+    if (targetHub) {
+      S.money -= targetHub.cost;
+      S.depots.push(targetHub.id);
+      ensureHubFacilities(S);
+      logAction(`Acquired ${targetHub.name} in ${targetHub.city} to optimize regional logistics.`);
+    }
+  }
+
+  // 4. COMPLIANCE & DOT FINES: Clear unpaid citations to keep safety rating high
+  if ((S.violations || []).length > 0 && S.money > 15000) {
+    const count = S.violations.length;
+    if (payAllViolations(S)) {
+      logAction(`Cleared ${count} DOT violation(s).`);
+    }
+  }
+
+  // 5. WAREHOUSE WHOLESALE RESTOCK: Keep critical spare parts stocked at -55% bulk discount
+  if (S.money > 120000 && (S.depots || []).length > 0) {
+    if (!S.partsInventory) S.partsInventory = {};
+    for (const partKey of Object.keys(PART_BASE_PRICES)) {
+      const currentQty = S.partsInventory[partKey] || 0;
+      if (currentQty < 2) {
+        const bulkCost = getWholesalePartPrice(partKey, 4);
+        if (S.money >= bulkCost + 50000) {
+          S.money -= bulkCost;
+          S.partsInventory[partKey] = currentQty + 4;
+          recordTransaction(S, 'maintenance', -bulkCost, `AI Executive: Bulk OEM ${partKey} x4`);
+          logAction(`Restocked HQ Warehouse: +4 ${partKey.toUpperCase()} at wholesale (-$${bulkCost.toLocaleString()}).`);
+          break; // Max 1 bulk restock per tick
+        }
+      }
+    }
+  }
+
+  // 6. INSURANCE & RISK PROTECTION: Ensure basic liability & cargo coverage
+  if (S.money > 80000 && (S.fleet || []).length > 0) {
+    if (!S.insurance) S.insurance = { liability: true, collision: true, cargo: false };
+    if (!S.insurance.liability) {
+      S.insurance.liability = true;
+      logAction('Enrolled fleet in Commercial Auto Liability Insurance.');
+    } else if (!S.insurance.cargo && S.money > 110000) {
+      S.insurance.cargo = true;
+      logAction('Enrolled fleet in Motor Truck Cargo Insurance.');
+    }
+  }
+
+  // 7. E-ZPASS TOLL AUTOMATION: Equip company with E-ZPass transponder if missing
+  if (S.money > 60000 && !S.tollPasses?.ezPass) {
+    if (buyEzPass(S)) {
+      logAction('Purchased company-wide E-ZPass Transponder.');
+    }
+  }
+
+  return { actions };
 }

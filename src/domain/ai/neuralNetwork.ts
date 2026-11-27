@@ -28,6 +28,7 @@ export class NeuralNetwork {
   trainingIterations: number = 0;
   totalLoss: number = 0;
   lastConfidence: number = 0.5;
+  private replayBuffer: Array<{ input: number[]; target: number }> = [];
 
   constructor(inputSize: number = 8, hiddenSizesOrSize: number | number[] = [12, 8]) {
     this.inputSize = inputSize;
@@ -135,10 +136,29 @@ export class NeuralNetwork {
   }
 
   /**
-   * Online reinforcement backpropagation pass.
+   * Online reinforcement backpropagation pass with adaptive LR decay and experience replay.
    * Updates weights using gradient descent towards the target score.
    */
   train(inputs: number[], target: number, learningRate: number = 0.04): { loss: number; output: number } {
+    const effectiveLr = learningRate / (1 + Math.min(2000, this.trainingIterations) * 0.0005);
+    const res = this._backprop(inputs, target, effectiveLr);
+
+    // Record into bounded Experience Replay Buffer (max 64 samples)
+    const expectedIn = this.layers[0]?.weights?.length ?? this.inputSize;
+    const normIn = this.normalizeInputVector(inputs || [], expectedIn);
+    this.replayBuffer.push({ input: normIn, target: Math.max(0.01, Math.min(0.99, target)) });
+    if (this.replayBuffer.length > 64) this.replayBuffer.shift();
+
+    // Replay 1 historical sample to prevent catastrophic forgetting
+    if (this.replayBuffer.length >= 6) {
+      const sample = this.replayBuffer[Math.floor(Math.random() * (this.replayBuffer.length - 1))];
+      if (sample) this._backprop(sample.input, sample.target, effectiveLr * 0.5, false);
+    }
+
+    return res;
+  }
+
+  private _backprop(inputs: number[], target: number, learningRate: number, countIteration: boolean = true): { loss: number; output: number } {
     const expectedIn = this.layers[0]?.weights?.length ?? this.inputSize;
     inputs = this.normalizeInputVector(inputs || [], expectedIn);
     target = Math.max(0.01, Math.min(0.99, target));
@@ -176,7 +196,10 @@ export class NeuralNetwork {
 
     const output = current[0];
     const loss = 0.5 * Math.pow(target - output, 2);
-    this.totalLoss = this.totalLoss * 0.95 + loss * 0.05;
+    if (countIteration) {
+      this.totalLoss = this.totalLoss * 0.95 + loss * 0.05;
+      this.trainingIterations++;
+    }
     this.trainingIterations++;
 
     // 2. Backward pass: Calculate layer error deltas

@@ -25,18 +25,57 @@ import {
 import { action, fmt, toast } from '../../core/ui';
 import { set, refresh } from '../../core/store';
 import { getHubWholesaleFuelPrice } from '../../domain/economy/fuel-market';
+import { renderJobCard } from '../home/job-card';
+import { replenishHub } from '../../systems/jobs';
 
 export let activeGarageHubId: string = ''; // Active unlocked hub ID e.g. 'hub_lagos', 'hub_chicago'
 let wholesaleFuelModalHubId: string | null = null;
+let showHubJobsBoard: boolean = false;
+let hubSelectorPage: number = 1;
+const HUBS_PER_PAGE = 6;
 
 export function setActiveGarageHub(hubId: string) {
   activeGarageHubId = hubId;
+  showHubJobsBoard = false;
+  if (!hubId) hubSelectorPage = 1;
   refresh();
 }
 
+action('garage-hub-page-prev', () => {
+  if (hubSelectorPage > 1) {
+    hubSelectorPage--;
+    refresh();
+  }
+});
+
+action('garage-hub-page-next', () => {
+  hubSelectorPage++;
+  refresh();
+});
+
 action('garage-hub-select', d => {
   activeGarageHubId = (d as any).hubId || '';
+  showHubJobsBoard = false;
   refresh();
+});
+
+action('toggle-garage-hub-jobs', () => {
+  showHubJobsBoard = !showHubJobsBoard;
+  refresh();
+});
+
+action('garage-refresh-hub-jobs', d => {
+  const hubId = (d as any).hubId;
+  if (!hubId) return;
+  set(S => {
+    const cost = 250;
+    if (S.money < cost) return toast(`Insufficient funds to refresh hub board. Need $${cost}`, 'err');
+    S.money -= cost;
+    if (!S.hubJobs) S.hubJobs = {};
+    S.hubJobs[hubId] = [];
+    replenishHub(S, hubId, 6);
+    toast('Hub freight board refreshed ($250 fee paid)!', 'success');
+  });
 });
 
 action('hub-upgrade-facility', d => {
@@ -196,27 +235,38 @@ export function renderHubConsole(S: any, currentRegion: RegionName): string {
   const unlockedHubsInRegion = REGIONAL_HUBS.filter(h => h.region === currentRegion && (S.depots || []).includes(h.id));
 
   const hasNoHubs = unlockedHubsInRegion.length === 0;
+  const totalHubPages = Math.max(1, Math.ceil(unlockedHubsInRegion.length / HUBS_PER_PAGE));
+  if (hubSelectorPage > totalHubPages) hubSelectorPage = totalHubPages;
+  if (hubSelectorPage < 1) hubSelectorPage = 1;
+  const hubStartIdx = (hubSelectorPage - 1) * HUBS_PER_PAGE;
+  const pagedHubs = unlockedHubsInRegion.slice(hubStartIdx, hubStartIdx + HUBS_PER_PAGE);
   
   const hubSelectorBar = `
     <!-- LEVEL 2: REGION >> UNLOCKED HUB SELECTOR BAR -->
     <div style="background:#0a0f1d; border:1px solid #1a2336; border-radius:10px; padding:10px 12px; margin-bottom:12px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; gap:8px; flex-wrap:wrap;">
         <div style="display:flex; align-items:center; gap:6px;">
           <span style="font-size:11px;">🏢</span>
           <span style="font-size:9px; font-weight:800; color:var(--gold); text-transform:uppercase; letter-spacing:0.8px; font-family:monospace;">
             ${currentRegion.toUpperCase()} TERMINAL HUBS (${unlockedHubsInRegion.length})
           </span>
         </div>
-        <span style="font-size:8px; color:var(--mu); font-family:monospace;">SELECT OPERATIONAL HUB</span>
+        ${totalHubPages > 1 ? `
+          <div style="display:flex; align-items:center; gap:6px;">
+            <button class="btn alt" style="padding:2px 8px; font-size:9px; font-weight:800;" data-act="garage-hub-page-prev" ${hubSelectorPage <= 1 ? 'disabled style="opacity:0.35;"' : ''}>←</button>
+            <span style="font-size:9px; color:var(--mu); font-family:monospace; font-weight:800;">PAGE ${hubSelectorPage}/${totalHubPages}</span>
+            <button class="btn alt" style="padding:2px 8px; font-size:9px; font-weight:800;" data-act="garage-hub-page-next" ${hubSelectorPage >= totalHubPages ? 'disabled style="opacity:0.35;"' : ''}>→</button>
+          </div>
+        ` : `<span style="font-size:8px; color:var(--mu); font-family:monospace;">SELECT OPERATIONAL HUB</span>`}
       </div>
 
       <!-- Hub Selector Buttons -->
-      <div style="display:flex; gap:6px; overflow-x:auto; padding-bottom:4px;">
+      <div style="display:flex; gap:6px; flex-wrap:wrap; padding-bottom:2px;">
         <button class="btn ${!activeGarageHubId ? 'gold' : 'alt'}" style="padding:6px 12px; font-size:10px; font-weight:800; white-space:nowrap; border-radius:6px; display:flex; align-items:center; gap:6px;" data-act="garage-hub-select" data-hub-id="">
           <span>🛰️</span>
           <span>EN-ROUTE</span>
         </button>
-        ${unlockedHubsInRegion.map(hub => {
+        ${pagedHubs.map(hub => {
           const totalBerths = getHubTotalBerths(S, hub.id);
           const trucksAtThisHub = getTrucksAtHub(S, hub.city);
           const isSelected = activeGarageHubId === hub.id;
@@ -422,15 +472,51 @@ export function renderHubConsole(S: any, currentRegion: RegionName): string {
       </div>
 
       <!-- Quick Hub Fleet Action Bar -->
-      <div style="display:flex; justify-content:space-between; align-items:center; background:#080c16; border:1px solid #1a2336; border-radius:5px; padding:4px 8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; background:#080c16; border:1px solid #1a2336; border-radius:5px; padding:6px 8px;">
         <div style="font-size:8.5px; color:var(--mu); font-family:monospace; display:flex; align-items:center; gap:4px;">
           <span>⚡</span>
           <span>Auto-refuels parked fleet at departure.</span>
         </div>
-        <button class="btn alt" style="padding:3px 8px; font-size:7.5px; font-weight:800; color:var(--grn); border-color:rgba(16,185,129,0.4);" data-act="hub-bulk-refuel-fleet" data-hub-id="${selectedHub.id}">
-          ⚡ REFUEL FLEET (${selectedHub.city})
-        </button>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <button class="btn ${showHubJobsBoard ? 'gold' : 'alt'}" style="padding:3px 10px; font-size:7.5px; font-weight:900; ${showHubJobsBoard ? '' : 'color:var(--gold); border-color:rgba(193,154,91,0.5);'}" data-act="toggle-garage-hub-jobs">
+            📦 HUB JOBS (${(S.hubJobs?.[selectedHub.id] || []).length})
+          </button>
+          <button class="btn alt" style="padding:3px 8px; font-size:7.5px; font-weight:800; color:var(--grn); border-color:rgba(16,185,129,0.4);" data-act="hub-bulk-refuel-fleet" data-hub-id="${selectedHub.id}">
+            ⚡ REFUEL FLEET (${selectedHub.city})
+          </button>
+        </div>
       </div>
+
+      ${showHubJobsBoard ? (() => {
+        const hubJobs = S.hubJobs?.[selectedHub.id] || [];
+        return `
+          <div style="margin-top:10px; padding-top:10px; border-top:1px solid rgba(193,154,91,0.25);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <span style="font-size:10px; font-weight:900; color:var(--gold); letter-spacing:0.8px; text-transform:uppercase; font-family:monospace;">
+                📦 ${selectedHub.city} TERMINAL FREIGHT BOARD (${hubJobs.length} / 10)
+              </span>
+              <div style="display:flex; gap:6px;">
+                <button class="btn alt" style="padding:4px 10px; font-size:8.5px; font-weight:800; border-color:var(--gold); color:var(--gold);" data-act="garage-refresh-hub-jobs" data-hub-id="${selectedHub.id}">
+                  🔄 Refresh $250
+                </button>
+                <button class="btn alt" style="padding:4px 8px; font-size:8.5px; font-weight:800;" data-act="toggle-garage-hub-jobs">
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            ${hubJobs.length > 0 ? hubJobs.map((j: any) => renderJobCard(S, j)).join('') : `
+              <div style="background:#080c16; border:1px solid #1a2336; border-radius:8px; padding:20px; text-align:center; color:var(--mu); font-size:10px; font-family:monospace;">
+                NO HUB-ORIGINATED LOADS CURRENTLY AVAILABLE AT ${selectedHub.city.toUpperCase()}.
+                <br/><br/>
+                <button class="btn gold" style="padding:6px 14px; font-size:9.5px; font-weight:900;" data-act="garage-refresh-hub-jobs" data-hub-id="${selectedHub.id}">
+                  GENERATE LOADS ($250)
+                </button>
+              </div>
+            `}
+          </div>
+        `;
+      })() : ''}
     </div>
 
     ${renderWholesaleFuelModal(S)}

@@ -7,6 +7,8 @@ import { TRUCK_MODELS } from '../domain/trucks/trucks.data';
 import { LOCATIONS } from '../data/world';
 import { ensureHubFacilities } from '../domain/hubs/hub-facility';
 import { getHubCharacteristics } from '../domain/hubs/characteristics';
+import { renderJobCard } from './home/job-card';
+import { replenishHub } from '../systems/jobs';
 
 let hubTab: 'regions' | 'hubs' | 'routes' | 'tenders' = 'regions';
 let hubFilterRegion: string = 'ALL';
@@ -25,6 +27,31 @@ action('set-hub-filter', d => {
 action('set-hub-search', d => {
   hubSearchQuery = (d as any).value || '';
   refresh();
+});
+
+let selectedHubForJobs: string | null = null;
+
+action('view-hub-jobs', d => {
+  selectedHubForJobs = (d as any).id;
+  refresh();
+});
+
+action('close-hub-jobs', () => {
+  selectedHubForJobs = null;
+  refresh();
+});
+
+action('refresh-hub-jobs', d => {
+  const hubId = (d as any).id;
+  set(S => {
+    const cost = 250;
+    if (S.money < cost) return toast(`Insufficient funds to refresh hub board. Need $${cost}`, 'err');
+    S.money -= cost;
+    if (!S.hubJobs) S.hubJobs = {};
+    S.hubJobs[hubId] = [];
+    replenishHub(S, hubId, 6);
+    toast('Hub freight board refreshed ($250 fee paid)!', 'success');
+  });
 });
 
 action('unlock-region', d => {
@@ -98,6 +125,13 @@ export default {
   label: 'Network & Hubs',
   hidden: true,
   render: (S: any) => {
+    if (selectedHubForJobs) {
+      const hub = REGIONAL_HUBS.find(h => h.id === selectedHubForJobs);
+      if (hub) {
+        return renderHubJobsView(S, hub);
+      }
+    }
+
     const unlockedCount = (S.unlockedRegions || ['Africa']).length;
     const ownedHubsCount = (S.depots || []).length;
 
@@ -266,7 +300,7 @@ export default {
                   </div>
 
                   <!-- Bottom Row: Specialties & Cargo Bonuses -->
-                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:8px; font-family:monospace;">
+                  <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:8px; font-family:monospace; margin-bottom:4px;">
                     <span style="color:var(--mu); font-weight:800; text-transform:uppercase;">Specialties:</span>
                     ${char.specialties.map(spec => `
                       <span style="background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--tx); padding:2px 6px; border-radius:4px; display:inline-flex; align-items:center; gap:3px;">
@@ -276,6 +310,15 @@ export default {
                       </span>
                     `).join('')}
                   </div>
+
+                  <!-- Management Actions -->
+                  ${isOwned ? `
+                    <div style="display:flex; gap:8px; border-top:1px solid rgba(255,255,255,0.06); padding-top:10px; margin-top:4px;">
+                      <button class="btn gold" style="flex:1; padding:10px; font-size:10px; font-weight:900; letter-spacing:0.5px;" data-act="view-hub-jobs" data-id="${hub.id}">
+                        📂 MANAGE HUB JOBS
+                      </button>
+                    </div>
+                  ` : ''}
                 </div>
               `;
             }).join('')}
@@ -465,3 +508,69 @@ export default {
     `;
   }
 };
+
+function renderHubJobsView(S: any, hub: any) {
+  const jobs = S.hubJobs?.[hub.id] || [];
+  const char = getHubCharacteristics(hub.id);
+
+  return `
+    <div style="padding:16px;">
+      <div style="background:#111827; border:1px solid var(--gold); border-radius:12px; padding:20px; margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+          <div style="display:flex; align-items:center; gap:14px;">
+            <span style="font-size:32px;">${hub.icon}</span>
+            <div>
+              <div style="font-size:18px; font-weight:900; color:var(--tx);">${hub.name} Dispatch Office</div>
+              <div style="font-size:11px; color:var(--gold); font-family:monospace; margin-top:2px;">
+                ${hub.city}, ${hub.region.toUpperCase()} · TERMINAL HUB
+              </div>
+            </div>
+          </div>
+          <button class="btn alt" style="padding:8px 16px; font-size:11px; font-weight:800;" data-act="close-hub-jobs">
+            ✕ CLOSE
+          </button>
+        </div>
+
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:10px; margin-top:16px;">
+          <div style="background:#0b0f19; border:1px solid rgba(255,255,255,0.06); padding:10px; border-radius:8px; text-align:center;">
+            <div style="font-size:9px; color:var(--mu); text-transform:uppercase; margin-bottom:4px;">Available Loads</div>
+            <div style="font-size:16px; font-weight:900; color:var(--tx);">${jobs.length} / 10</div>
+          </div>
+          <div style="background:#0b0f19; border:1px solid rgba(255,255,255,0.06); padding:10px; border-radius:8px; text-align:center;">
+            <div style="font-size:9px; color:var(--mu); text-transform:uppercase; margin-bottom:4px;">Hub Capacity</div>
+            <div style="font-size:16px; font-weight:900; color:#38bdf8;">${char.dailyJobLimit} J/D</div>
+          </div>
+          <div style="background:#0b0f19; border:1px solid rgba(255,255,255,0.06); padding:10px; border-radius:8px; text-align:center;">
+            <div style="font-size:9px; color:var(--mu); text-transform:uppercase; margin-bottom:4px;">Tonnage Capacity</div>
+            <div style="font-size:16px; font-weight:900; color:#10b981;">${char.dailyTonnageCapacity} T</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="sec" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">
+          HUB-SPECIFIC FREIGHT MANIFESTS (${jobs.length})
+        </span>
+        <button class="btn alt" style="padding:4px 10px; font-size:9px; font-weight:800; border-color:var(--gold); color:var(--gold);" data-act="refresh-hub-jobs" data-id="${hub.id}">
+          🔄 Refresh $250
+        </button>
+      </div>
+
+      ${jobs.length > 0 ? jobs.map((j: any) => renderJobCard(S, j)).join('') : `
+        <div style="background:#0e1320; border:1px solid #1e2638; border-radius:10px; padding:32px; text-align:center; color:var(--mu); font-size:11px; font-family:monospace;">
+          NO HUB-ORIGINATED LOADS CURRENTLY AVAILABLE AT THIS TERMINAL.
+          <br/><br/>
+          <button class="btn gold" style="padding:8px 16px; font-size:10px; font-weight:900;" data-act="refresh-hub-jobs" data-id="${hub.id}">
+            GENERATE LOADS ($250)
+          </button>
+        </div>
+      `}
+
+      <div style="margin-top:20px; text-align:center;">
+        <button class="btn alt" style="width:100%; padding:12px; font-size:11px; font-weight:800; color:var(--mu);" data-act="close-hub-jobs">
+          RETURN TO NETWORK OVERVIEW
+        </button>
+      </div>
+    </div>
+  `;
+}

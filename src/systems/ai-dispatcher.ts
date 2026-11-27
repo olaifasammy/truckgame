@@ -19,7 +19,8 @@ export function activateAiSuiteSystem(
   includeOfflineDispatch: boolean = true,
   includeQuantTrader: boolean = false,
   autoRenew: boolean = true,
-  allowExtension: boolean = false
+  allowExtension: boolean = false,
+  includeExecutiveAutopilot: boolean = false
 ): boolean {
   let success = false;
 
@@ -33,12 +34,14 @@ export function activateAiSuiteSystem(
     }
 
     const addons = AI_ADDON_PLANS[planId];
-    const maintCost = includeMaintenance && addons ? addons.maintenance : { priceUsd: 0, priceFlb: 0 };
-    const offlineCost = includeOfflineDispatch && addons ? addons.offline_dispatch : { priceUsd: 0, priceFlb: 0 };
-    const quantCost = includeQuantTrader && addons ? addons.quant_trader : { priceUsd: 0, priceFlb: 0 };
+    const zeroCost = { priceUsd: 0, priceFlb: 0 };
+    const maintCost = (includeMaintenance && addons?.maintenance) || zeroCost;
+    const offlineCost = (includeOfflineDispatch && addons?.offline_dispatch) || zeroCost;
+    const quantCost = (includeQuantTrader && addons?.quant_trader) || zeroCost;
+    const execCost = (includeExecutiveAutopilot && addons?.executive_autopilot) || zeroCost;
 
-    const totalUsd = plan.priceUsd + maintCost.priceUsd + offlineCost.priceUsd + quantCost.priceUsd;
-    const totalFlb = plan.priceFlb + maintCost.priceFlb + offlineCost.priceFlb + quantCost.priceFlb;
+    const totalUsd = plan.priceUsd + maintCost.priceUsd + offlineCost.priceUsd + quantCost.priceUsd + execCost.priceUsd;
+    const totalFlb = plan.priceFlb + maintCost.priceFlb + offlineCost.priceFlb + quantCost.priceFlb + execCost.priceFlb;
 
     const now = Date.now();
     const durationMs = plan.days * 86400 * 1000;
@@ -77,6 +80,8 @@ export function activateAiSuiteSystem(
       ? S.aiState.offlineExpiresTimestamp : now;
     const baseQuantTime = S.aiState.quantTraderActive && now < S.aiState.quantTraderExpiresTimestamp
       ? S.aiState.quantTraderExpiresTimestamp : now;
+    const baseExecTime = S.aiState.executiveAutopilotActive && now < S.aiState.executiveExpiresTimestamp
+      ? S.aiState.executiveExpiresTimestamp : now;
 
     S.aiState.subscriptionActive = true;
     S.aiState.expiresTimestamp = baseSubTime + durationMs;
@@ -96,6 +101,11 @@ export function activateAiSuiteSystem(
     if (includeQuantTrader) {
       S.aiState.quantTraderActive = true;
       S.aiState.quantTraderExpiresTimestamp = baseQuantTime + durationMs;
+    }
+
+    if (includeExecutiveAutopilot) {
+      S.aiState.executiveAutopilotActive = true;
+      S.aiState.executiveExpiresTimestamp = baseExecTime + durationMs;
     }
 
     S.aiState.filters.enabled = true;

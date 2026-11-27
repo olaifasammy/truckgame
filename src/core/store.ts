@@ -3,6 +3,7 @@ import { LOCATIONS } from '../data/world';
 import { DEFAULT_AI_STATE } from '../domain/ai/ai.config';
 import { ensureHubFacilities } from '../domain/hubs/hub-facility';
 import { REGIONAL_HUBS, PRIMARY_HUB_BY_REGION, RegionName } from '../domain/logistics/network';
+import { db } from '../db/db';
 
 const KEY = 'sam.v3';
 
@@ -19,6 +20,7 @@ const DEF = () => ({
   tab: 'home',
   nextId: 100,
   jobs: [] as any[],
+  hubJobs: {} as Record<string, any[]>,
   active: [] as any[],
   notes: [{ id: '1', title: 'Welcome', msg: 'Welcome to NexHaul Logistics Management System.', at: Date.now(), read: false, type: 'system', priority: 1 }] as any[],
   pool: [] as any[],
@@ -85,6 +87,15 @@ let S: any;
 const subs = new Set<(state: any) => void>();
 
 function fix(state: any) {
+  if (typeof state.money !== 'number' || !Number.isFinite(state.money)) {
+    state.money = 165000;
+  }
+  if (typeof state.coins !== 'number' || !Number.isFinite(state.coins)) {
+    state.coins = 0;
+  }
+  if (typeof state.xp !== 'number' || !Number.isFinite(state.xp)) {
+    state.xp = 0;
+  }
   if (!state.licenses) state.licenses = ['standard'];
   if (!state.trailers) state.trailers = ['curtain', 'flatbed', 'reefer'];
   
@@ -287,12 +298,15 @@ function fix(state: any) {
       return locA && locB && locA.region === locB.region;
     });
   }
+  if (!state.jobs) state.jobs = [];
+  if (!state.hubJobs) state.hubJobs = {};
   if (state.jobs && state.jobs.length > 0) {
     if (!state.jobs[0].cargoId) {
       state.jobs = [];
     } else {
       state.jobs = state.jobs.filter((j: any) => {
         if (j.isAuctionWon || j.tenderId) return true;
+        if (!j.vip) return false; // Regular spot jobs live per-hub in state.hubJobs
         const locA = LOCATIONS[j.from];
         const locB = LOCATIONS[j.to];
         return locA && locB && locA.region === locB.region;
@@ -336,6 +350,9 @@ function fix(state: any) {
   if (!state.dailyStats) {
     state.dailyStats = { revenue: 0, salaries: 0, fuel: 0, maintenance: 0, insurance: 0, loans: 0 };
   }
+  if (!Array.isArray(state.dailyHistory)) {
+    state.dailyHistory = [];
+  }
 
   if (!state.lastTick) state.lastTick = Date.now();
   if (!state.lastSimTick) state.lastSimTick = state.lastTick || Date.now();
@@ -352,6 +369,19 @@ export function load() {
     const raw = localStorage.getItem(KEY);
     S = { ...DEF(), ...JSON.parse(raw || '{}') };
     fix(S);
+
+    // If localStorage was cleared, try restoring backup from IndexedDB
+    if (!raw && typeof indexedDB !== 'undefined') {
+      (db as any).state.get('current').then((backup: any) => {
+        if (backup && (backup.isAuthenticated || (backup.fleet && backup.fleet.length > 0))) {
+          const { id: _id, ...rest } = backup;
+          S = { ...DEF(), ...rest };
+          fix(S);
+          try { localStorage.setItem(KEY, JSON.stringify(S)); } catch {}
+          subs.forEach(f => f(S));
+        }
+      }).catch(() => {});
+    }
   } catch (e) {
     console.error('Store: Load/Fix failed, using default state', e);
     S = DEF();
@@ -366,10 +396,20 @@ const save = () => {
   try {
     localStorage.setItem(KEY, JSON.stringify(S));
   } catch (e) {}
+  if (typeof indexedDB !== 'undefined') {
+    try {
+      (db as any).state.put({ id: 'current', ...S }).catch(() => {});
+    } catch {}
+  }
 };
 
 export function set(fn: (state: any) => void) {
+  const prevMoney = Number.isFinite(S?.money) ? S.money : 165000;
   fn(S);
+  if (typeof S.money !== 'number' || !Number.isFinite(S.money)) {
+    console.error('Store: Prevented non-finite S.money mutation, restoring previous balance:', S.money);
+    S.money = prevMoney;
+  }
   save();
   subs.forEach(f => f(S));
 }

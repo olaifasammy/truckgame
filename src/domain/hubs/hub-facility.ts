@@ -373,8 +373,24 @@ export function processPendingFuelDeliveries(S: any, now: number): void {
   const completed = S.pendingFuelOrders.filter((o: PendingFuelOrder) => now >= o.deliverAt);
   if (completed.length === 0) return;
 
+  // Remove completed orders immediately before processing to prevent re-entrant loops
+  S.pendingFuelOrders = S.pendingFuelOrders.filter((o: PendingFuelOrder) => now < o.deliverAt);
+  if (!S.hubFacilities) S.hubFacilities = {};
+
   for (const order of completed) {
-    const facility = getHubFacility(S, order.hubId);
+    if (!S.hubFacilities[order.hubId]) {
+      const char = getHubCharacteristics(order.hubId);
+      const initFuelCap = char ? char.baseFuelTankLiters : DEFAULT_FUEL_CAPACITY;
+      S.hubFacilities[order.hubId] = {
+        id: order.hubId,
+        level: 1,
+        extraBerths: 0,
+        fuelCapacity: initFuelCap,
+        fuelLiters: 0,
+        fuelAvgCost: getHubWholesaleFuelPrice(order.hubId, S)
+      };
+    }
+    const facility = S.hubFacilities[order.hubId];
     const prevLiters = facility.fuelLiters || 0;
     const prevCost = facility.fuelAvgCost || order.wholesaleRate;
     
@@ -389,8 +405,6 @@ export function processPendingFuelDeliveries(S: any, now: number): void {
 
     toast(`⛽ Tanker Delivery Arrived at ${order.hubName}! +${order.liters.toLocaleString()}L pumped into tank.`, 'success');
   }
-
-  S.pendingFuelOrders = S.pendingFuelOrders.filter((o: PendingFuelOrder) => now < o.deliverAt);
 }
 
 /**

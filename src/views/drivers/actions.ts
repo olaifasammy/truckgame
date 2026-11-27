@@ -10,10 +10,34 @@ export let selectedRegion: Region | 'All' = 'All';
 export let expandedDriverId: number | null = null;
 export let transferModalDriverId: number | null = null;
 export let currentPage = 1;
+export let searchQuery = '';
 export const DRIVERS_PER_PAGE = 10;
+
+export function focusDriver(id: number) {
+  activeTab = 'employed';
+  selectedRegion = 'All';
+  searchQuery = '';
+  expandedDriverId = id;
+  currentPage = 1;
+}
 
 action('driver-tab', d => { activeTab = (d as any).tab; currentPage = 1; refresh(); });
 action('driver-region', d => { selectedRegion = (d as any).region; currentPage = 1; refresh(); });
+action('driver-search', d => {
+  searchQuery = (d as any).value ?? '';
+  currentPage = 1;
+  refresh();
+  if (typeof document !== 'undefined') {
+    requestAnimationFrame(() => {
+      const el = document.getElementById('driver-search-input') as HTMLInputElement | null;
+      if (el) {
+        el.focus();
+        const len = el.value.length;
+        el.setSelectionRange(len, len);
+      }
+    });
+  }
+});
 action('driver-page', d => { currentPage = +(d as any).page; refresh(); });
 action('toggle-driver-expand', d => {
   const id = +(d as any).id;

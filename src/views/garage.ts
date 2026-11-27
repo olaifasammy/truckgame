@@ -8,6 +8,8 @@ import { refuel, repair, inspect, transport, refuelCost, repairCost, transportIn
 import { why } from '../systems/jobs';
 import { slots, upgradeGarage, upgradeGarageCost } from '../systems/offices';
 import { openJobSelector, renderJobSelectorOverlay, activeJobSelectorTruckId } from './garage/job-selector';
+import { renderRenameModal } from './garage/rename-modal';
+import { focusDriver } from './drivers/actions';
 import { getTruckSilhouetteSvg } from '../domain/trucks/trucks.visuals';
 import { getManufacturerLogoSvg } from '../domain/trucks/trucks.logos';
 import { renderTelematicsOverlay } from './telematics-modal';
@@ -30,6 +32,10 @@ let openId: number | null = null, panel: string | null = null;
 let hitchModalTruckId: number | null = null;
 let garagePage = 1;
 const TRUCKS_PER_PAGE = 10;
+let activeJobsPage = 1;
+const ACTIVE_JOBS_PER_PAGE = 8;
+let unstationedPage = 1;
+const UNSTATIONED_PER_PAGE = 6;
 let garageFilter: 'all' | 'parked' | 'transit' | 'repair' = 'all';
 export let garageRegionFilter: RegionName = 'Africa';
 
@@ -37,7 +43,20 @@ export function setGarageRegionFilter(r: RegionName) {
   garageRegionFilter = r;
   setActiveGarageHub(''); // Default to Enroute when changing regions
   garagePage = 1;
+  activeJobsPage = 1;
+  unstationedPage = 1;
   refresh();
+}
+
+export function focusGarageTruck(id: number, region?: RegionName) {
+  if (region) {
+    garageRegionFilter = region;
+  }
+  setActiveGarageHub('');
+  garageFilter = 'all';
+  garagePage = 1;
+  openId = id;
+  panel = null;
 }
 
 const getLocInfo = (locKey: string) => {
@@ -86,6 +105,30 @@ action('garage-page-next', () => {
   refresh();
 });
 
+action('garage-active-page-prev', () => {
+  if (activeJobsPage > 1) {
+    activeJobsPage--;
+    refresh();
+  }
+});
+
+action('garage-active-page-next', () => {
+  activeJobsPage++;
+  refresh();
+});
+
+action('garage-unstationed-page-prev', () => {
+  if (unstationedPage > 1) {
+    unstationedPage--;
+    refresh();
+  }
+});
+
+action('garage-unstationed-page-next', () => {
+  unstationedPage++;
+  refresh();
+});
+
 action('garage-filter', d => {
   garageFilter = (d as any).filter || 'all';
   garagePage = 1;
@@ -97,6 +140,8 @@ action('garage-region', d => {
   garageRegionFilter = reg as RegionName;
   setActiveGarageHub('');
   garagePage = 1;
+  activeJobsPage = 1;
+  unstationedPage = 1;
   refresh();
 });
 
@@ -105,6 +150,8 @@ action('garage-region-select', d => {
   garageRegionFilter = val as RegionName;
   setActiveGarageHub('');
   garagePage = 1;
+  activeJobsPage = 1;
+  unstationedPage = 1;
   refresh();
 });
 
@@ -308,14 +355,38 @@ const cell = (label: string, value: string, subvalue?: string) => `
   </div>
 `;
 
+action('goto-driver-profile', d => {
+  const id = +(d as any).id;
+  focusDriver(id);
+  set(S => { S.tab = 'drivers'; });
+});
+
 function panelHtml(S: GameState, t: Truck, busy: boolean) {
   if (panel === 'driver') {
+    const assignedDriver = t.driverId ? (S.drivers || []).find((d: any) => d.id === t.driverId) : null;
     return `
       <div style="margin-top:14px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.08); background:#0a0f1d; padding:12px; border-radius:8px; border:1px solid #1f293d;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
           <span style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase; letter-spacing:0.5px;">COMMERCIAL DRIVER ROSTER & DISPATCH</span>
           <span style="font-size:9px; color:var(--mu); font-family:monospace;">CDL CLASS-A LICENSED</span>
         </div>
+        ${assignedDriver ? `
+          <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px; margin-bottom:10px; background:rgba(193,154,91,0.08); border:1px solid rgba(193,154,91,0.35); border-radius:8px;">
+            <div>
+              <div style="font-size:9px; font-weight:800; color:var(--gold); text-transform:uppercase;">CURRENTLY IN COMMAND</div>
+              <div style="font-size:13px; font-weight:900; color:var(--tx); margin-top:2px;">${assignedDriver.name}</div>
+              <div style="font-size:9px; color:var(--mu); font-family:monospace;">Skill Level ${assignedDriver.skill}/5 · Fatigue ${Math.round(assignedDriver.fatigue || 0)}%</div>
+            </div>
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button class="btn gold" style="padding:6px 10px; font-size:9px; font-weight:900;" data-act="goto-driver-profile" data-id="${assignedDriver.id}">
+                VIEW DRIVER CARD
+              </button>
+              <button class="btn alt" style="padding:6px 10px; font-size:9px; font-weight:800; color:var(--red); border-color:rgba(239,68,68,0.3);" data-act="assign" data-id="${t.id}" data-driver="" ${busy ? 'disabled' : ''}>
+                RELIEVE
+              </button>
+            </div>
+          </div>
+        ` : ''}
         ${(() => {
           const list = S.drivers.filter((d: any) => {
             const cur = t.driverId === d.id;
@@ -333,15 +404,20 @@ function panelHtml(S: GameState, t: Truck, busy: boolean) {
             const cur = t.driverId === d.id;
             return `
               <div style="display:flex; align-items:center; justify-content:space-between; padding:8px 10px; margin-bottom:6px; background:#111827; border:1px solid #1f293d; border-radius:6px;">
-                <div>
+                <div style="cursor:pointer;" data-act="goto-driver-profile" data-id="${d.id}">
                   <div style="font-size:12px; font-weight:800; color:var(--tx);">${d.name}</div>
                   <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:1px;">
                     Skill Level ${d.skill}/5 · ${cur ? 'Currently in Command' : 'Off-Duty Standby'}
                   </div>
                 </div>
-                <button class="btn ${cur ? 'gold' : 'alt'}" style="padding:4px 10px; font-size:9px; font-weight:800;" data-act="assign" data-id="${t.id}" data-driver="${d.id}" ${cur || busy ? 'disabled' : ''}>
-                  ${cur ? 'ASSIGNED' : 'ASSIGN'}
-                </button>
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <button class="btn alt" style="padding:4px 8px; font-size:9px; font-weight:800;" data-act="goto-driver-profile" data-id="${d.id}">
+                    VIEW
+                  </button>
+                  <button class="btn ${cur ? 'gold' : 'alt'}" style="padding:4px 10px; font-size:9px; font-weight:800;" data-act="assign" data-id="${t.id}" data-driver="${d.id}" ${cur || busy ? 'disabled' : ''}>
+                    ${cur ? 'ASSIGNED' : (t.driverId ? 'CHANGE' : 'ASSIGN')}
+                  </button>
+                </div>
               </div>
             `;
           }).join('');
@@ -591,55 +667,6 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
         ${cell('CONSUMP', `${st.fuelConsumption.toFixed(1)} L/100`, `Avg Rate`)}
       </div>
 
-      <!-- Powertrain Engineering & Consumables Breakdown -->
-      <div style="background:#0a0f1d; border:1px solid #1e293b; padding:10px 12px; border-radius:8px; margin-bottom:12px;">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-          <span style="color:var(--gold); font-size:9px; font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">POWERTRAIN CUSTOMIZATION & CONSUMABLES</span>
-          <span style="font-size:8px; font-family:monospace; color:var(--mu);">SAE J1939</span>
-        </div>
-
-        <!-- Consumables Levels Row -->
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(70px, 1fr)); gap:4px; margin-bottom:10px;">
-          <div style="background:#111827; border:1px solid #1f293d; padding:4px 6px; border-radius:6px; min-width:0;">
-            <div style="font-size:6px; color:var(--mu); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">DIESEL FUEL</div>
-            <div style="font-size:10px; font-weight:800; color:var(--tx); font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${t.fluids.fuel}L <span style="font-size:7px; color:var(--mu);">(${fuelPctVal}%)</span></div>
-          </div>
-          <div style="background:#111827; border:1px solid #1f293d; padding:4px 6px; border-radius:6px; min-width:0;">
-            <div style="font-size:6px; color:var(--mu); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">ADBLUE / DEF</div>
-            <div style="font-size:10px; font-weight:800; color:#38bdf8; font-family:monospace;">${t.fluids.adBlue || 100}%</div>
-          </div>
-          <div style="background:#111827; border:1px solid #1f293d; padding:4px 6px; border-radius:6px; min-width:0;">
-            <div style="font-size:6px; color:var(--mu); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">COOLANT</div>
-            <div style="font-size:10px; font-weight:800; color:${(t.fluids.coolant || 100) < 25 ? '#ef4444' : 'var(--grn)'}; font-family:monospace;">${t.fluids.coolant || 100}%</div>
-          </div>
-          <div style="background:#111827; border:1px solid #1f293d; padding:4px 6px; border-radius:6px; min-width:0;">
-            <div style="font-size:6px; color:var(--mu); font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">LUBE OIL</div>
-            <div style="font-size:10px; font-weight:800; color:${(t.fluids.oil || 40) < 15 ? '#ef4444' : 'var(--tx)'}; font-family:monospace;">${t.fluids.oil || 40}L</div>
-          </div>
-        </div>
-
-        <!-- Powertrain Upgrades Options -->
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-          <div>
-            <div style="font-size:8px; color:var(--mu); font-weight:700; margin-bottom:4px;">HEAVY-HAUL GEARBOX</div>
-            <select style="width:100%; background:#111827; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:800; padding:6px; border-radius:4px; outline:none;" onchange="window.__actions?.get('set-powertrain-gearbox')?.({ id: '${t.id}', gearbox: this.value })" ${busy ? 'disabled' : ''}>
-              <option value="standard" ${t.upgrades?.gearbox === 'standard' ? 'selected' : ''}>Standard 12-Spd</option>
-              <option value="16spd_crawler" ${t.upgrades?.gearbox === '16spd_crawler' ? 'selected' : ''}>16-Spd Crawler ($12k)</option>
-            </select>
-          </div>
-          <div>
-            <div style="font-size:8px; color:var(--mu); font-weight:700; margin-bottom:4px;">REAR AXLE DIFFERENTIAL</div>
-            <select style="width:100%; background:#111827; border:1px solid #1f293d; color:var(--tx); font-size:10px; font-weight:800; padding:6px; border-radius:4px; outline:none;" onchange="window.__actions?.get('set-powertrain-axle')?.({ id: '${t.id}', ratio: this.value })" ${busy ? 'disabled' : ''}>
-              <option value="standard" ${t.upgrades?.axleRatio === 'standard' ? 'selected' : ''}>Highway 2.64:1</option>
-              <option value="heavy_diff_lock" ${t.upgrades?.axleRatio === 'heavy_diff_lock' ? 'selected' : ''}>Heavy 3.42:1 ($8k)</option>
-            </select>
-          </div>
-        </div>
-        <button class="btn alt" style="width:100%; margin-top:10px; padding:6px; font-size:9px; font-weight:800;" data-act="top-up-consumables" data-id="${t.id}">
-          TOP UP ALL CONSUMABLES (OIL, COOLANT, ADBLUE)
-        </button>
-      </div>
-
       <!-- Component Condition & Preventive Maintenance -->
       <div style="background:#0a0f1d; border:1px solid #1e293b; padding:10px 12px; border-radius:8px;">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -658,14 +685,6 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
             ${bar('EXHAUST / DPF', getCompHealth('exhaust'), getCompHealth('exhaust') < 70 ? 'var(--red)' : 'var(--grn)', `${getCompHealth('exhaust')}%`)}
           </div>
         </div>
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:8px;">
-          <button class="btn gold" style="padding:8px; font-size:10px; font-weight:900;" data-act="hoist-truck-to-bay" data-id="${t.id}">
-            HOIST TO REPAIR BAY
-          </button>
-          <button class="btn alt" style="padding:8px; font-size:10px; font-weight:800;" data-act="inspect" data-id="${t.id}" ${busy ? 'disabled' : ''}>
-            RUN OBD-II SCAN ($${inspectCost()})
-          </button>
-        </div>
       </div>
     </div>
   `;
@@ -674,6 +693,7 @@ function body(S: GameState, t: Truck, m: any, a: any, now: number) {
 function truck(S: GameState, t: Truck) {
   const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
   const a = S.active.find((x: any) => x.truck === t.id);
+  const assignedDriver = t.driverId ? (S.drivers || []).find((d: any) => d.id === t.driverId) : null;
   const now = Date.now();
   const open = openId === t.id;
   const busy = !!a || t.status === 'delivering';
@@ -695,7 +715,7 @@ function truck(S: GameState, t: Truck) {
           </div>
           <div>
             <div style="display:flex; align-items:center; gap:6px;">
-              <span style="font-size:14px; font-weight:900; color:var(--tx);">${m.name}</span>
+              <span style="font-size:14px; font-weight:900; color:var(--tx); cursor:pointer;" data-act="rename-truck" data-id="${t.id}">${t.name || m.name}</span>
               <span style="font-size:11px; font-weight:900; color:var(--gold); font-family:monospace; background:rgba(245,158,11,0.12); padding:1px 6px; border-radius:4px; border:1px solid rgba(245,158,11,0.25);">${getTruckCode(t)}</span>
             </div>
             <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-top:2px;">
@@ -713,12 +733,12 @@ function truck(S: GameState, t: Truck) {
 
       ${open ? `
         <div style="margin-top:14px; background:#060a14; border:1px solid #1e293b; border-radius:8px; padding:10px; position:relative; min-height:80px; display:flex; align-items:center; justify-content:center;">
-          ${getTruckSilhouetteSvg(m, 'var(--gold)', m.axle, t.trailer)}
+          ${getTruckSilhouetteSvg(m, 'var(--gold)', m.axle, t.trailer, undefined, t.status === 'busy')}
         </div>
 
         <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px; margin-top:12px;">
-          <button class="btn ${panel === 'driver' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:9px; font-weight:800;" data-act="panel" data-kind="driver">
-            ${ic('user')} DRIVER
+          <button class="btn ${panel === 'driver' ? 'gold' : 'alt'}" style="padding:8px 4px; font-size:9px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" data-act="panel" data-kind="driver" title="${assignedDriver ? assignedDriver.name : 'Assign Driver'}">
+            ${ic('user')} ${assignedDriver ? assignedDriver.name : 'DRIVER'}
           </button>
           <button class="btn alt" style="padding:8px 4px; font-size:9px; font-weight:800;" data-act="open-hitch-modal" data-id="${t.id}" ${busy ? 'disabled' : ''}>
             🔗 HITCH
@@ -930,10 +950,7 @@ export default {
           </div>
           <div style="display:flex; gap:6px;">
             <button class="btn alt" style="padding:5px 10px; font-size:9px; font-weight:800; border-radius:6px; display:flex; align-items:center; gap:4px; border-color:var(--gold); color:var(--gold);" data-act="open-workshop-scan">
-              <span>🔧</span> WORKSHOP SCAN
-            </button>
-            <button class="btn alt" style="padding:5px 10px; font-size:9px; font-weight:800; border-radius:6px; display:flex; align-items:center; gap:4px;" data-act="upgrade-garage" ${canUp ? '' : 'disabled'}>
-              <span>🏭 WORKSHOP BAYS (${fmt(upCost)})</span>
+              <span>🔧</span> GOTO WORKSHOP
             </button>
           </div>
         </div>
@@ -1018,139 +1035,176 @@ export default {
 
         <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:20px;">
           <!-- 1. Render Unstationed/Parked-Outside-Hub & Delivering Trucks -->
-          ${unstationedTrucks.map((t: any) => {
-            const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
-            if (t.status === 'delivering') {
-              const isRoRo = t.shippingMode === 'maritime_roro';
-              const totalTime = isRoRo ? 180000 : 15 * 60 * 1000;
-              const remaining = Math.max(0, (t.availableAt || now) - now);
-              const progress = Math.min(100, Math.max(0, 100 - ((remaining / totalTime) * 100)));
+          ${(() => {
+            const totalUnstationedPages = Math.max(1, Math.ceil(unstationedTrucks.length / UNSTATIONED_PER_PAGE));
+            if (unstationedPage > totalUnstationedPages) unstationedPage = totalUnstationedPages;
+            if (unstationedPage < 1) unstationedPage = 1;
+            const pagedUnstationed = unstationedTrucks.slice((unstationedPage - 1) * UNSTATIONED_PER_PAGE, unstationedPage * UNSTATIONED_PER_PAGE);
+
+            const cardsHtml = pagedUnstationed.map((t: any) => {
+              const m = TRUCK_MODELS[t.modelId] || TRUCK_MODELS['scania_s730'];
+              if (t.status === 'delivering') {
+                const isRoRo = t.shippingMode === 'maritime_roro';
+                const totalTime = isRoRo ? 180000 : 15 * 60 * 1000;
+                const remaining = Math.max(0, (t.availableAt || now) - now);
+                const progress = Math.min(100, Math.max(0, 100 - ((remaining / totalTime) * 100)));
+                return `
+                  <div style="background:#0b1324; border:1px solid var(--gold); border-radius:8px; padding:12px; margin-bottom:8px; cursor:pointer;" data-act="truck-toggle" data-id="${t.id}">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                      <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:16px;">🚚</span>
+                        <div>
+                          <div style="font-size:12px; font-weight:900; color:var(--tx);">${m.brand} ${m.name} (#${t.id})</div>
+                          <div style="font-size:9px; color:var(--gold); font-family:monospace; font-weight:800;">
+                            FACTORY-TO-DEPOT LOGISTICS TRANSIT ➔ ${t.loc.toUpperCase()} DEPOT
+                          </div>
+                        </div>
+                      </div>
+                      <div style="text-align:right;">
+                        <div style="font-size:10px; font-weight:900; color:var(--gold); font-family:monospace;">${dur(remaining)} REMAINING</div>
+                        <div style="font-size:8px; color:var(--mu); font-family:monospace;">EST. ARRIVAL: ${new Date(t.availableAt || now).toLocaleTimeString()}</div>
+                      </div>
+                    </div>
+                    <div class="bar" style="height:6px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden;">
+                      <div style="width:${progress}%; height:100%; background:linear-gradient(90deg, #f59e0b, #10b981); border-radius:3px;"></div>
+                    </div>
+                  </div>
+                `;
+              }
               return `
-                <div style="background:#0b1324; border:1px solid var(--gold); border-radius:8px; padding:12px; margin-bottom:8px; cursor:pointer;" data-act="truck-toggle" data-id="${t.id}">
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-                    <div style="display:flex; align-items:center; gap:8px;">
-                      <span style="font-size:16px;">🚚</span>
+                <div style="background:rgba(239,68,68,0.05); border:1px dashed #ef444480; border-radius:8px; padding:10px; cursor:pointer;" data-act="truck-toggle" data-id="${t.id}">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                      <div style="font-size:18px;">⚠️</div>
                       <div>
-                        <div style="font-size:12px; font-weight:900; color:var(--tx);">${m.brand} ${m.name} (#${t.id})</div>
-                        <div style="font-size:9px; color:var(--gold); font-family:monospace; font-weight:800;">
-                          FACTORY-TO-DEPOT LOGISTICS TRANSIT ➔ ${t.loc.toUpperCase()} DEPOT
+                        <div style="font-size:12px; font-weight:900; color:var(--tx);">${m.name} (#${t.id})</div>
+                        <div style="font-size:9px; color:#f87171; font-family:monospace; font-weight:800;">
+                          PARKED AT EXTERNAL TERMINAL: ${t.loc}
                         </div>
                       </div>
                     </div>
                     <div style="text-align:right;">
-                      <div style="font-size:10px; font-weight:900; color:var(--gold); font-family:monospace;">${dur(remaining)} REMAINING</div>
-                      <div style="font-size:8px; color:var(--mu); font-family:monospace;">EST. ARRIVAL: ${new Date(t.availableAt || now).toLocaleTimeString()}</div>
+                      <div style="font-size:10px; font-weight:800; color:var(--mu);">IDLE / NO HUB</div>
+                      <div style="font-size:8px; color:var(--mu); font-family:monospace;">TAP TO MANAGE</div>
                     </div>
-                  </div>
-                  <div class="bar" style="height:6px; background:rgba(255,255,255,0.06); border-radius:3px; overflow:hidden;">
-                    <div style="width:${progress}%; height:100%; background:linear-gradient(90deg, #f59e0b, #10b981); border-radius:3px;"></div>
                   </div>
                 </div>
               `;
-            }
-            return `
-              <div style="background:rgba(239,68,68,0.05); border:1px dashed #ef444480; border-radius:8px; padding:10px; cursor:pointer;" data-act="truck-toggle" data-id="${t.id}">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                  <div style="display:flex; align-items:center; gap:10px;">
-                    <div style="font-size:18px;">⚠️</div>
-                    <div>
-                      <div style="font-size:12px; font-weight:900; color:var(--tx);">${m.name} (#${t.id})</div>
-                      <div style="font-size:9px; color:#f87171; font-family:monospace; font-weight:800;">
-                        PARKED AT EXTERNAL TERMINAL: ${t.loc}
-                      </div>
-                    </div>
-                  </div>
-                  <div style="text-align:right;">
-                    <div style="font-size:10px; font-weight:800; color:var(--mu);">IDLE / NO HUB</div>
-                    <div style="font-size:8px; color:var(--mu); font-family:monospace;">TAP TO MANAGE</div>
-                  </div>
-                </div>
+            }).join('');
+
+            const pagerHtml = totalUnstationedPages > 1 ? `
+              <div style="display:flex; justify-content:center; align-items:center; margin:6px 0 10px; gap:12px; font-family:monospace; font-size:10px;">
+                <button class="btn alt" style="padding:5px 10px; font-size:9px; font-weight:800;" data-act="garage-unstationed-page-prev" ${unstationedPage <= 1 ? 'disabled style="opacity:0.35;"' : ''}>← PREV</button>
+                <span style="color:var(--mu); font-weight:700;">UNSTATIONED PAGE <b style="color:var(--tx);">${unstationedPage}</b> OF ${totalUnstationedPages}</span>
+                <button class="btn alt" style="padding:5px 10px; font-size:9px; font-weight:800;" data-act="garage-unstationed-page-next" ${unstationedPage >= totalUnstationedPages ? 'disabled style="opacity:0.35;"' : ''}>NEXT →</button>
               </div>
-            `;
-          }).join('')}
+            ` : '';
+
+            return cardsHtml + pagerHtml;
+          })()}
 
           <!-- 2. Render Active Consignments -->
-          ${activeList.length > 0 ? activeList.map((a: any) => {
-            const truckObj = (S.fleet || []).find((t: any) => t.id === a.truck);
-            const drv = (S.drivers || []).find((d: any) => d.id === truckObj?.driverId);
-            const cargoName = a.cargo || CARGO_TYPES.find(c => c.id === a.cargoId)?.name || 'Commercial Freight';
-            const remainingMs = Math.max(0, a.end - now);
-            const totalDuration = Math.max(1, a.end - a.start);
-            const elapsed = Math.max(0, now - a.start);
-            const pct = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
-            const telem = getTruckTelematics(truckObj, a, drv, now);
-            const isPaused = telem.state === 'resting' || telem.state === 'refueling';
-            const isDeadhead = a.kind === 'move' || a.stage === 'deadhead' || (a.cargo || '').toLowerCase().includes('deadhead' ) || (a.cargo || '').toLowerCase().includes('return');
+          ${(() => {
+            if (activeList.length === 0) {
+              return unstationedTrucks.length === 0 ? `
+                <div style="padding:40px 20px; text-align:center; background:#0b101d; border:1px dashed #1e2638; border-radius:10px; color:var(--mu); font-family:monospace; font-size:11px; line-height:1.6;">
+                  No trucks currently en-route or unstationed in the ${garageRegionFilter} region.<br>
+                  <span style="font-size:10px; color:rgba(255,255,255,0.4);">Select a terminal hub above to manage stationed fleet units.</span>
+                </div>
+              ` : '';
+            }
+            const totalActivePages = Math.max(1, Math.ceil(activeList.length / ACTIVE_JOBS_PER_PAGE));
+            if (activeJobsPage > totalActivePages) activeJobsPage = totalActivePages;
+            if (activeJobsPage < 1) activeJobsPage = 1;
+            const pagedActive = activeList.slice((activeJobsPage - 1) * ACTIVE_JOBS_PER_PAGE, activeJobsPage * ACTIVE_JOBS_PER_PAGE);
 
-            return `
-              <div style="background:#0f172a; border:1px solid ${telem.stateBadgeColor}80; border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px; cursor:pointer;" data-act="truck-toggle" data-id="${a.truck}">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                  <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
-                    ${isDeadhead ? `
-                      <div style="width:30px; height:30px; background:rgba(148,163,184,0.15); border:1px solid rgba(148,163,184,0.4); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;" title="Deadhead Empty Return">
-                        🔄
-                      </div>
-                    ` : renderCargoBadge(a.cargoId || 'general_freight', { size: 30 })}
-                    <div style="min-width:0; flex:1;">
-                      <div style="display:flex; align-items:center; gap:6px;">
-                        <span style="font-size:12px; font-weight:900; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${cargoName}</span>
-                        ${getDrivingStateBadge(telem.state, true)}
-                      </div>
-                      <div style="font-size:10px; font-family:monospace; color:var(--gold); font-weight:800; margin-top:1px;">
-                        ${a.from} → ${a.to} <span style="color:var(--mu); font-weight:400;">(${a.km}km)</span>
+            const activeCardsHtml = pagedActive.map((a: any) => {
+              const truckObj = (S.fleet || []).find((t: any) => t.id === a.truck);
+              const drv = (S.drivers || []).find((d: any) => d.id === truckObj?.driverId);
+              const cargoName = a.cargo || CARGO_TYPES.find(c => c.id === a.cargoId)?.name || 'Commercial Freight';
+              const remainingMs = Math.max(0, a.end - now);
+              const totalDuration = Math.max(1, a.end - a.start);
+              const elapsed = Math.max(0, now - a.start);
+              const pct = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+              const telem = getTruckTelematics(truckObj, a, drv, now);
+              const isPaused = telem.state === 'resting' || telem.state === 'refueling';
+              const isDeadhead = a.kind === 'move' || a.stage === 'deadhead' || (a.cargo || '').toLowerCase().includes('deadhead' ) || (a.cargo || '').toLowerCase().includes('return');
+
+              return `
+                <div style="background:#0f172a; border:1px solid ${telem.stateBadgeColor}80; border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px; cursor:pointer;" data-act="truck-toggle" data-id="${a.truck}">
+                  <div style="display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                    <div style="display:flex; align-items:center; gap:8px; min-width:0; flex:1;">
+                      ${isDeadhead ? `
+                        <div style="width:30px; height:30px; background:rgba(148,163,184,0.15); border:1px solid rgba(148,163,184,0.4); border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0;" title="Deadhead Empty Return">
+                          🔄
+                        </div>
+                      ` : renderCargoBadge(a.cargoId || 'general_freight', { size: 30 })}
+                      <div style="min-width:0; flex:1;">
+                        <div style="display:flex; align-items:center; gap:6px;">
+                          <span style="font-size:12px; font-weight:900; color:var(--tx); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${cargoName}</span>
+                          ${getDrivingStateBadge(telem.state, true)}
+                        </div>
+                        <div style="font-size:10px; font-family:monospace; color:var(--gold); font-weight:800; margin-top:1px;">
+                          ${a.from} → ${a.to} <span style="color:var(--mu); font-weight:400;">(${a.km}km)</span>
+                        </div>
                       </div>
                     </div>
+                    <button class="btn alt" style="padding:4px 8px; font-size:9px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.3); display:flex; align-items:center; gap:4px; flex-shrink:0;" data-act="open-telematics" data-id="${a.truck}">
+                      🛰️ <span data-truck-speed="${a.truck}">${telem.speedKmh > 0 ? `${telem.speedKmh} km/h` : '0 km/h'}</span>
+                    </button>
                   </div>
-                  <button class="btn alt" style="padding:4px 8px; font-size:9px; font-weight:800; color:#38bdf8; border-color:rgba(56,189,248,0.3); display:flex; align-items:center; gap:4px; flex-shrink:0;" data-act="open-telematics" data-id="${a.truck}">
-                    🛰️ <span data-truck-speed="${a.truck}">${telem.speedKmh > 0 ? `${telem.speedKmh} km/h` : '0 km/h'}</span>
-                  </button>
-                </div>
-                <div style="display:flex; justify-content:space-between; align-items:center; font-size:9px; color:var(--mu); font-family:monospace; margin-top:-2px;">
-                  <span>#${a.truck} · ${drv ? drv.name : 'Driver'} · 
-                    ${telem.state === 'resting' 
-                      ? `<b style="color:#c084fc;">☕ Rest Break (<span data-rest-eta="${a.stageEndsAt || (now + telem.stopTimeRemainingMs)}">${dur(telem.stopTimeRemainingMs)}</span>)</b>`
-                      : telem.state === 'refueling'
-                      ? `<b style="color:#eab308;">⛽ Refueling (<span data-rest-eta="${a.stageEndsAt || (now + telem.stopTimeRemainingMs)}">${dur(telem.stopTimeRemainingMs)}</span>)</b>`
-                      : `<b style="color:#38bdf8;">${telem.phase}</b>`}
-                  </span>
-                  <span style="color:${isPaused ? 'var(--mu)' : 'var(--gold)'}; font-weight:800;" ${isPaused ? '' : `data-eta="${a.end}"`}>${isPaused ? '--:--' : dur(remainingMs)}</span>
-                </div>
-                <div style="height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden;">
-                  <div style="width:${pct}%; height:100%; background:${isPaused ? '#64748b' : 'linear-gradient(90deg, #0284c7, #38bdf8)'}; transition:${isPaused ? 'none' : 'width 0.5s ease'};"></div>
-                </div>
+                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:9px; color:var(--mu); font-family:monospace; margin-top:-2px;">
+                    <span>#${a.truck} · ${drv ? drv.name : 'Driver'} · 
+                      ${telem.state === 'resting' 
+                        ? `<b style="color:#c084fc;">☕ Rest Break (<span data-rest-eta="${a.stageEndsAt || (now + telem.stopTimeRemainingMs)}">${dur(telem.stopTimeRemainingMs)}</span>)</b>`
+                        : telem.state === 'refueling'
+                        ? `<b style="color:#eab308;">⛽ Refueling (<span data-rest-eta="${a.stageEndsAt || (now + telem.stopTimeRemainingMs)}">${dur(telem.stopTimeRemainingMs)}</span>)</b>`
+                        : `<b style="color:#38bdf8;">${telem.phase}</b>`}
+                    </span>
+                    <span style="color:${isPaused ? 'var(--mu)' : 'var(--gold)'}; font-weight:800;" ${isPaused ? '' : `data-eta="${a.end}"`}>${isPaused ? '--:--' : dur(remainingMs)}</span>
+                  </div>
+                  <div style="height:4px; background:rgba(255,255,255,0.06); border-radius:2px; overflow:hidden;">
+                    <div style="width:${pct}%; height:100%; background:${isPaused ? '#64748b' : 'linear-gradient(90deg, #0284c7, #38bdf8)'}; transition:${isPaused ? 'none' : 'width 0.5s ease'};"></div>
+                  </div>
 
-                <!-- Live Event Stream Drawer -->
-                <div style="border-top:1px dashed rgba(255,255,255,0.08); padding-top:4px; margin-top:2px;">
-                  <div style="display:flex; justify-content:space-between; align-items:center; font-size:8.5px; font-weight:800; color:var(--gold); cursor:pointer;" data-act="toggle-job-events" data-job-id="${a.id}">
-                    <span>⚡ Live Event Log (${(a.events || []).length})</span>
-                    <span>${a.showEvents ? '▲ Hide' : '▼ Details'}</span>
-                  </div>
-                  ${a.showEvents ? `
-                    <div style="background:rgba(0,0,0,0.35); border:1px solid #1f293d; border-radius:6px; padding:6px; margin-top:4px; max-height:130px; overflow-y:auto; display:flex; flex-direction:column; gap:4px;">
-                      ${(!a.events || a.events.length === 0) ? `
-                        <div style="text-align:center; color:var(--mu); font-size:8px; padding:4px;">No live events logged yet.</div>
-                      ` : a.events.map((ev: any) => {
-                        const timeStr = new Date(ev.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-                        const color = ev.type === 'danger' ? '#ef4444' : ev.type === 'warn' ? '#f59e0b' : ev.type === 'success' ? '#10b981' : '#38bdf8';
-                        return `
-                          <div style="font-size:8px; font-family:monospace; color:var(--tx); display:flex; align-items:flex-start; gap:6px; border-bottom:1px solid rgba(255,255,255,0.04); padding-bottom:3px;">
-                            <span style="color:var(--mu); flex-shrink:0;">[${timeStr}]</span>
-                            <span style="flex-shrink:0;">${ev.icon || '📌'}</span>
-                            <span style="color:${color}; flex:1; line-height:1.2;">${ev.text}</span>
-                          </div>
-                        `;
-                      }).join('')}
+                  <!-- Live Event Stream Drawer -->
+                  <div style="border-top:1px dashed rgba(255,255,255,0.08); padding-top:4px; margin-top:2px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:8.5px; font-weight:800; color:var(--gold); cursor:pointer;" data-act="toggle-job-events" data-job-id="${a.id}">
+                      <span>⚡ Live Event Log (${(a.events || []).length})</span>
+                      <span>${a.showEvents ? '▲ Hide' : '▼ Details'}</span>
                     </div>
-                  ` : ''}
+                    ${a.showEvents ? `
+                      <div style="background:rgba(0,0,0,0.35); border:1px solid #1f293d; border-radius:6px; padding:6px; margin-top:4px; max-height:130px; overflow-y:auto; display:flex; flex-direction:column; gap:4px;">
+                        ${(!a.events || a.events.length === 0) ? `
+                          <div style="text-align:center; color:var(--mu); font-size:8px; padding:4px;">No live events logged yet.</div>
+                        ` : a.events.map((ev: any) => {
+                          const timeStr = new Date(ev.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+                          const color = ev.type === 'danger' ? '#ef4444' : ev.type === 'warn' ? '#f59e0b' : ev.type === 'success' ? '#10b981' : '#38bdf8';
+                          return `
+                            <div style="font-size:8px; font-family:monospace; color:var(--tx); display:flex; align-items:flex-start; gap:6px; border-bottom:1px solid rgba(255,255,255,0.04); padding-bottom:3px;">
+                              <span style="color:var(--mu); flex-shrink:0;">[${timeStr}]</span>
+                              <span style="flex-shrink:0;">${ev.icon || '📌'}</span>
+                              <span style="color:${color}; flex:1; line-height:1.2;">${ev.text}</span>
+                            </div>
+                          `;
+                        }).join('')}
+                      </div>
+                    ` : ''}
+                  </div>
                 </div>
+              `;
+            }).join('');
+
+            const activePagerHtml = totalActivePages > 1 ? `
+              <div style="display:flex; justify-content:center; align-items:center; margin:12px 0 4px; gap:12px; font-family:monospace; font-size:10px;">
+                <button class="btn alt" style="padding:6px 12px; font-size:10px; font-weight:800;" data-act="garage-active-page-prev" ${activeJobsPage <= 1 ? 'disabled style="opacity:0.35;"' : ''}>← PREV</button>
+                <span style="color:var(--mu); font-weight:700;">ACTIVE JOBS <b style="color:var(--tx);">${activeJobsPage}</b> OF ${totalActivePages}</span>
+                <button class="btn alt" style="padding:6px 12px; font-size:10px; font-weight:800;" data-act="garage-active-page-next" ${activeJobsPage >= totalActivePages ? 'disabled style="opacity:0.35;"' : ''}>NEXT →</button>
               </div>
-            `;
-          }).join('') : (unstationedTrucks.length === 0 ? `
-            <div style="padding:40px 20px; text-align:center; background:#0b101d; border:1px dashed #1e2638; border-radius:10px; color:var(--mu); font-family:monospace; font-size:11px; line-height:1.6;">
-              No trucks currently en-route or unstationed in the ${garageRegionFilter} region.<br>
-              <span style="font-size:10px; color:rgba(255,255,255,0.4);">Select a terminal hub above to manage stationed fleet units.</span>
-            </div>
-          ` : '')}
+            ` : '';
+
+            return activeCardsHtml + activePagerHtml;
+          })()}
         </div>
       ` : `
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px; flex-wrap:wrap;">
@@ -1184,6 +1238,7 @@ export default {
       })()}
       ${activeJobSelectorTruckId !== null ? renderJobSelectorOverlay(S) : ''}
       ${renderHitchModal(S)}
+      ${renderRenameModal(S)}
       ${renderTelematicsOverlay(S)}
 
       <div class="card" style="margin-top:14px; padding:14px; background:#0f172a; border:1px solid var(--gold); border-radius:10px; display:flex; justify-content:space-between; align-items:center; cursor:pointer;" data-act="open-workshop-scan">

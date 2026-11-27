@@ -42,6 +42,30 @@ export const FleetService = {
     });
   },
 
+  upgradeEcoTuning(truckId: number) {
+    set((S: GameState) => {
+      const err = VehicleUpgrades.upgradeEcoTuning(S, truckId);
+      if (err) return toast(err, 'err');
+      toast('Installed Eco-Tuning ECU calibration (-5% fuel burn)', 'success');
+    });
+  },
+
+  upgradePerformanceChip(truckId: number) {
+    set((S: GameState) => {
+      const err = VehicleUpgrades.upgradePerformanceChip(S, truckId);
+      if (err) return toast(err, 'err');
+      toast('Installed Performance ECU Remap (+6% top speed & torque)', 'success');
+    });
+  },
+
+  upgradeHeavyDutySuspension(truckId: number) {
+    set((S: GameState) => {
+      const err = VehicleUpgrades.upgradeHeavyDutySuspension(S, truckId);
+      if (err) return toast(err, 'err');
+      toast('Installed Heavy-Duty Air-Ride Suspension (-25% load & road wear)', 'success');
+    });
+  },
+
   assignDriver(truckId: number, driverId: number | null) {
     set((S: GameState) => {
       const err = FleetManagement.assignDriver(S, truckId, driverId);

@@ -43,7 +43,7 @@ export const AI_SUBSCRIPTION_PLANS: Record<string, AiSubscriptionPlan> = {
   }
 };
 
-export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_dispatch' | 'quant_trader', AiAddonPlan>> = {
+export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_dispatch' | 'quant_trader' | 'executive_autopilot', AiAddonPlan>> = {
   '7d': {
     maintenance: {
       id: 'maintenance',
@@ -65,6 +65,13 @@ export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_disp
       priceUsd: 35000,
       priceFlb: 25,
       description: 'Autonomous high-frequency cryptocurrency trading engine.'
+    },
+    executive_autopilot: {
+      id: 'executive_autopilot',
+      label: 'AI Executive Co-Pilot',
+      priceUsd: 150000,
+      priceFlb: 75,
+      description: 'Full autonomous company operations: recruitment, fleet expansion, and regional growth.'
     }
   },
   '1m': {
@@ -88,6 +95,13 @@ export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_disp
       priceUsd: 120000,
       priceFlb: 80,
       description: 'Autonomous high-frequency cryptocurrency trading engine.'
+    },
+    executive_autopilot: {
+      id: 'executive_autopilot',
+      label: 'AI Executive Co-Pilot',
+      priceUsd: 450000,
+      priceFlb: 250,
+      description: 'Full autonomous company operations: recruitment, fleet expansion, and regional growth.'
     }
   },
   '3m': {
@@ -111,6 +125,13 @@ export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_disp
       priceUsd: 320000,
       priceFlb: 220,
       description: 'Autonomous high-frequency cryptocurrency trading engine.'
+    },
+    executive_autopilot: {
+      id: 'executive_autopilot',
+      label: 'AI Executive Co-Pilot',
+      priceUsd: 1150000,
+      priceFlb: 650,
+      description: 'Full autonomous company operations: recruitment, fleet expansion, and regional growth.'
     }
   },
   'auto': {
@@ -134,6 +155,13 @@ export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_disp
       priceUsd: 95000,
       priceFlb: 65,
       description: 'Autonomous high-frequency cryptocurrency trading engine.'
+    },
+    executive_autopilot: {
+      id: 'executive_autopilot',
+      label: 'AI Executive Co-Pilot',
+      priceUsd: 395000,
+      priceFlb: 220,
+      description: 'Full autonomous company operations: recruitment, fleet expansion, and regional growth.'
     }
   },
   'year': {
@@ -157,6 +185,13 @@ export const AI_ADDON_PLANS: Record<string, Record<'maintenance' | 'offline_disp
       priceUsd: 850000,
       priceFlb: 600,
       description: 'Autonomous high-frequency cryptocurrency trading engine.'
+    },
+    executive_autopilot: {
+      id: 'executive_autopilot',
+      label: 'AI Executive Co-Pilot',
+      priceUsd: 2950000,
+      priceFlb: 1800,
+      description: 'Full autonomous company operations: recruitment, fleet expansion, and regional growth.'
     }
   }
 };
@@ -231,6 +266,8 @@ export const DEFAULT_AI_STATE: AiState = {
   offlineExpiresTimestamp: 0,
   quantTraderActive: false,
   quantTraderExpiresTimestamp: 0,
+  executiveAutopilotActive: false,
+  executiveExpiresTimestamp: 0,
   filters: DEFAULT_AI_FILTERS,
   logs: [],
   totalDispatchedCount: 0,

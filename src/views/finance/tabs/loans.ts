@@ -77,11 +77,11 @@ export function renderLoansTab(S: any): string {
         <div style="font-size:10px; font-weight:800; color:var(--grn); text-transform:uppercase; margin-bottom:6px;">LOGISTICS CREDIT COMMITTEE: APPROVED</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; font-family:monospace; font-size:12px; margin-bottom:12px;">
           <div><span style="color:var(--mu);">INTEREST RATE:</span> <b style="color:var(--tx);">${eligibilityResult.apr}% APR</b></div>
-          <div><span style="color:var(--mu);">DAILY PAYMENT:</span> <b style="color:var(--tx);">$${fmt(eligibilityResult.dailyRate)}</b></div>
+          <div><span style="color:var(--mu);">DAILY PAYMENT:</span> <b style="color:var(--tx);">${fmt(eligibilityResult.dailyRate)}</b></div>
           <div><span style="color:var(--mu);">TERM LENGTH:</span> <b style="color:var(--tx);">${customLoanTerm} DAYS</b></div>
-          <div><span style="color:var(--mu);">TOTAL INTEREST:</span> <b style="color:var(--gold);">$${fmt(eligibilityResult.totalInterest)}</b></div>
+          <div><span style="color:var(--mu);">TOTAL INTEREST:</span> <b style="color:var(--gold);">${fmt(eligibilityResult.totalInterest)}</b></div>
         </div>
-        <button class="btn gold" style="width:100%; padding:10px; font-weight:900;" data-act="finalize-loan-application">FINAL DISBURSEMENT ($${fmt(customLoanPrincipal)})</button>
+        <button class="btn gold" style="width:100%; padding:10px; font-weight:900;" data-act="finalize-loan-application">FINAL DISBURSEMENT (${fmt(customLoanPrincipal)})</button>
       ` : `
         <div style="font-size:10px; font-weight:800; color:var(--err); text-transform:uppercase; margin-bottom:4px;">LOGISTICS CREDIT COMMITTEE: DENIED</div>
         <div style="font-size:12px; color:var(--tx); line-height:1.4;">${eligibilityResult.error}</div>
@@ -95,8 +95,8 @@ export function renderLoansTab(S: any): string {
       <!-- TOP: CREDIT STATUS (FULL WIDTH ON MOBILE) -->
       <div style="background:#0e1320; border:1px solid #1f293d; border-radius:12px; padding:16px;">
           <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-            <h3 style="margin:0; font-size:16px; font-weight:900; color:var(--tx);">Corporate Debt Profile</h3>
-            <span style="font-size:12px; font-weight:900; color:var(--err); font-family:monospace;">$${fmt(totalOutstandingBalance)} Total</span>
+            <h3 style="margin:0; font-size:16px; font-weight:900; color:var(--tx);">Corporate Debt Profile Total</h3>
+            <span style="font-size:15px; font-weight:900; color:var(--err); font-family:monospace;">${fmt(totalOutstandingBalance)}</span>
           </div>
 
           <div style="display:flex; align-items:center; gap:16px; margin-bottom:16px;">
@@ -105,7 +105,7 @@ export function renderLoansTab(S: any): string {
             </div>
             <div>
               <div style="font-size:11px; font-weight:800; color:var(--tx); text-transform:uppercase;">${RATING_TIER_NAMES[profile.creditRating] || 'Established Operator'}</div>
-              <div style="font-size:10px; color:var(--mu);">Rating reflects your asset-to-debt ratio ($${fmt(profile.totalAssetsUsd)} assets).</div>
+              <div style="font-size:10px; color:var(--mu);">Rating reflects your asset-to-debt ratio ${fmt(profile.totalAssetsUsd)} assets.</div>
             </div>
           </div>
 
@@ -116,7 +116,7 @@ export function renderLoansTab(S: any): string {
              </div>
              <div style="background:#080c16; padding:8px; border-radius:6px; border:1px solid #1a2336;">
                <div style="font-size:8px; color:var(--mu); text-transform:uppercase;">CREDIT LINE</div>
-               <div style="font-size:14px; font-weight:900; color:var(--tx);">$${fmt(profile.availableCreditUsd)}</div>
+               <div style="font-size:14px; font-weight:900; color:var(--tx);">${fmt(profile.availableCreditUsd)}</div>
              </div>
           </div>
       </div>
@@ -178,14 +178,14 @@ export function renderLoansTab(S: any): string {
                     <div style="font-size:14px; font-weight:900; color:var(--tx);">${loan.name}</div>
                   </div>
                   <div style="text-align:right;">
-                    <div style="font-size:14px; font-weight:900; color:var(--err); font-family:monospace;">$${fmt(loan.balance || loan.remainingBalance)}</div>
+                    <div style="font-size:14px; font-weight:900; color:var(--err); font-family:monospace;">${fmt(loan.balance || loan.remainingBalance)}</div>
                     <div style="font-size:9px; color:var(--mu);">Balance</div>
                   </div>
                 </div>
 
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:12px; font-family:monospace; font-size:10px;">
                   <div><span style="color:var(--mu);">LEFT:</span> <b style="color:var(--tx);">${Math.round(loan.daysRemaining)}D</b></div>
-                  <div><span style="color:var(--mu);">DAILY:</span> <b style="color:var(--tx);">$${fmt(loan.dailyRate)}</b></div>
+                  <div><span style="color:var(--mu);">DAILY:</span> <b style="color:var(--tx);">${fmt(loan.dailyRate)}</b></div>
                   <div><span style="color:var(--mu);">APR:</span> <b style="color:${loan.missedPayments > 0 ? 'var(--err)' : 'var(--tx)'};">${loan.apr.toFixed(1)}%</b></div>
                   <div><span style="color:var(--mu);">PENALTY:</span> <b style="color:var(--err);">${loan.missedPayments}D</b></div>
                 </div>

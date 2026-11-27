@@ -137,7 +137,20 @@ export default {
     const pendingTrailersCount = (S.pendingTrailers || []).length;
 
     return `
-      <div class="profile-wrap" style="background:linear-gradient(180deg, #111827 0%, #0a0f1d 100%); border-bottom:1px solid #1f293d; padding:28px 16px 20px; text-align:center;">
+      <div class="profile-wrap" style="position:relative; background:linear-gradient(180deg, #111827 0%, #0a0f1d 100%); border-bottom:1px solid #1f293d; padding:28px 16px 20px; text-align:center;">
+        <button
+          type="button"
+          data-act="tab"
+          data-id="devtools"
+          title="Developer Tools"
+          aria-label="Open Developer Tools"
+          style="position:absolute; top:12px; right:12px; width:28px; height:28px; display:flex; align-items:center; justify-content:center; background:rgba(255,255,255,0.03); border:1px solid #1f293d; border-radius:6px; color:var(--mu); cursor:pointer; padding:0;"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polyline points="4 17 10 11 4 5"></polyline>
+            <line x1="12" y1="19" x2="20" y2="19"></line>
+          </svg>
+        </button>
         <!-- Circular Progress Ring Encircled Logo -->
         <div style="margin:0 auto 14px; display:inline-block;">
           ${renderProgressLogoRing(S, 84, 5)}

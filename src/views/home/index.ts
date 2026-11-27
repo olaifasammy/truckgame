@@ -1,8 +1,6 @@
 import { refresh, set } from '../../core/store';
-import { action, toast, fmt, dur, formatTimer } from '../../core/ui';
-import { takeJob, replenish } from '../../systems/jobs';
+import { action, toast } from '../../core/ui';
 import { renderMap } from './map';
-import { renderJobCard } from './job-card';
 import { renderAuctionCard } from './auction-card';
 import { openAuctionModal, renderModalOverlay, activeAuctionModalId } from './auction-modal';
 import { openTruckSelector, renderSelectorOverlay, activeSelectorJobId } from './truck-selector';
@@ -10,18 +8,7 @@ import { homeState } from './state';
 import { LOCATIONS, RegionName } from '../../data/world';
 import { getCompanyProgression } from '../../domain/company/progression';
 import { getDailyBidDispatchQuota } from '../../domain/freight/bids/quota';
-import { SAMPLE_TENDERS, isRegionUnlocked, REGION_AUTHORITIES } from '../../domain/logistics/network';
-import { getDynamicCorporateTenders, signCorporateTender } from '../../domain/contracts/tenders';
 import { renderTelematicsOverlay } from '../telematics-modal';
-import { TRUCK_MODELS } from '../../domain/trucks/trucks.data';
-import { FreightEngine } from '../../domain/freight/engine/generator';
-
-let homeBoardMode: 'spot' | 'tenders' = 'spot';
-
-action('home-board-mode', d => {
-  homeBoardMode = (d as any).mode;
-  refresh();
-});
 
 action('home-toggle', d => {
   homeState.openJobId = homeState.openJobId === +(d as any).id ? null : +(d as any).id;
@@ -41,29 +28,6 @@ action('locked-vip-bid', () => {
   const S = (window as any).__getStore?.();
   const prog = S ? getCompanyProgression(S) : { title: 'Newbie', tier: 0 };
   toast(`Job Bidding unlocks at VIP Rank (Tier 3+). Current: ${prog.title} (Tier ${prog.tier}/3)`, 'err');
-});
-
-action('refresh-freight-board', () => {
-  set(S => {
-    const cost = 250;
-    if (S.money < cost) return toast(`Insufficient funds to refresh freight board. Need $${cost}`, 'err');
-    S.money -= cost;
-    const securedJobs = (S.jobs || []).filter((j: any) => j.isAuctionWon);
-    S.jobs = [...securedJobs];
-
-    if (S.corporateTenders) {
-      for (const t of S.corporateTenders) {
-        t.nextLoadAt = 0;
-      }
-    }
-
-    replenish(S);
-    
-    // Also refresh special corporate tenders
-    S.tenderRefreshSeed = (S.tenderRefreshSeed || 0) + 1;
-
-    toast('Freight exchange board & special tenders refreshed ($250 fee paid)!', 'success');
-  });
 });
 
 action('home-region', d => {
@@ -118,31 +82,6 @@ action('map-pan', d => {
   refresh();
 });
 
-action('accept-tender', d => {
-  const tenderId = (d as any).id;
-  set(S => {
-    const ok = signCorporateTender(S, tenderId);
-    if (!ok) {
-      toast('Cannot execute tender: verify minimum fleet size, driver certifications, or carrier rating.', 'err');
-    } else {
-      const tnd = S.corporateTenders?.find((t: any) => t.id === tenderId);
-      toast(`Contract of Affreightment Signed: ${tnd?.client || 'Client'}! Daily scheduled linehaul loads active.`, 'success');
-    }
-  });
-});
-
-action('buy-premium-tenders', () => {
-  set(S => {
-    const cost = 25000;
-    if (S.money < cost) return toast(`Insufficient funds for Premium Tenders. Need $${fmt(cost)}`, 'err');
-    S.money -= cost;
-    if (!S.tenderListingLimit) S.tenderListingLimit = { count: 0, windowStart: Date.now(), premiumActive: false, premiumExpiresAt: 0 };
-    S.tenderListingLimit.premiumActive = true;
-    S.tenderListingLimit.premiumExpiresAt = Date.now() + 7 * 24 * 3600000; // 7 days
-    toast('Premium Tenders License Unlocked (7 Days)! Listing limits removed.', 'success');
-  });
-});
-
 
 export default {
   id: 'home',
@@ -159,7 +98,6 @@ export default {
 
     const currentRegion = homeState.selectedRegion;
     const allAuctions = S.auctions || [];
-    const allJobs = S.jobs || [];
 
     // Filter by region if a specific region is active
     const filteredAuctions = allAuctions.filter((a: any) => {
@@ -169,219 +107,26 @@ export default {
       return locFrom?.region === currentRegion || locTo?.region === currentRegion;
     });
 
-    const filteredJobs = allJobs.filter((j: any) => {
-      if (currentRegion === 'All') return true;
-      const locFrom = LOCATIONS[j.from];
-      const locTo = LOCATIONS[j.to];
-      return locFrom?.region === currentRegion || locTo?.region === currentRegion;
-    });
-
-    // Sort: Auctions Won > Tenders > Jobs for stationed trucks > VIP > Rest
-    filteredJobs.sort((a: any, b: any) => {
-      const aLocal = (S.fleet || []).some((t: any) => t.status === 'idle' && t.loc === a.from);
-      const bLocal = (S.fleet || []).some((t: any) => t.status === 'idle' && t.loc === b.from);
-      const score = (j: any, isLocal: boolean) => (
-        (j.isAuctionWon ? 1000 : 0) +
-        (j.tenderId ? 500 : 0) +
-        (isLocal ? 100 : 0) +
-        (j.vip ? 10 : 0)
-      );
-      return score(b, bLocal) - score(a, aLocal);
-    });
-
-    const prog = getCompanyProgression(S);
     const quota = getDailyBidDispatchQuota(S);
 
     return `
       ${renderMap(S)}
 
-      <!-- Redesigned Mode Selector Navigation Bar -->
-      <div style="background: linear-gradient(180deg, #111827 0%, #0a0f1d 100%); border: 1px solid #1f293d; border-radius: 12px; padding: 6px; margin-bottom: 14px; box-shadow: 0 4px 16px rgba(0,0,0,0.4);">
-        <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">
-          <button class="btn ${homeBoardMode === 'spot' ? 'gold' : 'alt'}" style="padding: 10px 4px; font-size: 10px; font-weight: 800; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 2px;" data-act="home-board-mode" data-mode="spot">
-            <span>SPOT BOARD</span>
-            <span style="font-size: 9px; opacity: 0.85; font-family: monospace;">(${allJobs.length} Manifests)</span>
-          </button>
-
-          <button class="btn ${homeBoardMode === 'tenders' ? 'gold' : 'alt'}" style="padding: 10px 4px; font-size: 10px; font-weight: 800; border-radius: 8px; display: flex; flex-direction: column; align-items: center; gap: 2px;" data-act="home-board-mode" data-mode="tenders">
-            <span>30-DAY TENDERS</span>
-            <span style="font-size: 9px; opacity: 0.85; font-family: monospace;">(${SAMPLE_TENDERS.length} Contracts)</span>
-          </button>
+      <!-- Live Bidding & Reverse Freight Auctions Section -->
+      <div class="sec" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:6px;">
+        <div style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">
+          LIVE BID AUCTIONS (${filteredAuctions.length})
+        </div>
+        <div style="font-size:9px; font-family:monospace; color:var(--grn); font-weight:800;">
+          ${quota.freeRemaining}/5 Free Dispatches
         </div>
       </div>
 
-      ${homeBoardMode === 'spot' ? `
-          <!-- Live Bidding & Reverse Freight Auctions Section -->
-          ${filteredAuctions.length > 0 ? `
-            <div class="sec" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:6px;">
-              <div style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">
-                LIVE AUCTIONS (${filteredAuctions.length})
-              </div>
-              <div style="font-size:9px; font-family:monospace; color:var(--grn); font-weight:800;">
-                ${quota.freeRemaining}/5 Free Dispatches
-              </div>
-            </div>
-            ${filteredAuctions.map((j: any) => renderAuctionCard(S, j)).join('')}
-          ` : ''}
-
-          <!-- Contract Freight Load Board Section -->
-          <div class="sec" style="display:flex; justify-content:space-between; align-items:center; margin:14px 0 8px;">
-            <span style="font-size:11px; font-weight:800; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">
-              FREIGHT CONTRACT MANIFESTS (${filteredJobs.length})
-            </span>
-            <div style="text-align:right;">
-              ${(() => {
-                const limit = FreightEngine.getTenderLimit(S);
-                const isPremium = limit.premiumActive && limit.premiumExpiresAt > Date.now();
-                if (isPremium) {
-                  return `<span style="font-size:8px; font-weight:900; color:var(--grn); font-family:monospace; background:rgba(34,197,94,0.1); border:1px solid var(--grn); padding:2px 6px; border-radius:4px;">PREMIUM TENDERS ACTIVE</span>`;
-                }
-                const remaining = Math.max(0, 5 - (limit.count || 0));
-                const resetTargetTime = limit.windowStart + (5 * 3600000);
-                const remainingMs = Math.max(0, resetTargetTime - Date.now());
-                return `
-                  <div style="font-size:8px; font-weight:800; color:var(--mu); font-family:monospace;">
-                    FREE TENDER QUOTA: <b style="color:${remaining > 0 ? 'var(--grn)' : '#ef4444'};">${remaining}/5</b>
-                    ${remaining === 0 ? `· RESET IN <span data-tender-reset-eta="${resetTargetTime}">${formatTimer(remainingMs)}</span>` : ''}
-                  </div>
-                `;
-              })()}
-            </div>
-          </div>
-
-          ${filteredJobs.length > 0 ? filteredJobs.map((j: any) => renderJobCard(S, j)).join('') : `
-            <div style="background:#0e1320; border:1px solid #1e2638; border-radius:10px; padding:24px; text-align:center; color:var(--mu); font-size:11px; font-family:monospace;">
-              NO AVAILABLE CONTRACTS IN THIS REGIONAL SECTOR. CHECK OTHER REGIONS OR WAIT FOR DISPATCH REPLENISHMENT.
-            </div>
-          `}
-
-          <!-- Freight Board Refresh Button ($250 fee) -->
-          <div style="margin-top:16px; margin-bottom:14px; text-align:center;">
-            <button class="btn alt" style="width:100%; padding:10px; font-size:11px; font-weight:800; border-color:var(--gold); color:var(--gold);" data-act="refresh-freight-board">
-              🔄 Refresh $250
-            </button>
-          </div>
-        ` : homeBoardMode === 'tenders' ? `
-          <!-- Mode 2: 30-Day Long-Term Corporate Tenders -->
-          <div style="background:#0f172a; border:1px solid var(--gold); border-radius:10px; padding:14px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center;">
-            <div style="flex:1;">
-              <div style="font-size:9px; color:var(--gold); font-weight:800; text-transform:uppercase; letter-spacing:0.5px;">CONTRACTS OF AFFREIGHTMENT</div>
-              <div style="font-size:16px; font-weight:900; color:var(--tx); margin-top:2px;">Exclusive 30-Day Dedicated Linehauls</div>
-              <div style="font-size:10px; color:var(--mu); margin-top:2px; line-height:1.4; max-width:85%;">
-                Sign exclusive 30-day enterprise shipping contracts. Note: Free tier is limited to 5 listed jobs per 5 hours.
-              </div>
-            </div>
-            ${(() => {
-              const limit = S.tenderListingLimit;
-              const isPremium = limit?.premiumActive && limit?.premiumExpiresAt > Date.now();
-              if (isPremium) {
-                return `
-                  <div style="text-align:center; padding:8px; background:rgba(34,197,94,0.1); border:1px solid var(--grn); border-radius:8px;">
-                    <div style="font-size:8px; color:var(--grn); font-weight:900;">UNLIMITED</div>
-                    <div style="font-size:7px; color:var(--mu); font-family:monospace; margin-top:2px;">EXP: ${new Date(limit.premiumExpiresAt).toLocaleDateString()}</div>
-                  </div>
-                `;
-              }
-              return `
-                <button class="btn gold" style="padding:10px; font-size:10px; font-weight:900; white-space:nowrap;" data-act="buy-premium-tenders">
-                  UPGRADE <br/> $25,000
-                </button>
-              `;
-            })()}
-          </div>
-
-          <div style="display:flex; flex-direction:column; gap:10px;">
-            ${getDynamicCorporateTenders(S).map(tender => {
-              const activeTender = (S.corporateTenders || []).find((t: any) => t.id === tender.id);
-              const isSigned = !!activeTender;
-              const completed = activeTender ? (activeTender.completedLoads || 0) : 0;
-              const total = activeTender ? (activeTender.totalLoads || tender.totalLoads) : tender.totalLoads;
-              const remaining = activeTender ? (activeTender.loadsRemaining ?? Math.max(0, total - completed)) : total;
-              const hasFleet = (S.fleet?.length || 0) >= tender.minFleetSize;
-              const hasReputation = (S.reputation ?? 100) >= tender.minReputation;
-              const missingCerts = (tender.requiredCerts || []).filter(c => {
-                if (c === 'ADR Hazmat') return !S.licenses?.includes('adr_hazmat');
-                if (c === 'Cold Chain') return !S.licenses?.includes('cold_chain');
-                return false;
-              });
-              const isCompliant = missingCerts.length === 0 && hasFleet && hasReputation;
-
-              return `
-                <div style="background:#111827; border:1px solid ${isSigned ? 'rgba(34,197,94,0.4)' : isCompliant ? '#1f293d' : 'rgba(239,68,68,0.3)'}; border-radius:10px; padding:14px;">
-                  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                      <span style="font-size:24px;">${tender.icon}</span>
-                      <div>
-                        <div style="font-size:13px; font-weight:800; color:var(--tx);">${tender.client}</div>
-                        <div style="font-size:9.5px; color:var(--gold); font-family:monospace;">
-                          ${tender.industry} · Lane: <b>${tender.lane}</b>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      ${isSigned ? `
-                        <span style="font-size:9px; font-weight:900; color:var(--grn); background:rgba(34,197,94,0.12); border:1px solid var(--grn); padding:4px 8px; border-radius:4px; font-family:monospace;">
-                          ✓ ACTIVE LINEHAUL
-                        </span>
-                      ` : `
-                        <button class="btn gold" style="padding:6px 14px; font-size:10px; font-weight:900;" data-act="accept-tender" data-id="${tender.id}" ${!isCompliant ? 'disabled style="opacity:0.4; cursor:not-allowed;"' : ''}>
-                          ACCEPT TENDER
-                        </button>
-                      `}
-                    </div>
-                  </div>
-
-                  <div style="font-size:10px; color:var(--tx); margin-bottom:8px; line-height:1.4;">${tender.desc}</div>
-
-                  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(90px, 1fr)); gap:6px; background:#0a0f1d; padding:8px 10px; border-radius:6px; margin-bottom:8px; font-family:monospace;">
-                    <div>
-                      <div style="font-size:8px; color:var(--mu); font-weight:700;">PAY PER LOAD</div>
-                      <div style="font-size:12px; font-weight:900; color:var(--grn);">${fmt(tender.ratePerDelivery)}</div>
-                    </div>
-                    <div>
-                      <div style="font-size:8px; color:var(--mu); font-weight:700;">SLA TARGET</div>
-                      <div style="font-size:12px; font-weight:900; color:var(--tx);">${tender.slaTarget}% ON-TIME</div>
-                    </div>
-                    <div>
-                      <div style="font-size:8px; color:var(--mu); font-weight:700;">VOLUME</div>
-                      <div style="font-size:12px; font-weight:900; color:var(--tx);">${tender.totalLoads} Loads</div>
-                    </div>
-                    <div>
-                      <div style="font-size:8px; color:var(--mu); font-weight:700;">COMPLETION BONUS</div>
-                      <div style="font-size:12px; font-weight:900; color:var(--gold);">+${fmt(tender.bonusPayout)}</div>
-                    </div>
-                  </div>
-
-                  <!-- Requirements row -->
-                  <div style="display:flex; flex-wrap:wrap; gap:8px; font-size:9px; font-family:monospace; color:var(--mu); margin-bottom:6px;">
-                    <span style="color:${hasFleet ? 'var(--grn)' : '#ef4444'};">
-                      ${hasFleet ? '✓' : '✕'} Min Fleet: ${tender.minFleetSize} Units
-                    </span>
-                    <span>·</span>
-                    <span style="color:${hasReputation ? 'var(--grn)' : '#ef4444'};">
-                      ${hasReputation ? '✓' : '✕'} Min Safety: ${tender.minReputation}
-                    </span>
-                    ${tender.requiredCerts.length > 0 ? `
-                      <span>·</span>
-                      <span style="color:${missingCerts.length === 0 ? 'var(--grn)' : '#ef4444'};">
-                        ${missingCerts.length === 0 ? '✓' : '✕'} Permits: ${tender.requiredCerts.join(', ')}
-                      </span>
-                    ` : ''}
-                  </div>
-
-                  ${isSigned ? `
-                    <div style="font-size:9px; color:var(--mu); font-family:monospace; margin-bottom:4px;">
-                      Progress: ${completed} / ${total} Consignments Completed (${remaining} remaining)
-                    </div>
-                    <div style="height:6px; background:rgba(255,255,255,0.08); border-radius:3px; overflow:hidden;">
-                      <div style="width:${(completed / Math.max(1, total)) * 100}%; height:100%; background:var(--grn); border-radius:3px;"></div>
-                    </div>
-                  ` : ''}
-                </div>
-              `;
-            }).join('')}
-          </div>
-        ` : ''}
+      ${filteredAuctions.length > 0 ? filteredAuctions.map((j: any) => renderAuctionCard(S, j)).join('') : `
+        <div style="background:#0e1320; border:1px solid #1e2638; border-radius:10px; padding:24px; text-align:center; color:var(--mu); font-size:11px; font-family:monospace;">
+          NO LIVE BID AUCTIONS IN THIS SECTOR RIGHT NOW. REGULAR FREIGHT IS MANAGED PER HUB IN YOUR GARAGE.
+        </div>
+      `}
 
       ${renderTelematicsOverlay(S)}
       <div style="height:20px;"></div>

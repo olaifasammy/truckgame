@@ -6,6 +6,7 @@ import { COMPANIES } from '../companies/registry';
 import { pushNote } from '../../../systems/notify';
 import { getCompanyProgression } from '../../company/progression';
 import { LOCATIONS } from '../../../data/world';
+import { REGIONAL_HUBS } from '../../logistics/network';
 
 const REGION_CODE_MAP: Record<string, Region> = {
   Europe: 'EU',
@@ -56,7 +57,7 @@ export class BiddingEngine {
     let listChanged = false;
     let bidChanged = false;
 
-    // 1. Check for Expired "Won" Jobs (5 minute window)
+    // 1. Check for Expired "Won" Jobs (5 minute window) in both global and hub boards
     const FIVE_MINS = 5 * 60 * 1000;
     const initialJobCount = S.jobs.length;
     S.jobs = S.jobs.filter((j: any) => {
@@ -66,6 +67,19 @@ export class BiddingEngine {
       return true;
     });
     if (S.jobs.length !== initialJobCount) listChanged = true;
+
+    if (S.hubJobs) {
+      for (const hubId of Object.keys(S.hubJobs)) {
+        const prevLen = S.hubJobs[hubId].length;
+        S.hubJobs[hubId] = S.hubJobs[hubId].filter((j: any) => {
+          if (j.isAuctionWon && j.wonAt && (now - j.wonAt > FIVE_MINS)) {
+            return false;
+          }
+          return true;
+        });
+        if (S.hubJobs[hubId].length !== prevLen) listChanged = true;
+      }
+    }
 
     const active: JobAuction[] = [];
     const expired: JobAuction[] = [];
@@ -223,10 +237,26 @@ export class BiddingEngine {
         wonAt: Date.now()
       };
 
-      // Silently add won job to board
-      if (!S.jobs) S.jobs = [];
-      if (!S.jobs.some((j: any) => j.id === wonJob.id)) {
-        S.jobs.unshift(wonJob);
+      // Route won bid job directly to the pickup hub's job list if owned; fallback to global board
+      const pickupHub = REGIONAL_HUBS.find(
+        h => h.city === auc.from && (S.depots || []).includes(h.id)
+      );
+
+      if (pickupHub) {
+        if (!S.hubJobs) S.hubJobs = {};
+        if (!S.hubJobs[pickupHub.id]) S.hubJobs[pickupHub.id] = [];
+        if (!S.hubJobs[pickupHub.id].some((j: any) => j.id === wonJob.id)) {
+          S.hubJobs[pickupHub.id].unshift(wonJob);
+        }
+        pushNote(S, `Won bid: ${auc.from} → ${auc.to} ($${wonJob.pay.toLocaleString()}). Added to ${pickupHub.name} job list.`, {
+          title: 'BID WON — HUB DISPATCH READY',
+          type: 'ops'
+        });
+      } else {
+        if (!S.jobs) S.jobs = [];
+        if (!S.jobs.some((j: any) => j.id === wonJob.id)) {
+          S.jobs.unshift(wonJob);
+        }
       }
     } else if (auc.currentWinner && auc.currentWinner !== 'none') {
       const prev = S.competitorStats.rivals?.[auc.currentWinner] || { wins: 0, bids: 0 };

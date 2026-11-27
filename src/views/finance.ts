@@ -13,6 +13,7 @@ import { createTruck } from '../domain/trucks/trucks.physics';
 import { renderTreasuryTab } from './finance/tabs/treasury';
 import { renderExchangeTab } from './finance/tabs/exchange';
 import { renderLoansTab } from './finance/tabs/loans';
+import { renderInsuranceTab } from './finance/tabs/insurance';
 import { renderFinanceNav } from './finance/tabs/shared';
 
 // Initialize tab state if not present on window
@@ -69,10 +70,21 @@ action('lease-tractor', d => {
 });
 
 action('toggle-insurance', d => {
-  const id = (d as any).id as any;
+  const id = (d as any).id as 'liability' | 'collision' | 'cargo';
   set(S => {
+    if (!S.insurance) S.insurance = { liability: true, collision: true, cargo: false };
     S.insurance[id] = !S.insurance[id];
-    toast('Policy Updated', 'success');
+    const policyName = INSURANCE_POLICIES[id]?.name || id;
+    toast(`${policyName}: ${S.insurance[id] ? 'Enrolled' : 'Cancelled'}`, S.insurance[id] ? 'success' : 'info');
+  });
+});
+
+action('set-insurance-tier', d => {
+  const tier = (d as any).tier;
+  if (!tier) return;
+  set(S => {
+    S.insuranceTier = tier;
+    toast('Deductible schedule updated', 'success');
   });
 });
 
@@ -108,18 +120,7 @@ export default {
         ${financeTab === 'exchange' ? renderExchangeTab(S) : ''}
         ${(financeTab === 'banking' || financeTab === 'loans') ? renderLoansTab(S) : ''}
 
-        ${financeTab === 'insurance' ? `
-          <div style="display:flex; flex-direction:column; gap:10px;">
-            ${Object.values(INSURANCE_POLICIES).map(p => `
-              <div style="background:#111827; border:1px solid ${ins[p.id] ? 'var(--grn)' : '#1f293d'}; border-radius:8px; padding:12px;">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                  <div><div style="font-size:12px; font-weight:800; color:var(--tx);">${p.name}</div><div style="font-size:9px; color:var(--mu);">$${p.dailyCost}/day</div></div>
-                  <button class="btn ${ins[p.id] ? 'alt' : 'gold'}" style="padding:6px 12px; font-size:9px;" data-act="toggle-insurance" data-id="${p.id}">${ins[p.id] ? 'ACTIVE' : 'ENROLL'}</button>
-                </div>
-              </div>
-            `).join('')}
-          </div>
-        ` : ''}
+        ${financeTab === 'insurance' ? renderInsuranceTab(S) : ''}
       </div>
     `;
   }

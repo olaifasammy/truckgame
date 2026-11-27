@@ -96,4 +96,46 @@ describe('AI Dispatcher Compliance & Regional Competitor Simulation', () => {
     BiddingEngine.finalizeAuction(state, auc);
     assert.equal(state.competitorStats.rivals[rival.id].wins, 1);
   });
+
+  it('replenishes and dispatches jobs from S.hubJobs[hubId] without polluting S.jobs', () => {
+    const truck = createTruck(3, 'scania_s730', 'Lagos Unit 3', 'LAGOS');
+    truck.trailer = 'curtain';
+    truck.driverId = 12;
+    const driver: any = {
+      id: 12,
+      name: 'Chidi',
+      region: 'Africa',
+      workPermits: ['Africa'],
+      fatigue: 0,
+      hosHours: 0,
+      skill: 3
+    };
+
+    const state: any = {
+      money: 100000,
+      nextId: 500,
+      unlockedRegions: ['Africa'],
+      depots: ['hub_lagos'],
+      trailers: ['curtain'],
+      licenses: [],
+      fleet: [truck],
+      drivers: [driver],
+      violations: [],
+      jobs: [],
+      hubJobs: {},
+      active: [],
+      aiState: {
+        subscriptionActive: true,
+        expiresTimestamp: Date.now() + 999999,
+        filters: { enabled: true, profile: 'balanced_efficiency', autoRefuel: true }
+      }
+    };
+
+    const res = runAiAutoDispatch(state);
+    assert.equal(res.dispatchedCount, 1, `Expected 1 hub job dispatched, got: ${res.message}`);
+    assert.equal(truck.status, 'busy');
+    // Normal fallback/hub jobs should stay in S.hubJobs, never added as non-VIP into S.jobs
+    const nonVipGlobal = (state.jobs || []).filter((j: any) => !j.vip && !j.isAuctionWon && !j.tenderId);
+    assert.equal(nonVipGlobal.length, 0);
+  });
 });

@@ -63,6 +63,14 @@ export function renderTelematicsOverlay(S: any): string {
   // Retrieve comprehensive dynamic telematics snapshot
   const telem = getTruckTelematics(t, a, drv, now);
 
+  const tankCap = m.tankSize || 800;
+  const tankLiters = Math.max(0, Math.min(tankCap, t.fluids?.fuel ?? tankCap));
+  const fuelPct = telem.fuelPct ?? Math.round((tankLiters / tankCap) * 1000) / 10;
+  const fuelColor = fuelPct <= 15 ? '#ef4444' : fuelPct <= 35 ? '#f59e0b' : 'var(--grn)';
+  const estRangeKm = telem.fuelBurnUnit === 'L/100km' && telem.fuelBurnRate > 0
+    ? Math.round((tankLiters / telem.fuelBurnRate) * 100)
+    : Math.round((tankLiters / (m.stats?.fuelConsumption || 32)) * 100);
+
   const weather = a?.env?.weather || 'clear';
   const ambientTemp = a?.env?.temp || 22;
 
@@ -80,15 +88,15 @@ export function renderTelematicsOverlay(S: any): string {
           <div>
             <div style="display:flex; align-items:center; gap:8px;">
               <div style="font-size:9px; font-weight:900; color:var(--gold); letter-spacing:1px; text-transform:uppercase;">
-                LIVE FLEET TELEMATICS · GPS SATELLITE FEED
+                LIVE FLEET · GPS FEED
               </div>
-              ${getDrivingStateBadge(telem.state, true)}
+              
             </div>
             <div style="font-size:16px; font-weight:900; color:var(--tx); margin-top:3px;">
               ${t.name} <span style="font-size:11px; color:var(--mu); font-family:monospace;">[${m.brand} ${m.name}]</span>
             </div>
             <div style="font-size:10px; color:var(--mu); margin-top:2px;">
-              Operator: <b style="color:var(--tx);">${drv ? drv.name : 'Unassigned'}</b> · CDL Skill ${drv ? '★'.repeat(drv.skill) : 'N/A'} · HOS Clock: <b style="color:var(--gold);">${drv ? (drv.hosHours || 0).toFixed(1) : '0'}/11.0 hrs</b>
+              Operator: <b style="color:var(--tx);">${drv ? drv.name : 'Unassigned'}</b> · Skill ${drv ? '★'.repeat(drv.skill) : 'N/A'} · HOS: <b style="color:var(--gold);">${drv ? (drv.hosHours || 0).toFixed(1) : '0'}/11.0 hrs</b>
             </div>
           </div>
           <button style="background:none; border:none; color:var(--mu); font-size:20px; cursor:pointer; padding:4px;" data-act="close-telematics">✕</button>
@@ -100,16 +108,16 @@ export function renderTelematicsOverlay(S: any): string {
           <!-- Top HUD Header Status Strip -->
           <div style="position:absolute; top:0; left:0; right:0; padding:6px 10px; background:linear-gradient(180deg, rgba(5,10,25,0.92) 0%, rgba(5,10,25,0.6) 80%, transparent 100%); z-index:10; display:flex; justify-content:space-between; align-items:center; font-family:monospace; font-size:9px;">
             <div style="display:flex; align-items:center; gap:8px; color:rgba(255,255,255,0.85); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
-              <span style="color:var(--gold); font-weight:800;">ENV: ${weather.toUpperCase()}</span>
+              <span style="color:var(--gold); font-weight:800;"> ${weather.toUpperCase()}</span>
               <span>·</span>
               <span>${ambientTemp}°C</span>
               <span>·</span>
               <span style="color:#38bdf8; font-weight:800;">📍 ${t.status === 'delivering' ? 'FACTORY' : t.loc} → ${a ? a.to : (t.status === 'delivering' ? t.loc : 'DEPOT')}</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:6px;">
+            </div> <br/>
+            <div style="display:flex; align-items:right; gap:6px;">
               <span style="color:${telem.stateBadgeColor}; font-weight:900; font-size:8px;">${telem.stateIcon} ${telem.state.toUpperCase()}</span>
-              <div style="color:var(--grn); font-weight:800; font-size:8px; flex-shrink:0; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); padding:2px 6px; border-radius:4px;">
-                ● 4G LTE LIVE
+              <div style="color:var(--grn); font-weight:800; font-size:8px; flex-shrink:0; background:rgba(16,185,129,0.15); border:1px solid rgba(16,185,129,0.4); padding:2px 4px; border-radius:4px;">
+              ● 4G LTE
               </div>
             </div>
           </div>
@@ -148,7 +156,7 @@ export function renderTelematicsOverlay(S: any): string {
           <!-- Weather Advisory Banner Strip (Below Header) -->
           ${weather === 'rain' ? `
             <div style="position:absolute; top:32px; right:10px; z-index:10; font-size:9px; color:#38bdf8; font-weight:800; background:rgba(15,23,42,0.85); border:1px solid rgba(56,189,248,0.4); padding:3px 8px; border-radius:4px; font-family:monospace; backdrop-filter:blur(4px);">
-              🌧️ WIPERS CONTINUOUS ACTIVE
+              🌧️ WIPERS ACTIVE
             </div>
           ` : ''}
           ${weather === 'snow' ? `
@@ -261,12 +269,39 @@ export function renderTelematicsOverlay(S: any): string {
           </div>
         </div>
 
+        <!-- Live Fuel Tank Gauge -->
+        <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div style="display:flex; align-items:center; gap:6px;">
+              <span style="font-size:12px;">⛽</span>
+              <span style="font-size:9px; color:var(--mu); font-weight:800; text-transform:uppercase; letter-spacing:0.4px;">LIVE FUEL TANK GAUGE</span>
+              ${telem.state === 'refueling' ? `<span style="font-size:8px; font-weight:900; color:#fbbf24; background:rgba(234,179,8,0.15); border:1px solid rgba(234,179,8,0.35); padding:1px 6px; border-radius:4px;">REFUELING</span>` : ''}
+            </div>
+            <div style="font-family:monospace; font-size:11px; font-weight:900; color:${fuelColor};">
+              ${fuelPct.toFixed(1)}% <span style="font-size:9px; color:var(--mu); font-weight:700;">(${Math.round(tankLiters).toLocaleString()} / ${tankCap.toLocaleString()} L · ~${estRangeKm.toLocaleString()} km)</span>
+            </div>
+          </div>
+          <div style="position:relative; height:10px; background:#050812; border:1px solid #1e293b; border-radius:5px; overflow:hidden;">
+            <div style="width:${Math.max(0, Math.min(100, fuelPct))}%; height:100%; background:${fuelColor}; border-radius:4px; transition:width 0.3s ease;"></div>
+            <div style="position:absolute; left:25%; top:0; bottom:0; width:1px; background:rgba(255,255,255,0.12);"></div>
+            <div style="position:absolute; left:50%; top:0; bottom:0; width:1px; background:rgba(255,255,255,0.2);"></div>
+            <div style="position:absolute; left:75%; top:0; bottom:0; width:1px; background:rgba(255,255,255,0.12);"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; font-size:8px; color:var(--mu); font-family:monospace; margin-top:3px;">
+            <span>E</span>
+            <span>1/4</span>
+            <span>1/2</span>
+            <span>3/4</span>
+            <span>F</span>
+          </div>
+        </div>
+
         <!-- Telemetry Sensors Data Grid -->
         <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-bottom:12px;">
           <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:8px 10px;">
             <div style="font-size:8px; color:var(--mu); font-weight:800; text-transform:uppercase;">INSTANTANEOUS FUEL BURN</div>
             <div style="font-size:14px; font-weight:900; color:var(--gold); font-family:monospace; margin-top:2px;">
-              ${telem.fuelBurnRate} <span style="font-size:9px; color:var(--mu);">L/100km</span>
+              ${telem.fuelBurnRate} <span style="font-size:9px; color:var(--mu);">${telem.fuelBurnUnit}</span>
             </div>
           </div>
           <div style="background:#111827; border:1px solid #1f293d; border-radius:8px; padding:8px 10px;">
@@ -305,7 +340,7 @@ export function renderTelematicsOverlay(S: any): string {
         ${a ? `
           <div style="background:#09101d; border:1px solid #1e293b; border-radius:8px; padding:10px 12px; margin-bottom:12px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
-              <span style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase;">DISPATCH CONSIGNMENT: ${a.cargo}</span>
+              <span style="font-size:10px; font-weight:800; color:var(--gold); text-transform:uppercase;">CONSIGNMENT: ${a.cargo}</span>
               <span style="font-size:10px; font-weight:800; color:var(--gold); font-family:monospace;">ETA: ${dur(telem.remainingMs)}</span>
             </div>
             <div style="font-size:11px; color:var(--tx); font-weight:700;">
